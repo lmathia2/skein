@@ -35,6 +35,7 @@ def test_recovery_requires_durable_substrate_and_fresh_requires_notes():
     with pytest.raises(ValidationError, match="working notes"):
         SkeinConfig.model_validate(config)
     config["memory"].update(enabled=True, working_notes=True)
+    config["context"]["window_management"] = True
     config["memory"]["context_programs"]["mode"] = "active"
     config["adk"]["recovery"] = "safe_auto"
     candidate = SkeinConfig.model_validate(config)

@@ -185,7 +185,7 @@ class NotebookPtcConfig(FrozenModel):
 class ContextProgramConfig(FrozenModel):
     mode: Literal["off", "shadow", "active"] = "off"
     max_result_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
-    max_scan_events: int = Field(default=10_000, ge=1, le=1_000_000)
+    max_scan_events: int = Field(default=10_000, ge=1, le=100_000)
     timeout_seconds: float = Field(default=2, gt=0, le=60)
     reuse: bool = False
 
@@ -220,6 +220,7 @@ class MemoryConfig(FrozenModel):
 
 
 class ContextConfig(FrozenModel):
+    window_management: bool = False
     reconstruction: Literal["handoff_tail", "fresh"] = "handoff_tail"
     work_packet_tokens: int = Field(default=20_000, ge=2_000, le=256_000)
     max_task_input_tokens: int = Field(default=200_000, ge=8_000, le=20_000_000)
@@ -333,10 +334,13 @@ class SkeinConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_references(self) -> SkeinConfig:
+        if self.context.window_management and not self.memory.enabled:
+            raise ValueError("bounded context windows require canonical memory")
         if self.context.reconstruction == "fresh" and not (
-            self.memory.context_programs.mode == "active" and self.memory.working_notes
+            self.context.window_management
+            and self.memory.context_programs.mode == "active" and self.memory.working_notes
         ):
-            raise ValueError("fresh reconstruction requires active retrieval and working notes")
+            raise ValueError("fresh reconstruction requires bounded windows, active retrieval and working notes")
         if self.adk.recovery == "safe_auto" and not self.memory.enabled:
             raise ValueError("safe-auto recovery requires canonical memory")
         for name, agent in self.agents.items():

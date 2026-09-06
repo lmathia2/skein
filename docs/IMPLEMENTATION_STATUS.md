@@ -13,6 +13,19 @@ Optional semantic ranking is scope-filtered, canonically hydrated, and executed 
 a killable worker; an explicit versioned, spawn-compatible embedding provider is
 required. No model, index, or dependency is downloaded automatically.
 
+The production factory exposes reserved `memory` commands through Bash/the same PTC
+broker. Separate disabled-by-default window management publishes durable context
+epochs before selection, retains an unconsumed tool result even in fresh mode, and
+keeps transient steering out of replay hashes. Critical continuation/effect metadata
+precedes advisory note/PTC state within existing budgets. Default and shadow
+provider requests remain byte-equal in the offline tests; active profiles change
+only declared model-visible context behavior, not the four-tool default surface.
+
+The optional SQL catalog preserves exact source text and executes under time,
+memory, scan, output, and no-spill limits in a killable worker. Summary generation
+is an explicit injected async callback with evidence-bound recorded output and
+optional cache reuse; it is not an automatically configured extra model agent.
+
 Recovery now uses real ADK invocation identities, durable operation and validation
 intents/results, publish-last integrity-bound checkpoints, preserved input budgets,
 and exclusive workspace ownership. The opt-in safe-auto path resumes the original
