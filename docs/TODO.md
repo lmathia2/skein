@@ -8,7 +8,7 @@
 - [x] Publish replayable context epochs and bounded advisory/PTC handoffs.
 - [x] Bind operation identities and checkpoint integrity to safe ADK resume.
 - [x] Add explicitly owned prior-run recall and conversation notebook continuity.
-- [ ] Prepare executable context experiment profiles, schedules, and independent graders.
+- [x] Prepare executable context experiment profiles, schedules, and independent graders.
 - [ ] Run the ADR's live paired experiments and decide promotion independently per feature.
 
 See [the context-program ADR](adr/long-running-context-memory-programs.md). Implementation
