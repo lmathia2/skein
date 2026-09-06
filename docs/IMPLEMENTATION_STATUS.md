@@ -3,6 +3,44 @@
 The supported capability boundary is the simplified local harness, not the
 historical feature checklist or book-rubric score.
 
+## Context-program implementation (empirical gates pending)
+
+The bounded context-program library now supports authorized exact history/event
+reads (including byte ranges), frozen pagination, temporal and structured filters,
+full-set counts, retrieval receipts, optimistic advisory notes, and a finite
+reviewed-program reuse treatment. It keeps Python as the default implementation.
+Optional semantic ranking is scope-filtered, canonically hydrated, and executed in
+a killable worker; an explicit versioned, spawn-compatible embedding provider is
+required. No model, index, or dependency is downloaded automatically.
+
+The production factory exposes reserved `memory` commands through Bash/the same PTC
+broker. Separate disabled-by-default window management publishes durable context
+epochs before selection, retains an unconsumed tool result even in fresh mode, and
+keeps transient steering out of replay hashes. Critical continuation/effect metadata
+precedes advisory note/PTC state within existing budgets. Default and shadow
+provider requests remain byte-equal in the offline tests; active profiles change
+only declared model-visible context behavior, not the four-tool default surface.
+
+The optional SQL catalog preserves exact source text and executes under time,
+memory, scan, output, and no-spill limits in a killable worker. Summary generation
+is an explicit injected async callback with evidence-bound recorded output and
+optional cache reuse; it is not an automatically configured extra model agent.
+
+Recovery now uses real ADK invocation identities, durable operation and validation
+intents/results, publish-last integrity-bound checkpoints, preserved input budgets,
+and exclusive workspace ownership. The opt-in safe-auto path resumes the original
+ADK invocation without another user message; unknown effects, unavailable evidence,
+expired permissions/budgets, and workspace divergence remain explicit blockers.
+Six real subprocess cases include verified successful continuation and safe refusal
+for incomplete or unsafe cases. This is same-machine, initialized-Git recovery, not
+a workspace restore service or exactly-once arbitrary shell execution.
+
+Owned prior-run recall and explicit other-session source selection are separate from
+optional conversation notebook continuity. Only existing safe self-contained cells
+restore; definitions, imports, dependent computations, and capabilities are not
+silently replayed. Notebook metadata records source-task watermarks and attribution.
+Passing deterministic contracts is not a live quality or promotion claim.
+
 ## Retained and verified
 
 - The project identity is Skein: the Python distribution and primary CLI are `skein`,
@@ -158,10 +196,10 @@ not a model-quality benchmark.
 
 Remaining limitations include the host-local trust boundary, single-process state
 ownership, experimental ADK APIs, and the still-complex server run controller.
-The live CPython heap and notebook recovery stream are still scoped to one server run,
-not a stable conversation identity. State metadata is available on demand but is not
-yet injected into ADK compaction handoffs, and provider-request capture has not yet
-proven bounded growth across hundreds of PTC cells.
+The default CPython heap/notebook remains run-scoped; the opt-in conversation mode
+restores only approved replay-safe data across owned runs. The live heap remains
+disposable. Provider-request capture across hundreds of PTC cells and live quality
+comparisons remain empirical work, not implied by deterministic continuity tests.
 Notebook-native PTC supports trusted local workspaces. Its source guard
 blocks direct imports, file/process/network primitives, dunder traversal, and common
 introspection bypasses, but it is not a security sandbox. Production or adversarial

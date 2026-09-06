@@ -10,7 +10,7 @@ import tempfile
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from harness.ledger import LedgerEvent
 from harness.ledger.models import canonical_json
@@ -65,7 +65,8 @@ class LanceMemorySearch:
         return hashlib.sha256(canonical_json(body).encode()).hexdigest()
 
     def search(
-        self, events: Sequence[LedgerEvent], query: str, *, limit: int = 32
+        self, events: Sequence[LedgerEvent], query: str, *, limit: int = 32,
+        mode: Literal["semantic", "hybrid"] = "hybrid",
     ) -> tuple[str, ...]:
         if not events or limit <= 0:
             return ()
@@ -89,16 +90,14 @@ class LanceMemorySearch:
         dimension = int(vector_type.list_size)
         if len(query_vector) != dimension or not all(math.isfinite(value) for value in query_vector):
             raise ValueError("query vector does not match the event-vector schema")
-        result = (
-            table.search(query_type="hybrid")
-            .vector(query_vector)
-            .text(query)
-            .limit(min(limit * 4, len(events)))
-            .to_arrow()
-        )
+        search = (table.search(query_type="hybrid").vector(query_vector).text(query)
+                  if mode == "hybrid" else table.search(query_vector))
+        result = search.limit(min(limit * 4, len(events))).to_arrow()
+        score = "_relevance_score" if mode == "hybrid" else "_distance"
         ranked = sorted(
-            result.select(["event_id", "sequence", "_relevance_score"]).to_pylist(),
-            key=lambda row: (-float(row["_relevance_score"]), -int(row["sequence"]), row["event_id"]),
+            result.select(["event_id", "sequence", score]).to_pylist(),
+            key=lambda row: (float(row[score]) * (-1 if mode == "hybrid" else 1),
+                             -int(row["sequence"]), row["event_id"]),
         )
         return tuple(str(row["event_id"]) for row in ranked[:limit])
 

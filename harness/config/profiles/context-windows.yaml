@@ -1,0 +1,154 @@
+# Context experiment: windows. Opt-in; no empirical promotion implied.
+# Safe optimizer-owned fields are discoverable with `skein tuning-export`.
+# Safety, authority, topology, verification, persistence, and redaction stay fixed.
+schema_version: 1  # Composition schema, not an experiment parameter.
+
+app:
+  name: skein  # Stable ADK application identity.
+
+harness:
+  implementation: skein_v1  # Closed factory key; topology is code-owned.
+  api_version: 1
+  required_capabilities:  # Client/runtime compatibility contract.
+    - streaming
+    - steering
+    - tool_events
+    - state_snapshots
+    - artifacts
+  config:
+    models:
+      coding:
+        provider: google_adk  # Built-in provider registry key.
+        name: gemini-3.7-flash  # Tunable model identity.
+        retry:  # Transport reliability, not model reasoning behavior.
+          attempts: 3
+          exponential_base: 2
+          initial_delay_seconds: 1
+          retry_statuses: [429, 500, 502, 503, 504]
+    agents:
+      coding_worker:
+        model: coding  # References the sole model entry above.
+        generation:  # Null preserves provider defaults; all three fields are tunable.
+          temperature: null
+          top_p: null
+          max_output_tokens: null
+        instruction: |  # Primary learnable, cache-stable behavior prompt.
+            You are an expert coding assistant. Answer conversation and explanation requests directly.
+            Use repository tools only when the request needs them. For code changes, inspect relevant
+            code, make the smallest coherent change, and let the outer workflow verify it.
+
+            Prefer targeted read ranges, bounded search, bash for builds and tests, edit for exact
+            replacements, and write for complete files. For `.ipynb` files, use `nb read` or
+            `nb search` through bash; never parse notebook JSON directly. Keep output concise.
+
+            Own the complete model/tool loop for this task; do not stop merely to report progress.
+            When finished, return the AgentStep schema. Use answer only for read-only conversation,
+            verify or done after code changes, and blocked only when human input is required. Return
+            every schema field, using empty arrays or null when a field is not useful. Each completion
+            claim contains criterion and an evidence array. The outer workflow decides whether
+            verification succeeds.
+    workflow:
+      max_iterations: 40  # Maximum model work batches per task.
+      progress:
+        replan_after_no_progress: 2  # Repeated stagnant batches before replanning.
+        block_after_no_progress: 4  # Must exceed the replan threshold.
+        action_history_limit: 40  # Fingerprints retained for repeat detection.
+
+    tools:  # Tool names remain the fixed read/bash/edit/write surface.
+      read_default_lines: 400  # Default model-requested read window.
+      bash_default_timeout_seconds: 120
+      bash_max_timeout_seconds: 600  # Authority ceiling, not optimizer-owned.
+      output:
+        max_bytes: 16000  # Maximum model-visible shell output.
+      search:
+        backend: auto  # auto, fff, or disabled.
+        default_page_size: 20
+        max_page_size: 50  # Hard ceiling for a requested page.
+
+    notebook_ptc:
+      enabled: false
+      continuity: run
+      default_timeout_seconds: 120
+      max_timeout_seconds: 600
+      max_output_bytes: 16000
+
+    memory:
+      enabled: true
+      context_programs:
+        mode: "off"
+        reuse: false
+        max_result_bytes: 16000
+        max_scan_events: 10000
+        timeout_seconds: 2
+      working_notes: false
+      ledger: jsonl  # Inactive backend must remain the dependency-free default.
+      retrieval: lexical  # Lance is not a live prompt reader.
+
+    context:
+      window_management: true
+      reconstruction: handoff_tail
+      work_packet_tokens: 20000  # Total dynamic suffix budget per model call.
+      max_task_input_tokens: 200000  # Cumulative task input budget.
+      recent_event_limit: 12  # Event-count prefilter before token bounding.
+      project_instruction_bytes: 16000  # Cache-stable trusted AGENTS.md budget.
+      skill_context_bytes: 24000  # Selected skill body/reference byte budget.
+      max_selected_skills: 3
+      ledger_tokens: 2000  # Task section budget.
+      manifest_tokens: 800  # Repository manifest section budget.
+      compaction_tokens: 3000  # Compacted history section budget.
+      recent_event_tokens: 3500  # Recent event section budget.
+      conversation_tokens: 2000  # Prior public conversation section budget.
+      steering_tokens: 1000  # Latest user steering section budget.
+
+    safety:  # Operator-owned authority; exclude from optimization candidates.
+      allow_dependency_install: false
+      allow_network: false
+      allow_git_history_mutation: false
+      allow_unknown_commands: false
+      redact_environment_names: []  # Add environment variable names whose values are secrets.
+
+    sandbox:  # Local adapter is a development boundary, not a production sandbox.
+      kind: local
+      memory_bytes: 4294967296  # 4 GiB child-process address-space request.
+      max_processes: 256
+      max_file_bytes: 1073741824  # 1 GiB child-created file ceiling.
+
+    steering:
+      enabled: true
+      lease_seconds: 900  # Durable message lease before redelivery.
+      batch_limit: 4
+      max_message_bytes: 4096
+      safe_points: [before_model, before_tool, work_batch_boundary]
+
+    adk:
+      context_cache:
+        min_tokens: 4096  # Minimum stable prefix eligible for provider caching.
+        ttl_seconds: 1800
+        cache_intervals: 10
+      recovery: explicit
+      resumable: true  # Required invariant for the durable workflow.
+
+    tracing:
+      mode: metadata  # off, metadata, or redacted; never raw unredacted content.
+      max_content_bytes: 8192
+
+    skills:
+      project_root_enabled: true  # Effective only with explicit project trust.
+      additional_roots: []  # Paths are resolved relative to this configuration file.
+
+persistence:  # Deployment choice, excluded from behavior optimization.
+  session_backend: sqlite
+  artifact_backend: file
+
+server:  # Local transport/liveness configuration, not agent behavior.
+  host: 127.0.0.1
+  port: 8765
+  websocket_path: /v1/agent
+  protocol: ag_ui_websocket_v1
+  max_connections: 32
+  outbound_queue_size: 256
+  first_event_timeout_seconds: 120
+  idle_timeout_seconds: 180
+  total_timeout_seconds: 1800
+  first_event_retries: 1
+  close_timeout_seconds: 15

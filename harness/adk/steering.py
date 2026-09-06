@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections.abc import Mapping
@@ -49,6 +50,7 @@ class SteeringPlugin(BasePlugin):
         batch_limit: int = STEERING_BATCH_LIMIT,
         before_model: bool = True,
         before_tool: bool = True,
+        mark_context: bool = False,
     ) -> None:
         super().__init__(name="user_steering")
         self.queue = queue
@@ -57,6 +59,7 @@ class SteeringPlugin(BasePlugin):
         self.batch_limit = max(1, batch_limit)
         self.before_model = before_model
         self.before_tool = before_tool
+        self.mark_context = mark_context
 
     @staticmethod
     def _delivery_context(context: Any) -> tuple[str, str, frozenset[str]] | None:
@@ -87,6 +90,8 @@ class SteeringPlugin(BasePlugin):
         callback_context: Any,
         llm_request: LlmRequest,
     ) -> None:
+        if self.mark_context:
+            callback_context.state["context_steering"] = None
         if not self.before_model:
             return None
         delivery = self._delivery_context(callback_context)
@@ -137,6 +142,11 @@ class SteeringPlugin(BasePlugin):
         llm_request.contents.append(
             types.Content(role="user", parts=[types.Part.from_text(text=text)])
         )
+        if self.mark_context:
+            callback_context.state["context_steering"] = {
+                "index": len(llm_request.contents) - 1,
+                "hash": hashlib.sha256(text.encode()).hexdigest(),
+            }
         return None
 
     async def before_tool_callback(

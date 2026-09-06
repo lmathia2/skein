@@ -209,6 +209,21 @@ def tuning_spec(composition: HarnessComposition) -> TuningSpec:
             maximum=maximum,
         )
 
+    if config.memory.context_programs.mode == "active":
+        programs = config.memory.context_programs
+        for field, kind, minimum, maximum in (
+            ("max_result_bytes", "integer", 1_024, 1_000_000),
+            ("max_scan_events", "integer", 1, 100_000),
+            ("timeout_seconds", "number", 0.001, 60),
+        ):
+            add(f"memory.context_programs.{field}", getattr(programs, field), kind,
+                "Experimental bounded context-program budget", minimum=minimum,
+                maximum=maximum, experimental=True)
+        if config.memory.working_notes and config.context.window_management:
+            add("context.reconstruction", config.context.reconstruction, "categorical",
+                "Experimental context reconstruction; evidence and permissions are unchanged",
+                choices=("handoff_tail", "fresh"), experimental=True)
+
     cache = config.adk.context_cache
     for field, description in (
         ("min_tokens", "Minimum stable-prefix size eligible for provider caching"),

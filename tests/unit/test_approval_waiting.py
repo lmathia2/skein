@@ -110,9 +110,14 @@ async def test_verification_uses_same_wait_and_never_blocks_the_event_loop(tmp_p
     repository = SimpleNamespace(
         manifest=lambda: SimpleNamespace(),
         changed_paths=lambda base: ["test.py"],
+        fingerprint=lambda: "fixture-workspace",
     )
-    deps = SimpleNamespace(settings=SimpleNamespace(workspace=tmp_path), repository=repository, approvals=waiter, validation_executor=lambda task: executor)
-    running = asyncio.create_task(_verify_task(deps, None, {"request": {"goal": "verify"}, "ledger": {
+    from harness.state import JsonlEventStore
+    deps = SimpleNamespace(settings=SimpleNamespace(workspace=tmp_path), repository=repository, approvals=waiter,
+                           workspace_manager=None, event_store=JsonlEventStore(state / "events"),
+                           validation_executor=lambda task: executor)
+    ctx = SimpleNamespace(get_invocation_context=lambda: SimpleNamespace(invocation_id="verification-fixture"))
+    running = asyncio.create_task(_verify_task(deps, ctx, {"request": {"goal": "verify"}, "ledger": {
         "task_id": "task", "goal": "verify", "acceptance_criteria": ["verified"], "base_revision": "base", "workspace_id": "workspace"}}))
     try:
         item = await pending(waiter, running)

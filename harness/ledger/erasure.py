@@ -12,7 +12,8 @@ from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
-from .store import DuckDbLedgerStore
+from .base import LedgerStore
+from .factory import open_ledger
 
 
 class ErasureResult(BaseModel):
@@ -84,12 +85,24 @@ def erase_task_state(
     state_root: Path,
     *,
     task_id: str,
-    ledger: DuckDbLedgerStore | None = None,
+    ledger: LedgerStore | None = None,
+    shared_state_root: Path | None = None,
 ) -> ErasureResult:
     """Erase one exact task; callers must separately authorize this destructive action."""
 
     root = state_root.resolve()
-    active_ledger = ledger or DuckDbLedgerStore(root / "ledger.duckdb")
+    shared = shared_state_root.resolve() if shared_state_root else root
+    if root.parent.name == "runs" and shared_state_root is None:
+        raise ValueError("server-run erasure requires the shared server state root")
+    if shared != root and root.parent != shared / "runs":
+        raise ValueError("run state is not a direct child of the shared server root")
+    if ledger is None and not any((root / filename).exists() for filename in (
+        "ledger.jsonl", "ledger.duckdb"
+    )):
+        raise ValueError("no canonical ledger exists at the requested state root")
+    active_ledger = ledger or open_ledger(
+        root, "jsonl" if (root / "ledger.jsonl").exists() else "duckdb"
+    )
     task_events = active_ledger.read(task_id)
     referenced = set().union(*(_artifact_uris(event.payload) for event in task_events), set())
     retained: set[str] = set()
@@ -107,6 +120,7 @@ def erase_task_state(
         root / "events" / f"{digest}.jsonl",
         root / "notebooks" / f"{digest[:32]}.ipynb",
         root / "memory-search" / digest,
+        root / "memory" / "lance" / digest,
     ]
     candidates.extend(
         path
@@ -131,6 +145,36 @@ def erase_task_state(
         else:
             continue
         removed.append(candidate.relative_to(root).as_posix())
+    # Shared notebooks are disposable projections, including immutable snapshots.
+    # Remove only files whose explicit source manifest names the erased task.
+    shared_candidates = list((shared / "conversations").glob("*/notebooks/*.ipynb"))
+    for run_root in sorted((shared / "runs").glob("*")):
+        if not run_root.is_dir() or not run_root.resolve().is_relative_to(shared):
+            continue
+        shared_candidates.extend((run_root / "artifacts" / "sha256").glob("*"))
+        shared_candidates.extend((run_root / "notebooks").glob("*.ipynb"))
+        # The physical Lance projection embeds a single canonical task, so its
+        # task-hash directory is an exact invalidation target across readers.
+        for projection in (run_root / "memory-search" / digest,
+                           run_root / "memory" / "lance" / digest):
+            if projection.is_dir() and not projection.is_symlink():
+                shutil.rmtree(projection)
+                removed.append(projection.relative_to(shared).as_posix())
+    for candidate in shared_candidates:
+        if (not candidate.is_file() or candidate.is_symlink()
+                or not candidate.resolve().is_relative_to(shared)):
+            continue
+        try:
+            notebook = json.loads(candidate.read_bytes())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(notebook, dict):
+            continue
+        metadata = notebook.get("metadata")
+        agent = metadata.get("agent") if isinstance(metadata, dict) else None
+        if isinstance(agent, dict) and task_id in agent.get("source_watermarks", {}):
+            candidate.unlink()
+            removed.append(candidate.relative_to(shared).as_posix())
     return ErasureResult(
         task_id_sha256=digest,
         ledger_rows=ledger_rows,

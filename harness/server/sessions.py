@@ -82,6 +82,17 @@ class ConversationStore:
             """, (user_id, thread_id, before, cursor.created_at if cursor else None, before)).fetchall()
         return [record for row in rows if (record := self.runs.get_run(row["run_id"])) is not None]
 
+    def memory_sources(self, user_id: str, thread_id: str) -> list[RunRecord]:
+        """Freeze a bounded set of completed, owned runs; project names grant nothing."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT run_id FROM agent_runs WHERE user_id=? AND thread_id=? "
+                "AND status IN ('completed', 'failed', 'cancelled') "
+                "ORDER BY created_at DESC, run_id DESC LIMIT 100", (user_id, thread_id),
+            ).fetchall()
+        return [record for row in reversed(rows)
+                if (record := self.runs.get_run(row["run_id"])) is not None]
+
     def enqueue(self, parent: RunRecord, request_id: str, content: str) -> str:
         item_id = hashlib.sha256(f"followup\0{parent.user_id}\0{request_id}".encode()).hexdigest()[:32]
         with self._connect() as connection:

@@ -6,8 +6,9 @@ import asyncio
 import hashlib
 import json
 from collections.abc import AsyncIterator, Callable, Mapping
-from contextlib import aclosing, suppress
+from contextlib import aclosing, nullcontext, suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 
 from google.adk import Runner
@@ -29,13 +30,19 @@ from harness.agent import (
 )
 from harness.ai.controls import LocalProviderControls, ProviderControlError, ProviderControlRequest
 from harness.ai.selection import ModelChoice
+from harness.approvals import ApprovalStore
 from harness.approvals.waiting import ApprovalWaiter
-from harness.config import HarnessComposition, RuntimeBindings
+from harness.config import HarnessComposition, RuntimeBindings, SkeinConfig
+from harness.environment.runtime import LocalRepositoryRuntime
+from harness.ledger import LedgerBackedEventStore, open_ledger
 from harness.persistence import AdkServiceBundle
 from harness.safety import SecretRedactor
+from harness.state import CheckpointStore, JsonlEventStore, ToolReceipt, ToolReceiptStore
+from harness.state.recovery import validate_recovery_evidence
 
 from .adk_mapper import AdkAgUiNormalizer
 from .models import MODEL_METADATA, ModelControlError, ModelControls
+from .ownership import WorkspaceOwner
 from .protocol import (
     AgUiEvent,
     AgUiEventType,
@@ -148,6 +155,7 @@ class AdkRunExecution:
         explicit_public_messages: bool = False,
         approvals: ApprovalWaiter | None = None,
         close_callback: Callable[[], None] | None = None,
+        resume: bool = False,
     ) -> None:
         self.record = record
         self.runner = runner
@@ -160,6 +168,7 @@ class AdkRunExecution:
         self._closed = False
         self.approvals = approvals
         self._close_callback = close_callback
+        self._resume = resume
 
     @property
     def coding_model_status(self) -> PublicModelStatus | None:
@@ -199,8 +208,8 @@ class AdkRunExecution:
             user_id=self.record.user_id,
             session_id=self.record.session_id,
             invocation_id=self.record.invocation_id,
-            new_message=message,
-            state_delta={
+            new_message=None if self._resume else message,
+            state_delta=None if self._resume else {
                 "invocation_id": self.record.invocation_id,
                 "run_id": self.record.run_id,
                 "task_id": self.record.run_id,
@@ -361,12 +370,80 @@ class AdkRunExecutionFactory:
             config = adapter.with_coding_model(composition.harness.config, choice.apply(adapter.coding_model(composition.harness.config)))
             composition = composition.model_copy(update={"harness": composition.harness.model_copy(update={"config": config})})
         state_root = self.bindings.state_root.expanduser().resolve() / "runs" / record.run_id
+        resume = record.status == "running"
+        if resume:
+            config = composition.harness.config
+            if not isinstance(config, SkeinConfig) or config.adk.recovery != "safe_auto":
+                raise ValueError("automatic recovery is disabled")
+            for key in ("coding.behavior_sha256", "coding.workspace_identity", "coding.harness_implementation"):
+                if record.metadata.get(key) != self.run_metadata.get(key):
+                    raise ValueError("recovery configuration/workspace ownership changed")
+            repository = LocalRepositoryRuntime(self.bindings.workspace)
+            if not repository.manifest().base_revision:
+                raise ValueError("safe recovery requires an initialized Git workspace fingerprint")
+            session = await self.services.session_service.get_session(
+                app_name=composition.app.name, user_id=record.user_id, session_id=record.session_id,
+            )
+            if session is None or not any(event.invocation_id == record.invocation_id for event in session.events):
+                raise ValueError("ADK invocation history is unavailable")
+            published_id = session.state.get("checkpoint_id")
+            checkpoint = CheckpointStore(state_root / "state.db").get(str(published_id)) if published_id else None
+            if checkpoint is None:
+                raise ValueError("no published checkpoint for recovery")
+            operational_events = JsonlEventStore(state_root / "events")
+            canonical = open_ledger(state_root, config.memory.ledger)
+            task_events = LedgerBackedEventStore(
+                operational_events, canonical, repair=False,
+            ).read(record.run_id)
+            if task_events != operational_events.read(record.run_id):
+                raise ValueError("canonical task evidence is missing or erased")
+            receipts = ToolReceiptStore(state_root / "managed-tools.db").for_task(record.run_id)
+            canonical_receipts = {
+                str(event.payload["tool_call_id"]): ToolReceipt.model_validate(event.payload)
+                for event in canonical.read(record.run_id) if event.source == "tool_receipt"
+            }
+            if canonical_receipts != {receipt.tool_call_id: receipt for receipt in receipts}:
+                raise ValueError("canonical tool intents/receipts are missing or corrupt")
+            validate_recovery_evidence(
+                checkpoint, task_events,
+                receipts,
+                invocation_id=record.invocation_id, session_id=record.session_id,
+                workspace_fingerprint=repository.fingerprint(),
+            )
+            if session.state.get("context_epoch") != checkpoint.context_epoch:
+                raise ValueError("context epoch has not published its checkpoint boundary")
+            spent = max(int(session.state.get("estimated_task_input_tokens", 0)), max((
+                int(event.payload.get("estimated_task_input_tokens", 0)) for event in task_events
+                if event.kind == "execution.model_budget_reserved"), default=0))
+            limit = min(config.context.max_task_input_tokens, min((
+                int(event.payload["task_input_token_limit"]) for event in task_events
+                if event.kind == "execution.model_budget_reserved"), default=config.context.max_task_input_tokens))
+            if spent >= limit:
+                raise ValueError("task input budget is exhausted")
+            approvals = ApprovalStore(state_root / "approvals.db")
+            if any(approvals.list(task_id=record.run_id, status=status, limit=1)
+                   for status in ("pending", "expired")):
+                raise ValueError("approval requires explicit operator action")
         run_bindings = self.bindings.model_copy(
             update={
                 "invocation_id": record.invocation_id,
                 "state_root": state_root,
                 "task_id": record.run_id,
                 "interactive_approvals": record.metadata.get("interactive_approvals") == "true",
+                "conversation_id": record.thread_id,
+                "user_id": record.user_id,
+                "prior_task_ids": tuple(json.loads(record.metadata.get("coding.memory.source_runs", "[]"))),
+                "prior_state_roots": tuple(
+                    self.bindings.state_root.expanduser().resolve() / "runs" / run_id
+                    for run_id in json.loads(record.metadata.get("coding.memory.source_runs", "[]"))
+                ),
+                "notebook_prior_task_ids": tuple(json.loads(record.metadata.get("coding.memory.notebook_runs", "[]"))),
+                "notebook_prior_state_roots": tuple(
+                    self.bindings.state_root.expanduser().resolve() / "runs" / run_id
+                    for run_id in json.loads(record.metadata.get("coding.memory.notebook_runs", "[]"))
+                ),
+                "notebook_state_root": self.bindings.state_root.expanduser().resolve() / "conversations" /
+                    hashlib.sha256(f"{record.user_id}\0{record.thread_id}".encode()).hexdigest() / "notebooks",
             }
         )
         assembly = await asyncio.to_thread(
@@ -404,6 +481,7 @@ class AdkRunExecutionFactory:
             explicit_public_messages=assembly.explicit_public_messages,
             approvals=assembly.approvals,
             close_callback=assembly.close,
+            resume=resume,
         )
 
 
@@ -433,6 +511,7 @@ class RunCoordinator:
         self.redactor = redactor or SecretRedactor()
         self.liveness = liveness or RunLivenessPolicy()
         self._active: dict[str, _ActiveRun] = {}
+        self._recovering: dict[str, asyncio.Task[None]] = {}
         self._workspace_lock = asyncio.Lock()
         self._lifecycle_lock = asyncio.Lock()
         self.conversations = ConversationController(self)
@@ -440,6 +519,16 @@ class RunCoordinator:
         self.models = (ModelControls(execution_factory, self.conversations.store)
             if isinstance(execution_factory, AdkRunExecutionFactory) and execution_factory.registry.model_configuration(execution_factory.descriptor.implementation)
             else None)
+        self._workspace_owner: WorkspaceOwner | None = None
+
+    def _claim_workspace(self) -> None:
+        if self._workspace_owner is None and isinstance(self.execution_factory, AdkRunExecutionFactory):
+            self._workspace_owner = WorkspaceOwner(self.execution_factory.bindings.workspace)
+
+    def _release_workspace_if_idle(self) -> None:
+        if not self._active and not self._recovering and self._workspace_owner is not None:
+            self._workspace_owner.close()
+            self._workspace_owner = None
 
     @property
     def descriptor(self) -> HarnessDescriptor:
@@ -528,16 +617,61 @@ class RunCoordinator:
     def recover_interrupted_runs(self) -> None:
         """Single-owner server startup: preserve history, never replay unknown effects."""
         for run_id in self.store.active_run_ids():
-            if run_id in self._active:
+            if run_id in self._active or run_id in self._recovering:
                 continue
             record = self.store.get_run(run_id)
             if record is None or record.status not in {"queued", "running"}:
+                continue
+            factory = self.execution_factory
+            if (isinstance(factory, AdkRunExecutionFactory)
+                and isinstance(factory.composition.harness.config, SkeinConfig)
+                and factory.composition.harness.config.adk.recovery == "safe_auto"
+                and record.status == "running"):
+                self._recovering[run_id] = asyncio.create_task(self._recover(record))
                 continue
             error = "server restarted during an active run; automatic rerun refused"
             self.journal.terminalize(run_id, status="failed", event=AgUiEvent(
                 type=AgUiEventType.RUN_ERROR, thread_id=record.thread_id, run_id=run_id,
                 code="server_restarted", message=error), source_key="server:run-error",
                 expected_status="queued" if record.status == "queued" else "running", error=error)
+
+    async def _recover(self, record: RunRecord) -> None:
+        try:
+            elapsed = (datetime.now(UTC) - datetime.fromisoformat(record.created_at)).total_seconds()
+            if elapsed >= self.liveness.total_timeout:
+                raise ValueError("original run deadline expired")
+            async with self._workspace_lock:
+                self._claim_workspace()
+                execution = await self.execution_factory.create(record)
+                task = asyncio.current_task()
+                assert task is not None
+                self._active[record.run_id] = _ActiveRun(execution=execution, task=task)
+                await self._drive(record, execution, workspace_locked=True)
+        except asyncio.CancelledError:
+            current = self.store.get_run(record.run_id)
+            if current is not None and current.status == "running":
+                self.journal.terminalize(record.run_id, status="cancelled", event=AgUiEvent(
+                    type=AgUiEventType.RUN_FINISHED, thread_id=record.thread_id, run_id=record.run_id,
+                    result={"status": "cancelled"}), source_key="server:run-finished", expected_status="running")
+            raise
+        except Exception as error:
+            detail = self.redactor.redact_text(str(error))[:4_096]
+            self.journal.terminalize(record.run_id, status="failed", event=AgUiEvent(
+                type=AgUiEventType.RUN_ERROR, thread_id=record.thread_id, run_id=record.run_id,
+                code="recovery_blocked", message=detail), source_key="server:run-error",
+                expected_status="running", error=detail)
+        finally:
+            self._recovering.pop(record.run_id, None)
+            self._release_workspace_if_idle()
+
+    def _close_unstarted_recovery(self, run_id: str) -> None:
+        record = self.store.get_run(run_id)
+        if record is not None and record.status == "running" and run_id not in self._active:
+            self.journal.terminalize(run_id, status="cancelled", event=AgUiEvent(
+                type=AgUiEventType.RUN_FINISHED, thread_id=record.thread_id, run_id=run_id,
+                result={"status": "cancelled"}), source_key="server:run-finished", expected_status="running")
+        self._recovering.pop(run_id, None)
+        self._release_workspace_if_idle()
 
     async def start(
         self,
@@ -563,9 +697,35 @@ class RunCoordinator:
             original_client_metadata = {key: value for key, value in prior.metadata.items() if not key.startswith("coding.")}
             if original_client_metadata != message.metadata:
                 raise ValueError("run idempotency key was reused with different metadata")
+            if json.loads(prior.metadata.get("coding.memory.explicit_sources", "[]")) != list(message.source_run_ids):
+                raise ValueError("run idempotency key was reused with different source selection")
             metadata = dict(prior.metadata)
         else:
             metadata = {**message.metadata, **self.execution_factory.run_metadata}
+            factory = self.execution_factory
+            if isinstance(factory, AdkRunExecutionFactory) and isinstance(factory.composition.harness.config, SkeinConfig):
+                config = factory.composition.harness.config
+                enabled = config.memory.prior_runs
+                continuity = config.notebook_ptc.enabled and config.notebook_ptc.continuity == "conversation"
+                if message.source_run_ids and not enabled:
+                    raise ValueError("explicit memory sources require prior-run recall")
+                sources = self.conversations.store.memory_sources(user_id, thread_id) if enabled or continuity else []
+                for source_id in message.source_run_ids:
+                    source = self._owned_run(source_id, user_id)
+                    if source.status not in {"completed", "failed", "cancelled"}:
+                        raise ValueError("memory source is still active")
+                    if source not in sources:
+                        sources.append(source)
+                expected_workspace = metadata.get("coding.workspace_identity")
+                if any(source.metadata.get("coding.workspace_identity") != expected_workspace for source in sources):
+                    raise ValueError("memory source belongs to another workspace")
+                metadata["coding.memory.source_runs"] = json.dumps([source.run_id for source in sources] if enabled else [])
+                metadata["coding.memory.explicit_sources"] = json.dumps(message.source_run_ids)
+                metadata["coding.memory.notebook_runs"] = json.dumps([
+                    source.run_id for source in sources if source.thread_id == thread_id
+                ])
+            elif message.source_run_ids:
+                raise ValueError("selected harness does not support memory source selection")
             if self.models is not None:
                 metadata.update(self.models.run_metadata(user_id, thread_id))
         record, created = self.store.create_run(
@@ -577,6 +737,8 @@ class RunCoordinator:
             metadata=metadata,
         )
         async with self._lifecycle_lock:
+            if record.run_id in self._recovering:
+                return record, created
             if record.status == "running" and record.run_id not in self._active:
                 restart_error = "server restarted during an active run; automatic rerun refused"
                 self.journal.terminalize(
@@ -598,8 +760,10 @@ class RunCoordinator:
                 return record, created
             if record.status == "queued" and record.run_id not in self._active:
                 try:
+                    self._claim_workspace()
                     execution = await self.execution_factory.create(record)
                 except Exception as error:
+                    self._release_workspace_if_idle()
                     safe_error = self.redactor.redact_text(str(error))[:4_096]
                     self.journal.terminalize(
                         record.run_id,
@@ -712,20 +876,19 @@ class RunCoordinator:
             source_key=f"server:cleanup-warning:{attempt}",
         )
 
-    async def _drive(self, record: RunRecord, execution: RunExecution) -> None:
+    async def _drive(self, record: RunRecord, execution: RunExecution, *, workspace_locked: bool = False) -> None:
         current_execution = execution
         current_execution_closed = False
         attempt = 0
         try:
-            async with self._workspace_lock:
+            async with (nullcontext() if workspace_locked else self._workspace_lock):
                 total_deadline = (
                     asyncio.get_running_loop().time() + self.liveness.total_timeout
                 )
-                self.store.update_status(
-                    record.run_id,
-                    "running",
-                    expected_status="queued",
-                )
+                if record.status == "running":
+                    total_deadline -= (datetime.now(UTC) - datetime.fromisoformat(record.created_at)).total_seconds()
+                else:
+                    self.store.update_status(record.run_id, "running", expected_status="queued")
                 run_started = AgUiEvent(
                     type=AgUiEventType.RUN_STARTED,
                     thread_id=record.thread_id,
@@ -798,7 +961,9 @@ class RunCoordinator:
                         current_execution_closed = True
                         if cleanup_warning:
                             self._record_cleanup_warning(record, cleanup_warning, attempt)
-                        current_execution = await self.execution_factory.create(record)
+                        retry_record = self.store.get_run(record.run_id) if isinstance(self.execution_factory, AdkRunExecutionFactory) else record
+                        assert retry_record is not None
+                        current_execution = await self.execution_factory.create(retry_record)
                         current_execution_closed = False
                         active = self._active.get(record.run_id)
                         if active is not None:
@@ -936,9 +1101,14 @@ class RunCoordinator:
                     await self._close_execution(current_execution)
             finally:
                 self._active.pop(record.run_id, None)
+                self._release_workspace_if_idle()
                 await self.conversations.after_turn(record)
 
     async def wait(self, run_id: str) -> RunRecord:
+        recovering = self._recovering.get(run_id)
+        if recovering is not None:
+            with suppress(asyncio.CancelledError):
+                await recovering
         active = self._active.get(run_id)
         if active is not None:
             with suppress(asyncio.CancelledError):
@@ -1000,6 +1170,14 @@ class RunCoordinator:
     ) -> ControlReceipt:
         record = self._owned_run(message.run_id, user_id)
         active = self._active.get(message.run_id)
+        recovering = self._recovering.get(message.run_id)
+        if active is None and recovering is not None:
+            recovering.cancel()
+            with suppress(asyncio.CancelledError):
+                await recovering
+            self._close_unstarted_recovery(message.run_id)
+            return ControlReceipt(accepted=True, command_id=message.idempotency_key,
+                                  detail="recovery cancelled before execution")
         if active is None:
             if record.status == "queued":
                 self.journal.terminalize(
@@ -1045,6 +1223,7 @@ class RunCoordinator:
             return
         await self._close_execution(active.execution)
         self._active.pop(run_id, None)
+        self._release_workspace_if_idle()
         self.journal.terminalize(run_id, status="cancelled", event=AgUiEvent(
             type=AgUiEventType.RUN_FINISHED, thread_id=record.thread_id, run_id=run_id,
             result={"status": "cancelled"}), source_key="server:run-finished", expected_status="queued")
@@ -1108,6 +1287,13 @@ class RunCoordinator:
 
     async def aclose(self) -> None:
         self.conversations.closed = True
+        recovering = tuple(self._recovering.items())
+        for _, task in recovering:
+            task.cancel()
+        for run_id, task in recovering:
+            with suppress(asyncio.CancelledError):
+                await task
+            self._close_unstarted_recovery(run_id)
         active = tuple(self._active.items())
         for _, item in active:
             item.task.cancel()
@@ -1119,6 +1305,8 @@ class RunCoordinator:
             await self.provider_controls.aclose()
         if self.models is not None:
             await self.models.aclose()
+        if self._workspace_owner is not None:
+            self._workspace_owner.close()
 
 
 __all__ = [

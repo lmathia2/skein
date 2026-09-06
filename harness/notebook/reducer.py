@@ -36,12 +36,15 @@ def _markdown_source(event: HarnessEvent) -> str | None:
         return f"# User steering\n\n{payload.get('content', '')}\n"
     if event.kind == EventKind.COMPACTION_CREATED:
         return f"# Compaction handoff\n\n{payload.get('summary', '')}\n"
+    if event.kind == "memory.note_updated":
+        return f"# Advisory working note (version {payload.get('version', 0)})\n\n{payload.get('text', '')}\n"
     return None
 
 
 def _markdown_cell(event: HarnessEvent, source: str) -> NotebookMarkdownCell:
     digest = hashlib.sha256(f"markdown:{event.event_id}".encode()).hexdigest()
     return NotebookMarkdownCell(
+        task_id=event.task_id,
         cell_id=digest[:32],
         source=source,
         source_sha256=hashlib.sha256(source.encode()).hexdigest(),
@@ -77,15 +80,20 @@ def _outputs(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def reduce_notebook(events: Iterable[HarnessEvent], notebook_id: str) -> NotebookState:
     """Build one notebook deterministically from its ordered event stream."""
 
-    ordered = sorted(events, key=lambda event: event.sequence)
+    source_events = list(events)
+    # Caller supplies frozen prior-run order; sequence is local to each run.
+    run_order = {task_id: index for index, task_id in enumerate(dict.fromkeys(event.task_id for event in source_events))}
+    ordered = sorted(source_events, key=lambda event: (run_order[event.task_id], event.sequence))
     cells: dict[str, NotebookCell | NotebookMarkdownCell] = {}
     order: list[str] = []
     watermark = 0
+    source_watermarks: dict[str, int] = {}
     for event in ordered:
         payload = event.payload
         markdown = _markdown_source(event)
         if markdown is not None:
             watermark = max(watermark, event.sequence)
+            source_watermarks[event.task_id] = event.sequence
             narrative = _markdown_cell(event, markdown)
             if narrative.cell_id not in cells:
                 cells[narrative.cell_id] = narrative
@@ -96,12 +104,14 @@ def reduce_notebook(events: Iterable[HarnessEvent], notebook_id: str) -> Noteboo
         if event.kind == EventKind.NOTEBOOK_SNAPSHOTTED:
             continue
         watermark = max(watermark, event.sequence)
+        source_watermarks[event.task_id] = event.sequence
         cell_id = payload.get("cell_id")
         if event.kind == EventKind.NOTEBOOK_CELL_ADDED:
             if not isinstance(cell_id, str) or not cell_id:
                 raise ValueError("notebook.cell_added requires cell_id")
             source = str(payload.get("source", ""))
             candidate = NotebookCell(
+                task_id=event.task_id,
                 cell_id=cell_id,
                 source=source,
                 source_sha256=hashlib.sha256(source.encode()).hexdigest(),
@@ -156,4 +166,5 @@ def reduce_notebook(events: Iterable[HarnessEvent], notebook_id: str) -> Noteboo
         notebook_id=notebook_id,
         cells=[cells[cell_id] for cell_id in order],
         source_watermark=watermark,
+        source_watermarks=source_watermarks,
     )

@@ -22,6 +22,7 @@ def canonical_notebook_bytes(state: NotebookState) -> bytes:
                     "metadata": {
                         "agent": {
                             "event_id": cell.event_id,
+                            "task_id": cell.task_id,
                             "event_kind": cell.event_kind,
                             "ledger_seq": cell.ledger_seq,
                             "observed_at": cell.observed_at.isoformat(),
@@ -41,6 +42,7 @@ def canonical_notebook_bytes(state: NotebookState) -> bytes:
                 "metadata": {
                     "agent": {
                         "artifact_refs": cell.artifact_refs,
+                        "task_id": cell.task_id,
                         "attempt_id": cell.attempt_id,
                         "cell_event_id": cell.cell_event_id,
                         "effect": cell.effect,
@@ -68,6 +70,7 @@ def canonical_notebook_bytes(state: NotebookState) -> bytes:
                 "notebook_id": state.notebook_id,
                 "renderer_version": 2,
                 "source_watermark": state.source_watermark,
+                "source_watermarks": state.source_watermarks,
             }
         },
         "nbformat": 4,

@@ -1,5 +1,19 @@
 # Skein implementation TODO
 
+## Context programs and long-running recovery
+
+- [x] Add strict, disabled-by-default context-program, reconstruction, recovery, and
+  owned-continuity configuration with dependency and budget validation.
+- [x] Integrate bounded history/aggregate programs, receipts, notes, and safe artifact reads.
+- [x] Publish replayable context epochs and bounded advisory/PTC handoffs.
+- [x] Bind operation identities and checkpoint integrity to safe ADK resume.
+- [x] Add explicitly owned prior-run recall and conversation notebook continuity.
+- [x] Prepare executable context experiment profiles, schedules, and independent graders.
+- [ ] Run the ADR's live paired experiments and decide promotion independently per feature.
+
+See [the context-program ADR](adr/long-running-context-memory-programs.md). Implementation
+does not satisfy the live empirical gates; default behavior remains unchanged.
+
 ## Project identity
 
 - [x] Rename the distribution, CLI, launchers, runtime/config identity, environment
@@ -53,9 +67,9 @@
 - [x] Add bounded `agent.state.list()` and `agent.state.describe(name)` metadata views,
   compact state deltas, and a regression proving bulk nested capability results remain
   in Python until explicitly selected.
-- [ ] Key notebook/REPL recovery by stable owned conversation identity rather than a
+- [x] Key notebook/REPL recovery by stable owned conversation identity rather than a
   server run ID, with process/server restart and concurrent-run rejection tests.
-- [ ] Add the metadata-only REPL state catalog and last committed kernel epoch to the
+- [x] Add the metadata-only REPL state catalog and last committed kernel epoch to the
   compaction handoff without moving them into the cache-stable prefix.
 - [ ] Capture actual serialized provider requests and prove long-session context grows
   with selected egress rather than nested result bytes or the live heap.

@@ -21,6 +21,9 @@ class ToolReceipt(BaseModel):
     arguments_hash: str
     status: Literal["started", "completed", "failed"]
     result_hash: str | None = None
+    result_json: str | None = None
+    workspace_before: str | None = None
+    workspace_after: str | None = None
     artifact_uri: str | None = None
     side_effect_key: str | None = None
     error: str | None = None
@@ -66,6 +69,12 @@ class ToolReceiptStore:
                 )
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(tool_receipts)")}
+            if "result_json" not in columns:
+                connection.execute("ALTER TABLE tool_receipts ADD COLUMN result_json TEXT")
+            for column in ("workspace_before", "workspace_after"):
+                if column not in columns:
+                    connection.execute(f"ALTER TABLE tool_receipts ADD COLUMN {column} TEXT")
             connection.execute(
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tool_side_effect
@@ -95,6 +104,8 @@ class ToolReceiptStore:
         tool_name: str,
         arguments_hash: str,
         side_effect_key: str | None = None,
+        claim: bool = False,
+        workspace_before: str | None = None,
     ) -> ToolReceipt:
         now = datetime.now(UTC).isoformat()
         with self._connect() as connection:
@@ -103,8 +114,8 @@ class ToolReceiptStore:
                     """
                     INSERT INTO tool_receipts(
                         task_id, invocation_id, tool_call_id, tool_name,
-                        arguments_hash, status, side_effect_key, started_at
-                    ) VALUES (?, ?, ?, ?, ?, 'started', ?, ?)
+                        arguments_hash, status, side_effect_key, started_at, workspace_before
+                    ) VALUES (?, ?, ?, ?, ?, 'started', ?, ?, ?)
                     """,
                     (
                         task_id,
@@ -114,6 +125,7 @@ class ToolReceiptStore:
                         arguments_hash,
                         side_effect_key,
                         now,
+                        workspace_before,
                     ),
                 )
             except sqlite3.IntegrityError as error:
@@ -130,6 +142,8 @@ class ToolReceiptStore:
                     raise ValueError(
                         "tool receipt key reused with different arguments"
                     ) from error
+                if claim and existing.status != "completed":
+                    raise RuntimeError("operation outcome requires reconciliation; automatic retry refused") from error
                 return existing
         receipt = self.get(task_id, tool_call_id)
         assert receipt is not None
@@ -146,13 +160,15 @@ class ToolReceiptStore:
         result_hash: str | None = None,
         artifact_uri: str | None = None,
         error: str | None = None,
+        result_json: str | None = None,
+        workspace_after: str | None = None,
     ) -> ToolReceipt:
         completed_at = datetime.now(UTC).isoformat()
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE tool_receipts
-                SET status=?, result_hash=?, artifact_uri=?, error=?, completed_at=?
+                SET status=?, result_hash=?, artifact_uri=?, error=?, completed_at=?, result_json=?, workspace_after=?
                 WHERE task_id=? AND tool_call_id=?
                 """,
                 (
@@ -161,6 +177,8 @@ class ToolReceiptStore:
                     artifact_uri,
                     error,
                     completed_at,
+                    result_json,
+                    workspace_after,
                     task_id,
                     tool_call_id,
                 ),
@@ -172,3 +190,12 @@ class ToolReceiptStore:
         if self.on_save is not None:
             self.on_save(receipt)
         return receipt
+
+    def for_task(self, task_id: str) -> list[ToolReceipt]:
+        """Include unfinished attempts when reconciling after any checkpoint."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM tool_receipts WHERE task_id=? ORDER BY started_at, tool_call_id",
+                (task_id,),
+            ).fetchall()
+        return [ToolReceipt.model_validate(dict(row)) for row in rows]

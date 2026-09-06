@@ -40,12 +40,23 @@ class CheckpointStore:
         return connection
 
     def save(self, checkpoint: Checkpoint) -> None:
+        # Publish canonical capture before the operational checkpoint marker. A
+        # failed capture must never make an incomplete checkpoint discoverable.
+        if self.on_save is not None:
+            self.on_save(checkpoint)
         with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT payload FROM checkpoints WHERE checkpoint_id=?",
+                (checkpoint.checkpoint_id,),
+            ).fetchone()
+            if existing is not None:
+                if Checkpoint.model_validate_json(existing["payload"]) != checkpoint:
+                    raise ValueError("checkpoint identity reused with different content")
+                return
             connection.execute(
                 """
                 INSERT INTO checkpoints(checkpoint_id, task_id, created_at, payload)
                 VALUES (?, ?, ?, ?)
-                ON CONFLICT(checkpoint_id) DO UPDATE SET payload=excluded.payload
                 """,
                 (
                     checkpoint.checkpoint_id,
@@ -54,8 +65,6 @@ class CheckpointStore:
                     checkpoint.model_dump_json(),
                 ),
             )
-        if self.on_save is not None:
-            self.on_save(checkpoint)
 
     def get(self, checkpoint_id: str) -> Checkpoint | None:
         with self._connect() as connection:

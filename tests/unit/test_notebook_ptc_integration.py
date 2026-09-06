@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import threading
 from pathlib import Path
 from typing import cast
 
@@ -20,7 +22,7 @@ from harness.config import (
     parse_harness_composition,
 )
 from harness.state import EventKind, JsonlEventStore
-from harness.tools.adk_adapter import create_adk_tools
+from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
 
 def _enabled_composition():
@@ -32,6 +34,64 @@ def _enabled_composition():
     return composition.model_copy(
         update={"harness": composition.harness.model_copy(update={"config": enabled})}
     )
+
+
+@pytest.mark.asyncio
+async def test_cancelled_tool_drains_synchronous_effect_before_return(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    def effect(**_kwargs):
+        entered.set()
+        assert release.wait(timeout=5)
+        finished.set()
+        return {"status": "ok"}
+
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
+        cast(BaseLlm, "test-model"), tools=AdkCodingTools(read=effect, bash=effect, edit=effect, write=effect),
+    )
+    pending = asyncio.create_task(worker.bash("bounded command"))
+    assert await asyncio.to_thread(entered.wait, 5)
+    pending.cancel()
+    await asyncio.sleep(0)
+    assert not pending.done() and not finished.is_set()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert finished.is_set()
+
+
+@pytest.mark.asyncio
+async def test_conversation_notebook_restores_only_safe_cells_with_run_attribution(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    prior: tuple = ()
+    for task_id in ("a", "b"):
+        state = tmp_path / task_id
+        events = JsonlEventStore(state / "events")
+        worker = build_coding_worker(
+            settings_from_composition(composition, RuntimeBindings(workspace=workspace, state_root=state, task_id=task_id)),
+            cast(BaseLlm, "test-model"), ptc_config=config.notebook_ptc, event_store=events,
+            conversation_notebook_id="conversation", prior_notebook_events=prior,
+            notebook_root=tmp_path / "conversation",
+        )
+        assert worker.python is not None and worker.close is not None
+        try:
+            if task_id == "a":
+                assert (await worker.python("value = 40"))["status"] == "ok"
+                assert (await worker.python("dependent = value + 1"))["status"] == "ok"
+            else:
+                assert (await worker.python("value + 2"))["model_text"] == "42"
+                assert (await worker.python("dependent"))["status"] == "error"
+        finally:
+            worker.close()
+        prior = (*prior, *events.read(task_id))
+    notebook = json.loads((tmp_path / "conversation" / "conversation.ipynb").read_text())
+    assert {cell["metadata"]["agent"]["task_id"] for cell in notebook["cells"]} == {"a", "b"}
+    assert set(notebook["metadata"]["agent"]["source_watermarks"]) == {"a", "b"}
 
 
 def test_factory_exposes_only_python_when_notebook_ptc_is_enabled(tmp_path: Path) -> None:

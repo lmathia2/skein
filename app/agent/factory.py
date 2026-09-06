@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
+from pathlib import Path
+from typing import Any
 
 from google.adk.agents.context_cache_config import ContextCacheConfig
 from google.adk.apps.app import App, ResumabilityConfig
@@ -11,6 +17,7 @@ from google.adk.plugins.base_plugin import BasePlugin
 from pydantic import BaseModel
 
 from harness.adk import SteeringPlugin
+from harness.adk.context import ContextWindowPlugin, MemoryShadowPlugin
 from harness.agent import (
     AdkHarnessAssembly,
     AgentSnapshot,
@@ -48,16 +55,24 @@ from harness.ledger.importers import (
     import_tool_receipt,
     import_trace_span,
 )
+from harness.memory.lance import LanceMemorySearch
 from harness.repo import discover_instruction_files
 from harness.safety import ApprovalPolicy, SecretRedactor
 from harness.sandbox import create_configured_command_sandbox
-from harness.state import CheckpointStore, JsonlEventStore, SteeringQueue, rebuild_ledger
+from harness.state import (
+    CheckpointStore,
+    JsonlEventStore,
+    SteeringQueue,
+    ToolReceiptStore,
+    rebuild_ledger,
+)
 from harness.telemetry.adk_plugin import (
     HarnessMetricsPlugin,
     ModelPricing,
     pricing_from_env,
 )
-from harness.tools.adk_adapter import create_adk_tools, discover_known_secrets
+from harness.tools.adk_adapter import _ArtifactResolver, create_adk_tools, discover_known_secrets
+from harness.tools.memory import ContextProgramService
 from harness.tracing import CodingToolArtifactPlugin, HarnessTracePlugin, TraceContentMode
 from harness.verification import ManagedValidationExecutor
 from harness.workspace import GitWorktreeManager
@@ -151,10 +166,12 @@ class SkeinHarnessFactory:
         pricing: Mapping[str, ModelPricing] | None = None,
         model_providers: AdkModelProviderRegistry | None = None,
         execution_runtime_factory: ExecutionRuntimeFactory | None = None,
+        semantic_search_factory: Callable[[Path], LanceMemorySearch] | None = None,
     ) -> None:
         self._pricing = dict(pricing or {})
         self._model_providers = model_providers or default_adk_model_provider_registry()
         self._execution_runtime_factory = execution_runtime_factory
+        self._semantic_search_factory = semantic_search_factory
         self._descriptor = HarnessDescriptor(
             implementation="skein_v1",
             api_version=1,
@@ -198,7 +215,8 @@ class SkeinHarnessFactory:
         SkeinConfig.model_validate(config.model_dump())
         if config.notebook_ptc.enabled and config.sandbox.kind != "local":
             raise ValueError("notebook-native PTC currently requires the local sandbox")
-        if config.memory.enabled and config.memory.retrieval == "lance":
+        if (config.memory.enabled and config.memory.retrieval == "lance"
+                and self._semantic_search_factory is None):
             raise ValueError(
                 "live Lance retrieval requires a configured embedding provider; "
                 "use lexical retrieval until that provider is wired"
@@ -378,6 +396,82 @@ class SkeinHarnessFactory:
             if canonical_ledger is not None
             else operational_events
         )
+        memory_services: dict[str, ContextProgramService] = {}
+        semantic_search = (
+            self._semantic_search_factory(settings.state_root / "memory" / "lance")
+            if self._semantic_search_factory is not None and config.memory.retrieval == "lance"
+            else None
+        )
+
+        def memory_service(task_id: str) -> ContextProgramService:
+            if canonical_ledger is None:
+                raise ValueError("context programs require canonical memory")
+            if task_id not in memory_services:
+                if settings.task_id_override and task_id != settings.task_id_override:
+                    raise ValueError("context program task is outside this run")
+                program_config = config.memory.context_programs
+                memory_services[task_id] = ContextProgramService(
+                    canonical_ledger, task_id,
+                    **{**program_config.model_dump(), "max_result_bytes": min(
+                        program_config.max_result_bytes, config.tools.output.max_bytes
+                    )},
+                    working_notes=config.memory.working_notes,
+                    artifact_reader=lambda uri, offset, limit: _ArtifactResolver(
+                        workspace=settings.workspace, state_root=settings.state_root,
+                    ).read(
+                        uri, offset=offset, limit=limit, max_source_bytes=16_000_000,
+                        deadline=time.monotonic() + program_config.timeout_seconds,
+                    ),
+                    authorized_tasks=bindings.prior_task_ids,
+                    source_ledgers={task: open_ledger(root, config.memory.ledger)
+                                    for task, root in zip(bindings.prior_task_ids,
+                                                          bindings.prior_state_roots, strict=True)},
+                    redactor=SecretRedactor(known_secrets=known_secrets),
+                    semantic_search=semantic_search,
+                    on_note=lambda payload: event_store.append(
+                        task_id, "memory.note_updated", payload,
+                        idempotency_key=f"note:{payload['event_id']}",
+                    ),
+                )
+            return memory_services[task_id]
+
+        ordinary_bash = tools.bash
+
+        def reserved_bash(command: str, **kwargs):
+            task_id = kwargs.get("task_scope") or settings.task_id_override
+            if task_id:
+                result = memory_service(str(task_id)).execute(command)
+                if result is not None:
+                    status = str(result.get("status", "unavailable"))
+                    return {
+                        "status": "ok" if status in {"ok", "partial"} else "error",
+                        "model_text": json.dumps(result, ensure_ascii=False, sort_keys=True),
+                        "truncated": status == "partial", "ui_details": {"memory": True},
+                    }
+            return ordinary_bash(command, **kwargs)
+
+        if config.memory.context_programs.mode == "active":
+            tools = replace(tools, bash=reserved_bash)
+        notebook_options = {}
+        if config.notebook_ptc.continuity == "conversation":
+            if not (bindings.conversation_id and bindings.user_id and bindings.notebook_state_root):
+                raise ValueError("conversation PTC requires a server-owned notebook binding")
+            if not config.memory.enabled:
+                raise ValueError("conversation PTC requires canonical memory for erasure-aware replay")
+            previous_events = []
+            for task_id, root in zip(bindings.notebook_prior_task_ids,
+                                     bindings.notebook_prior_state_roots, strict=True):
+                previous_events.extend(LedgerBackedEventStore(
+                    JsonlEventStore(root / "events"), open_ledger(root, config.memory.ledger),
+                    repair=False,
+                ).read(task_id))
+            notebook_options = {
+                "conversation_notebook_id": hashlib.sha256(
+                    f"{composition.app.name}:{bindings.user_id}:{bindings.conversation_id}".encode()
+                ).hexdigest()[:32],
+                "prior_notebook_events": tuple(previous_events),
+                "notebook_root": bindings.notebook_state_root,
+            }
         if config.notebook_ptc.enabled:
             worker = build_coding_worker(
                 settings,
@@ -389,6 +483,7 @@ class SkeinHarnessFactory:
                 event_store=event_store,
                 approvals=approvals,
                 replies=replies,
+                **notebook_options,
             )
         else:
             worker = build_coding_worker(
@@ -491,6 +586,8 @@ class SkeinHarnessFactory:
                     batch_limit=config.steering.batch_limit,
                     before_model="before_model" in config.steering.safe_points,
                     before_tool="before_tool" in config.steering.safe_points,
+                    mark_context=config.memory.context_programs.mode == "active"
+                    or config.context.window_management,
                 )
             )
         plugins.extend(
@@ -502,6 +599,34 @@ class SkeinHarnessFactory:
                 ),
             ]
         )
+        if canonical_ledger is not None and (
+            config.memory.context_programs.mode == "active" or config.context.window_management
+        ):
+            receipt_store = ToolReceiptStore(settings.state_root / "managed-tools.db")
+
+            def context_handoff(task_id: str) -> dict[str, Any]:
+                details: dict[str, Any] = memory_service(task_id).handoff()
+                if config.memory.context_programs.mode != "active":
+                    details = {"memory": "not model-accessible"}
+                unresolved = [receipt for receipt in receipt_store.for_task(task_id)
+                              if receipt.status != "completed"]
+                details["unresolved_effects"] = {
+                    "count": len(unresolved),
+                    "operations": [{"id": item.tool_call_id, "status": item.status}
+                                   for item in unresolved[:16]],
+                }
+                return details
+
+            plugins.insert(plugins.index(metrics_plugin), ContextWindowPlugin(
+                events=event_store, ledger=canonical_ledger, config=config.context,
+                handoff=context_handoff,
+                known_secrets=tuple(known_secrets),
+                require_notes=config.memory.working_notes,
+            ))
+        elif canonical_ledger is not None and config.memory.context_programs.mode == "shadow":
+            plugins.insert(plugins.index(metrics_plugin), MemoryShadowPlugin(
+                probe=lambda task_id: memory_service(task_id).shadow()
+            ))
         trace_plugin: HarnessTracePlugin | None = None
         if config.tracing.mode != "off":
             try:
@@ -567,6 +692,7 @@ def default_harness_registry(
     *,
     model_providers: AdkModelProviderRegistry | None = None,
     execution_runtime_factory: ExecutionRuntimeFactory | None = None,
+    semantic_search_factory: Callable[[Path], LanceMemorySearch] | None = None,
 ) -> HarnessRegistry:
     registry = HarnessRegistry()
     registry.register(
@@ -574,6 +700,7 @@ def default_harness_registry(
             model_providers=model_providers,
             pricing=pricing_from_env(),
             execution_runtime_factory=execution_runtime_factory,
+            semantic_search_factory=semantic_search_factory,
         )
     )
     return registry

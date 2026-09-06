@@ -136,10 +136,18 @@ For a server run, operational notebooks and task events live under
 --task-id RUN_ID` rematerializes from events and uses the required `nb-cli` for compact
 reading. Skein does not parse `.ipynb` JSON as a browsing fallback.
 
-This means current PTC continuity is run-scoped. A later run in the same conversation
-does not yet share the prior run's notebook recovery stream. Moving that boundary to a
-stable owned conversation identity requires an explicit concurrency and lifecycle
-contract; ADK session resumability alone does not make the CPython heap durable.
+PTC continuity remains run-scoped by default. Opt-in conversation continuity uses
+explicitly owned prior-run manifests, task-specific watermarks, and shared notebook
+projections. Only supported self-contained data cells restore; the CPython heap,
+imports, and dependent computations are not durable. Historical retrieval permission
+is separate from notebook continuity.
+
+Opt-in context programs expose bounded, evidence-backed history through the existing
+tool surface. Window management, notes, fresh reconstruction, prior-run recall, and
+program reuse are independent treatment controls. Safe-auto recovery reuses ADK
+invocations only after checkpoint, workspace, ownership, and effect checks; unknown
+effects fail closed. See the [experiment runbook](context-experiment-runbook.md) for
+controlled profiles and limitations. None of these treatments changes defaults.
 
 When installed through the optional `memory-search` extra, LanceDB provides immutable
 hybrid-search projections over ledger events. Projection identity includes the exact
@@ -151,8 +159,9 @@ so the default harness pays no startup or dependency cost. Projections live bene
 SHA-256 task directory and explicit task erasure removes that directory with the
 canonical evidence.
 
-Lance is currently a tested programmatic projection, not a live prompt reader. YAML
-selection fails closed until an explicit embedding provider is available.
+Active context programs can use Lance through an explicitly injected, versioned
+semantic-search factory. YAML selection alone fails closed without that provider;
+no embedding model is downloaded or selected implicitly.
 
 `ledger-backfill` idempotently imports recognized legacy stores and reports source-count
 equality. Explicit task watermarks can be sealed atomically to deterministic Parquet;

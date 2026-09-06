@@ -168,24 +168,50 @@ class ToolSurfaceConfig(FrozenModel):
 
 class NotebookPtcConfig(FrozenModel):
     enabled: bool = False
+    continuity: Literal["run", "conversation"] = "run"
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
     max_timeout_seconds: int = Field(default=600, ge=1, le=3_600)
     max_output_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
 
     @model_validator(mode="after")
     def validate_timeouts(self) -> NotebookPtcConfig:
+        if self.continuity == "conversation" and not self.enabled:
+            raise ValueError("conversation continuity requires notebook PTC")
         if self.default_timeout_seconds > self.max_timeout_seconds:
             raise ValueError("default notebook PTC timeout cannot exceed its maximum")
         return self
 
 
+class ContextProgramConfig(FrozenModel):
+    mode: Literal["off", "shadow", "active"] = "off"
+    max_result_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
+    max_scan_events: int = Field(default=10_000, ge=1, le=100_000)
+    timeout_seconds: float = Field(default=2, gt=0, le=60)
+    reuse: bool = False
+
+    @model_validator(mode="after")
+    def validate_reuse(self) -> ContextProgramConfig:
+        if self.reuse and self.mode != "active":
+            raise ValueError("program reuse requires active context programs")
+        return self
+
+
 class MemoryConfig(FrozenModel):
     enabled: bool = False
+    prior_runs: bool = False
     ledger: Literal["jsonl", "duckdb"] = "jsonl"
     retrieval: Literal["lexical", "lance"] = "lexical"
+    context_programs: ContextProgramConfig = ContextProgramConfig()
+    working_notes: bool = False
 
     @model_validator(mode="after")
     def validate_backends(self) -> MemoryConfig:
+        if self.context_programs.mode != "off" and not self.enabled:
+            raise ValueError("context programs require canonical memory")
+        if self.prior_runs and self.context_programs.mode != "active":
+            raise ValueError("prior-run recall requires active context programs")
+        if self.working_notes and self.context_programs.mode != "active":
+            raise ValueError("working notes require active context programs")
         if not self.enabled and (self.ledger != "jsonl" or self.retrieval != "lexical"):
             raise ValueError("disabled memory cannot select an active backend")
         if self.retrieval == "lance" and self.ledger != "duckdb":
@@ -194,6 +220,8 @@ class MemoryConfig(FrozenModel):
 
 
 class ContextConfig(FrozenModel):
+    window_management: bool = False
+    reconstruction: Literal["handoff_tail", "fresh"] = "handoff_tail"
     work_packet_tokens: int = Field(default=20_000, ge=2_000, le=256_000)
     max_task_input_tokens: int = Field(default=200_000, ge=8_000, le=20_000_000)
     recent_event_limit: int = Field(default=12, ge=1, le=100)
@@ -274,6 +302,7 @@ class ContextCacheConfig(FrozenModel):
 class AdkConfig(FrozenModel):
     context_cache: ContextCacheConfig = ContextCacheConfig()
     resumable: Literal[True] = True
+    recovery: Literal["explicit", "safe_auto"] = "explicit"
 
 
 class TraceConfig(FrozenModel):
@@ -305,6 +334,15 @@ class SkeinConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_references(self) -> SkeinConfig:
+        if self.context.window_management and not self.memory.enabled:
+            raise ValueError("bounded context windows require canonical memory")
+        if self.context.reconstruction == "fresh" and not (
+            self.context.window_management
+            and self.memory.context_programs.mode == "active" and self.memory.working_notes
+        ):
+            raise ValueError("fresh reconstruction requires bounded windows, active retrieval and working notes")
+        if self.adk.recovery == "safe_auto" and not self.memory.enabled:
+            raise ValueError("safe-auto recovery requires canonical memory")
         for name, agent in self.agents.items():
             if agent.model not in self.models:
                 raise ValueError(f"agent {name!r} references unknown model {agent.model!r}")
@@ -380,6 +418,16 @@ class HarnessComposition(FrozenModel):
     persistence: PersistenceConfig = PersistenceConfig()
     server: ServerConfig = ServerConfig()
 
+    @model_validator(mode="after")
+    def validate_recovery_storage(self) -> HarnessComposition:
+        config = self.harness.config
+        if isinstance(config, SkeinConfig) and config.adk.recovery == "safe_auto" and (
+            self.persistence.session_backend != "sqlite"
+            or self.persistence.artifact_backend != "file"
+        ):
+            raise ValueError("safe-auto recovery requires SQLite sessions and file artifacts")
+        return self
+
     def canonical_json(self) -> str:
         return json.dumps(
             self.model_dump(mode="json"),
@@ -422,8 +470,31 @@ class RuntimeBindings(FrozenModel):
     workspace_id: str | None = Field(default=None, max_length=256)
     worker_id: str | None = Field(default=None, max_length=256)
     invocation_id: str | None = Field(default=None, max_length=256)
+    conversation_id: str | None = Field(default=None, max_length=256)
+    user_id: str | None = Field(default=None, max_length=256)
+    prior_task_ids: tuple[str, ...] = ()
+    prior_state_roots: tuple[Path, ...] = ()
+    notebook_prior_task_ids: tuple[str, ...] = ()
+    notebook_prior_state_roots: tuple[Path, ...] = ()
+    notebook_state_root: Path | None = None
     project_trusted: bool = False
     interactive_approvals: bool = False
+
+    @model_validator(mode="after")
+    def validate_history_binding(self) -> RuntimeBindings:
+        if len(self.prior_task_ids) != len(self.prior_state_roots):
+            raise ValueError("prior task IDs and state roots must be paired")
+        if len(set(self.prior_task_ids)) != len(self.prior_task_ids):
+            raise ValueError("prior task IDs must be unique")
+        if len(self.notebook_prior_task_ids) != len(self.notebook_prior_state_roots):
+            raise ValueError("notebook prior task IDs and roots must be paired")
+        if len(set(self.notebook_prior_task_ids)) != len(self.notebook_prior_task_ids):
+            raise ValueError("notebook prior task IDs must be unique")
+        if (self.prior_task_ids or self.notebook_state_root or self.notebook_prior_task_ids) and not (
+            self.conversation_id and self.user_id
+        ):
+            raise ValueError("cross-run memory requires an owned conversation binding")
+        return self
 
 
 __all__ = [
