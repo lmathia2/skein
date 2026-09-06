@@ -7,6 +7,52 @@ from harness.ledger import DuckDbLedgerStore
 from harness.memory.catalog import ProgramCatalog, validate_relational_program
 
 
+def test_program_preserves_literal_whitespace_and_exact_source_hash(tmp_path: Path) -> None:
+    import hashlib
+
+    database = tmp_path / "ledger.duckdb"
+    ledger = DuckDbLedgerStore(database)
+    ledger.append(task_id="task", source="test", source_id="1", kind="safe")
+    catalog = ProgramCatalog(database)
+    sql = " SELECT 'two  spaces' AS text FROM ledger_events WHERE task_id=:task_id "
+    program = catalog.register("literal", 1, sql)
+    assert program.sql == sql
+    assert program.content_hash == hashlib.sha256(sql.encode()).hexdigest()
+    catalog.transition("literal", 1, "shadow")
+    catalog.transition("literal", 1, "active")
+    assert catalog.execute("literal", 1, task_id="task") == [{"text": "two  spaces"}]
+
+
+def test_sql_worker_deadline_snapshot_and_output_limits(tmp_path: Path) -> None:
+    import multiprocessing
+    import time
+
+    database = tmp_path / "ledger.duckdb"
+    ledger = DuckDbLedgerStore(database)
+    for i in range(3):
+        ledger.append(task_id="task", source="test", source_id=str(i), kind="safe")
+    catalog = ProgramCatalog(database)
+    for name, sql in {
+        "count": "SELECT count(*) AS n FROM ledger_events WHERE task_id=:task_id",
+        "large": "SELECT repeat('x', 1000) AS text FROM ledger_events WHERE task_id=:task_id",
+        "slow": "SELECT sum(a.i*b.i) FROM ledger_events, range(1000000000) a(i), range(1000000) b(i) WHERE task_id=:task_id",
+    }.items():
+        catalog.register(name, 1, sql)
+        catalog.transition(name, 1, "shadow")
+        catalog.transition(name, 1, "active")
+    assert catalog.execute("count", 1, task_id="task", watermark=2) == [{"n": 2}]
+    with pytest.raises(OverflowError, match="scan"):
+        catalog.execute("count", 1, task_id="task", max_scan_events=1)
+    with pytest.raises(OverflowError, match="output"):
+        catalog.execute("large", 1, task_id="task", max_bytes=128)
+    children = {process.pid for process in multiprocessing.active_children()}
+    start = time.monotonic()
+    with pytest.raises(TimeoutError):
+        catalog.execute("slow", 1, task_id="task", timeout_seconds=0.5)
+    assert time.monotonic() - start < 4
+    assert {process.pid for process in multiprocessing.active_children()} <= children
+
+
 def test_programs_require_replay_shadow_before_activation(tmp_path: Path) -> None:
     database = tmp_path / "ledger.duckdb"
     ledger = DuckDbLedgerStore(database)
