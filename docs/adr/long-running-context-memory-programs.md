@@ -1,6 +1,6 @@
 # Context programs for long-running agents
 
-> Status: proposed; the implementation and empirical gates below are pending
+> Status: experimental implementation available; live empirical gates pending
 >
 > Date: 2026-09-05
 >
@@ -36,6 +36,28 @@ integrated with a coding harness's recovery and verification boundary. Its usefu
 and any research novelty remain hypotheses, not demonstrated results.
 
 ## Decision
+
+Implementation handoff: [the experiment runbook](../context-experiment-runbook.md)
+contains complete treatment profiles, offline preflight, fixture preparation,
+subprocess schedules, independent grading, and deferred scan benchmarks. The
+implementation remains opt-in. Real scripted-ADK tests cover fresh context,
+cross-process recall, safe interruption blocking, and successful same-invocation
+resume through deterministic verification; these are not live model-quality results.
+
+An implementation review identified a necessary additional ablation:
+`context.window_management` separates bounded inner-loop reconstruction from active
+retrieval. The W baseline enables windows without model-facing memory access;
+R adds retrieval with the same window policy. Without W, an R/B1 improvement could
+be caused by reconstruction rather than retrieval. `memory.prior_runs` separately
+controls historical source access; notebook continuity never implicitly grants it.
+
+Optional SQL and summary APIs are implemented and independently testable. SQL remains
+an operator-reviewed catalog API, not arbitrary model-supplied SQL through Bash.
+Semantic execution accepts an explicit versioned embedding-provider factory; no
+provider is silently chosen or downloaded. Summary generation requires an injected,
+authorized async model callback whose calls/usage the experiment driver must account
+for. `SummaryCache.summarize(cache=...)` controls its reuse ablation; there is no
+decorative `memory.summary_cache` YAML flag or unmetered automatic summarizer.
 
 A context program is a versioned computation that constructs useful context from
 durable evidence. Python functions, SQL queries, and evidence-bound model calls can
@@ -157,11 +179,13 @@ This is an integration plan, not a greenfield memory system. Skein already has:
   metadata-only heap inspection;
 - ADK sessions, artifacts, resumability configuration, receipts, and checkpoints.
 
-The server currently refuses automatic rerun after restart. Checkpoints detect
-workspace state but do not restore it. Notebook continuity remains run-scoped.
-The current checkpoint writer uses an iteration label as `invocation_id`; recovery
-must persist the real ADK invocation ID. Existing infrastructure is not proof of
-safe process recovery or improved model performance.
+Before this implementation, the server refused automatic rerun after restart,
+notebook continuity was run-scoped, and checkpoints used an iteration label rather
+than the real ADK invocation ID. The opt-in implementation now binds checkpoints to
+real invocations, verifies evidence and effects before resume, and supports explicitly
+owned conversation notebook continuity. Checkpoints detect workspace state; they do
+not restore it. Deterministic subprocess tests establish the tested recovery contracts,
+not improved model performance or unrestricted crash safety.
 
 The first release adds bounded recall and notes to these foundations. Later phases
 test context reset, safe process recovery, and cross-session continuity. Cognitive
@@ -295,35 +319,36 @@ Reuse strict YAML, existing profiles, behavior hashes, `tuning-export`, and the
 evaluation runner. Existing fields select canonical capture, ledger, retrieval, PTC,
 context budgets, and persistence. Do not rename those fields merely for this ADR.
 
-This is a **proposed fragment under `harness.config`**, not valid configuration
-today. Implement each new field only with its stage, validator, and tests.
-Unimplemented values must fail startup rather than silently do nothing.
+This is a fragment under `harness.config`; the full runnable compositions are in
+`harness/config/profiles/context-*.yaml`. Unsupported provider/backend combinations
+fail startup rather than silently doing nothing.
 The displayed defaults preserve current behavior.
 
 ```yaml
 memory:
   enabled: false                 # existing
+  prior_runs: false              # explicit owned prior-run recall, independent of PTC
   ledger: jsonl                  # existing: jsonl | duckdb
   retrieval: lexical             # existing: lexical | lance
-  context_programs:              # proposed, stage 1
+  context_programs:              # stage 1
     mode: "off"                  # off | shadow | active
     max_result_bytes: 16000
     max_scan_events: 10000
     timeout_seconds: 2
-    reuse: false                 # proposed, stage 5 experiment: reviewed program library
-  working_notes: false           # proposed, stage 2
-  summary_cache: false           # proposed, optional extension
+    reuse: false                 # stage 5 experiment: reviewed program library
+  working_notes: false           # stage 2
 context:
-  reconstruction: handoff_tail   # proposed, stages 2/3: handoff_tail | fresh
+  window_management: false       # bounded windows independent of retrieval
+  reconstruction: handoff_tail   # stages 2/3: handoff_tail | fresh
 notebook_ptc:
   enabled: false                 # existing tool-surface switch
-  continuity: run                # proposed, stage 5: run | conversation
+  continuity: run                # stage 5: run | conversation
 adk:
   resumable: true                # existing ADK substrate
-  recovery: explicit            # proposed, stage 4: explicit | safe_auto
+  recovery: explicit             # stage 4: explicit | safe_auto
 ```
 
-`off` retains current behavior. `shadow` computes fixed read-only seed/fixture
+With window management disabled, `off` retains current behavior. `shadow` computes fixed read-only seed/fixture
 queries without model exposure or changed requests; record overhead separately.
 `active` exposes bounded retrieval through the existing tool surface. Do not shadow
 writes or model calls. Effective egress is the minimum of program and existing tool
@@ -332,7 +357,8 @@ limits; reuse current packet and component token budgets.
 Validate before starting a worker:
 
 - Non-off programs require canonical memory. Notes require active programs.
-- Fresh reconstruction requires active retrieval and durable notes/handoff support.
+- Bounded windows require canonical memory. Fresh reconstruction additionally
+  requires active retrieval and durable notes/handoff support.
 - Safe-auto requires persistent sessions/artifacts and the completed recovery
   implementation; it never enables unknown-effect replay.
 - Conversation continuity requires PTC and owned conversation binding.
@@ -354,7 +380,8 @@ Stages 0–2 are the first context-memory release. Stage 3 is an optional policy
 experiment. Stage 4 delivers recovery after its identity/checkpoint prerequisites;
 it does not depend on fresh context winning. Stage 5 extends continuity and scope.
 Each stage includes focused implementation/tests, execution evidence, and a report.
-Proposed checks and profiles below are deliverables, not claims they already exist.
+The staged checks below remain the acceptance contract. The runbook distinguishes
+executed deterministic tests from live experiments and scale measurements still pending.
 
 | Phase | Smallest useful delivery | Question answered by execution |
 | --- | --- | --- |
@@ -590,7 +617,8 @@ Do not execute a Cartesian product of all switches.
 | B0 | Frozen existing four-tool behavior | Current baseline |
 | B1 | Canonical JSONL enabled, programs off | B0, mechanical capture parity/overhead |
 | H | Programs shadow | B1, identical model requests |
-| R | Programs active | B1; interface and fixed hint are the declared treatment |
+| W | Bounded windows enabled, programs off | B1; isolates reconstruction |
+| R | Programs active, bounded windows enabled | W; interface and fixed hint are the declared treatment |
 | N | Notes enabled, handoff-tail | R |
 | F | Fresh reconstruction | N |
 | A | Safe-auto recovery | N with explicit recovery and identical crash schedule |
@@ -605,7 +633,7 @@ Compare JSONL/DuckDB mechanically when model-visible context is identical.
 
 | Hypothesis | Closest precedent | Controlled comparison and falsification |
 | --- | --- | --- |
-| External evidence improves recall after compaction | MemGPT, Pi, Codex, Posthorse | R versus B1; if evidence recovery/task success does not improve at acceptable cost, do not claim value from active retrieval. |
+| External evidence improves recall after compaction | MemGPT, Pi, Codex, Posthorse | R versus W; if evidence recovery/task success does not improve at acceptable cost, do not claim value from active retrieval. |
 | Working notes improve continuation | Cognitive working-state separation, Posthorse/Codex, Letta | N versus R; measure wrong-note resistance as well as reduced rediscovery. Reject if notes amplify stale beliefs. |
 | Fresh windows can replace retained tails | Codex/Posthorse versus Pi/OpenCode-style retention | F versus N; rejection means handoff-tail remains the default, not that persistent memory failed. |
 | Computation handles temporal/full-set questions better than selected snippets | User as Code, Zep temporal modeling | Full-set deterministic views versus bounded snippet retrieval over the same ledger; grade exact counts, knowledge boundaries, and completeness. Both arms retain access controls. |
@@ -664,8 +692,8 @@ analysis where its schema fits. Current fixed-provider/Harbor experiments must n
 be silently repurposed. Extend them explicitly for context cases if needed; start
 with ordinary trial files and the existing result schema instead of a new scheduler.
 
-The following uses existing runner syntax. The proposed profile must be implemented
-first; substitute an authorized frozen provider/model and prepared fixture paths:
+The following uses existing runner syntax and the implemented retrieval profile;
+substitute an authorized frozen provider/model and prepared fixture paths:
 
 ```sh
 skein eval-run \
