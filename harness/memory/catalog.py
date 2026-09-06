@@ -22,7 +22,7 @@ def _execute_bounded_sql(sender: Connection, database: str, sql: str, task_id: s
                          watermark: int | None, recorded_before: str | None) -> None:
     """Child owns all SQL work; parent may terminate it, including connection setup."""
     try:
-        with duckdb.connect(config={"memory_limit": "64MB", "threads": "1"}) as connection:
+        with duckdb.connect(config={"memory_limit": "64MB", "threads": "1", "temp_directory": ""}) as connection:
             connection.execute(f"ATTACH '{database.replace(chr(39), chr(39) * 2)}' AS source (READ_ONLY)")
             clauses = ["task_id=?"]
             params: list[Any] = [task_id]

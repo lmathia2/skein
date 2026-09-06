@@ -35,7 +35,7 @@ def test_sql_worker_deadline_snapshot_and_output_limits(tmp_path: Path) -> None:
     for name, sql in {
         "count": "SELECT count(*) AS n FROM ledger_events WHERE task_id=:task_id",
         "large": "SELECT repeat('x', 1000) AS text FROM ledger_events WHERE task_id=:task_id",
-        "slow": "SELECT sum(a.i*b.i) FROM ledger_events, range(1000000000) a(i), range(1000000) b(i) WHERE task_id=:task_id",
+        "slow": "SELECT sum(i % 97) FROM range(1000000000000) r(i) WHERE :task_id = (SELECT task_id FROM ledger_events LIMIT 1)",
     }.items():
         catalog.register(name, 1, sql)
         catalog.transition(name, 1, "shadow")
