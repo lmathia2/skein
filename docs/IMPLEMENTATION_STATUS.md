@@ -3,6 +3,20 @@
 The supported capability boundary is the simplified local harness, not the
 historical feature checklist or book-rubric score.
 
+## Context-program implementation (empirical gates pending)
+
+The bounded context-program library now supports authorized exact history/event
+reads (including byte ranges), frozen pagination, temporal and structured filters,
+full-set counts, retrieval receipts, optimistic advisory notes, and a finite
+reviewed-program reuse treatment. It keeps Python as the default implementation.
+Optional semantic ranking is scope-filtered, canonically hydrated, and executed in
+a killable worker; an explicit versioned, spawn-compatible embedding provider is
+required. No model, index, or dependency is downloaded automatically.
+
+Factory integration, recovery, and executable experiment schedules are tracked in
+the context-program TODO section. Passing deterministic contracts is not a live
+quality or promotion claim.
+
 ## Retained and verified
 
 - The project identity is Skein: the Python distribution and primary CLI are `skein`,
