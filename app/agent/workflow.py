@@ -19,6 +19,7 @@ from google.adk.workflow import BaseNode, node
 from harness.approvals.waiting import ApprovalWaiter
 from harness.context import estimate_tokens
 from harness.environment import RepositoryRuntime
+from harness.environment.async_call import run_managed_thread
 from harness.models.agent_step import AgentStep
 from harness.models.checkpoint import Checkpoint
 from harness.models.ledger import TaskLedger
@@ -42,11 +43,14 @@ from harness.state import (
     EventKind,
     EventStore,
     SteeringQueue,
+    ToolReceiptStore,
     rebuild_ledger,
     register_action_batch,
 )
+from harness.state.recovery import validate_recovery_evidence
 from harness.telemetry import MetricsStore, TaskOutcomeSample
 from harness.verification import (
+    CommandResult,
     ManagedValidationExecutor,
     ValidationCommand,
     build_report,
@@ -225,19 +229,25 @@ def _save_checkpoint(
     ledger: TaskLedger,
     session_id: str | None,
     compaction_id: str | None,
+    invocation_id: str,
 ) -> Checkpoint:
     fingerprint = _workspace_fingerprint(deps, task_id)
     ledger_json = ledger.model_dump_json()
+    event_stream = deps.event_store.read(task_id)
+    context_epoch = next((str(event.payload["context_epoch"]) for event in reversed(event_stream)
+                          if event.payload.get("context_epoch") is not None), None)
+    receipts = ToolReceiptStore(deps.settings.state_root / "managed-tools.db").for_task(task_id)
     latest = deps.checkpoint_store.latest(task_id)
     checkpoint_id = hashlib.sha256(
-        f"{task_id}\0{ledger.iteration}\0{fingerprint}\0{ledger_json}".encode()
+        f"{task_id}\0{invocation_id}\0{compaction_id}\0{context_epoch}\0{ledger.iteration}\0{fingerprint}\0{ledger_json}".encode()
     ).hexdigest()[:32]
-    event_stream = deps.event_store.read(task_id)
+    if latest is not None and latest.checkpoint_id == checkpoint_id:
+        return latest
     checkpoint = Checkpoint(
         checkpoint_id=checkpoint_id,
         task_id=task_id,
         session_id=session_id or "unknown",
-        invocation_id=f"iteration-{ledger.iteration}",
+        invocation_id=invocation_id,
         branch_id=ledger.branch_id,
         parent_checkpoint_id=(latest.checkpoint_id if latest else None),
         workspace_id=ledger.workspace_id,
@@ -245,10 +255,16 @@ def _save_checkpoint(
         git_tree_hash=fingerprint,
         ledger_version=event_stream[-1].sequence,
         ledger_hash=hashlib.sha256(ledger_json.encode()).hexdigest(),
+        event_stream_hash=hashlib.sha256(
+            "\n".join(event.model_dump_json() for event in event_stream).encode()
+        ).hexdigest(),
+        receipt_stream_hash=hashlib.sha256(
+            "\n".join(receipt.model_dump_json() for receipt in receipts).encode()
+        ).hexdigest(),
+        context_epoch=context_epoch,
         compaction_id=compaction_id,
         created_at=datetime.now(UTC),
     )
-    deps.checkpoint_store.save(checkpoint)
     deps.event_store.append(
         task_id,
         EventKind.CHECKPOINT_CREATED,
@@ -259,6 +275,7 @@ def _save_checkpoint(
         },
         idempotency_key=f"checkpoint:{checkpoint.checkpoint_id}",
     )
+    deps.checkpoint_store.save(checkpoint)
     return checkpoint
 
 
@@ -424,13 +441,36 @@ async def _verify_task(
         claim["criterion"]: list(claim.get("evidence", [])) for claim in claims
     }
     executor = deps.validation_executor(ledger.task_id)
+
+    async def execute_validation(command: ValidationCommand, operation_id: str) -> CommandResult:
+        events = deps.event_store.read(ledger.task_id)
+        prior = next((event for event in events if event.kind == "execution.validation_completed"
+                      and event.payload.get("operation_id") == operation_id), None)
+        if prior is not None:
+            if prior.payload.get("workspace_after") != _workspace_fingerprint(deps, ledger.task_id):
+                raise ValueError("validation replay requires workspace reconciliation")
+            return CommandResult.model_validate(prior.payload["result"])
+        if any(event.kind == "execution.validation_requested" and event.payload.get("operation_id") == operation_id
+               for event in events):
+            raise ValueError("interrupted validation requires reconciliation")
+        deps.event_store.append(ledger.task_id, "execution.validation_requested", {
+            "operation_id": operation_id, "command": command.command,
+        }, idempotency_key=f"validation:{operation_id}:requested")
+        result = await run_managed_thread(executor, command)
+        deps.event_store.append(ledger.task_id, "execution.validation_completed", {
+            "operation_id": operation_id, "result": result.model_dump(mode="json"),
+            "workspace_after": _workspace_fingerprint(deps, ledger.task_id),
+        }, idempotency_key=f"validation:{operation_id}:completed")
+        return result
+
     command_results = []
-    for command in plan.commands:
-        result = await asyncio.to_thread(executor, command)
+    for index, command in enumerate(plan.commands):
+        operation_id = f"{ctx.get_invocation_context().invocation_id}:{ledger.iteration}:{index}"
+        result = await execute_validation(command, operation_id)
         if deps.approvals is not None and result.status == "blocked" and result.approval_request_id:
             decision = await deps.approvals.wait(result.approval_request_id, ledger.task_id)
             if decision.status == "approved":
-                result = await asyncio.to_thread(executor, command)
+                result = await execute_validation(command, operation_id + ":approved")
             else:
                 result = result.model_copy(
                     update={
@@ -497,6 +537,11 @@ def _initialize_run(
 
     manifest = deps.repository.manifest()
     events = deps.event_store.read(task_id)
+    ctx.state["estimated_task_input_tokens"] = max(
+        int(ctx.state.get("estimated_task_input_tokens", 0) or 0),
+        max((int(event.payload.get("estimated_task_input_tokens", 0)) for event in events
+             if event.kind == "execution.model_budget_reserved"), default=0),
+    )
     if events:
         ledger = rebuild_ledger(events)
         if ledger.mode == "coding" and request.mode == "auto":
@@ -533,7 +578,20 @@ def _initialize_run(
 
     latest_checkpoint = deps.checkpoint_store.latest(task_id)
     current_fingerprint = _workspace_fingerprint(deps, task_id)
-    if latest_checkpoint is not None and latest_checkpoint.git_tree_hash != current_fingerprint:
+    workspace_diverged = latest_checkpoint is not None and latest_checkpoint.git_tree_hash != current_fingerprint
+    if workspace_diverged and latest_checkpoint is not None and latest_checkpoint.invocation_id == invocation_id:
+        try:
+            validate_recovery_evidence(
+                latest_checkpoint, deps.event_store.read(task_id),
+                ToolReceiptStore(settings.state_root / "managed-tools.db").for_task(task_id),
+                invocation_id=invocation_id, session_id=session_id or "unknown",
+                workspace_fingerprint=current_fingerprint,
+            )
+        except ValueError:
+            pass
+        else:
+            workspace_diverged = False
+    if latest_checkpoint is not None and workspace_diverged:
         previous = ledger
         ledger = TaskLedger.model_validate({
             **ledger.model_dump(mode="python"),
@@ -568,6 +626,7 @@ def _initialize_run(
             ledger=ledger,
             session_id=session_id,
             compaction_id=compaction_id,
+            invocation_id=invocation_id,
         )
 
     skill_runtime = _skill_runtime_from_state(ctx)
@@ -634,6 +693,7 @@ def _answer_result(
     owner: str,
     session_id: str | None,
     compaction_id: str | None,
+    invocation_id: str,
     started: float,
 ) -> tuple[TaskLedger, str]:
     previous = ledger
@@ -658,6 +718,7 @@ def _answer_result(
         ledger=ledger,
         session_id=session_id,
         compaction_id=compaction_id,
+        invocation_id=invocation_id,
     )
     _record_outcome(
         deps,
@@ -757,6 +818,7 @@ async def _verification_transition(
             ledger=ledger,
             session_id=session_id,
             compaction_id=compaction_id,
+            invocation_id=ctx.get_invocation_context().invocation_id,
         )
         return _VerificationTransition(ledger=ledger)
 
@@ -780,6 +842,7 @@ async def _verification_transition(
             ledger=ledger,
             session_id=session_id,
             compaction_id=compaction_id,
+            invocation_id=ctx.get_invocation_context().invocation_id,
         )
         return _VerificationTransition(ledger=ledger)
 
@@ -800,6 +863,7 @@ async def _verification_transition(
         ledger=ledger,
         session_id=session_id,
         compaction_id=compaction_id,
+        invocation_id=ctx.get_invocation_context().invocation_id,
     )
     _record_outcome(
         deps,
@@ -942,6 +1006,13 @@ async def _orchestrate_owned(
             )
             return
 
+        deps.event_store.append(
+            task_id, "execution.model_budget_reserved",
+            {"invocation_id": ctx.get_invocation_context().invocation_id,
+             "estimated_task_input_tokens": int(ctx.state["estimated_task_input_tokens"]),
+             "task_input_token_limit": task_input_budget},
+            idempotency_key=f"model-budget:{ctx.get_invocation_context().invocation_id}:{ctx.state['estimated_task_input_tokens']}",
+        )
         _set_model_call_state(
             ctx,
             task_id=task_id,
@@ -1042,6 +1113,7 @@ async def _orchestrate_owned(
                     owner=owner,
                     session_id=session_id,
                     compaction_id=compaction_id,
+                    invocation_id=ctx.get_invocation_context().invocation_id,
                     started=started,
                 )
                 yield result
@@ -1159,6 +1231,7 @@ async def _orchestrate_owned(
             ledger=ledger,
             session_id=session_id,
             compaction_id=compaction_id,
+            invocation_id=ctx.get_invocation_context().invocation_id,
         )
         yield Event(
             actions=EventActions(
@@ -1194,6 +1267,7 @@ async def _orchestrate_owned(
                 ledger=ledger,
                 session_id=session_id,
                 compaction_id=compaction_id,
+                invocation_id=ctx.get_invocation_context().invocation_id,
             )
             continue
 

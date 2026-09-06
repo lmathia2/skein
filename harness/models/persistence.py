@@ -21,6 +21,11 @@ class Checkpoint(StrictModel):
     git_tree_hash: str
     ledger_version: int = Field(ge=1)
     ledger_hash: str
+    schema_version: int = Field(default=1, ge=1)
+    reducer_version: str = "task-ledger-v1"
+    event_stream_hash: str | None = None
+    receipt_stream_hash: str | None = None
+    context_epoch: str | None = None
     compaction_id: str | None = None
     label: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -14,6 +14,7 @@ Effect = Literal["none", "observed", "changed", "unknown"]
 
 
 class NotebookCell(StrictModel):
+    task_id: str | None = None
     cell_type: Literal["code"] = "code"
     cell_id: str = Field(min_length=1)
     source: str
@@ -34,6 +35,7 @@ class NotebookCell(StrictModel):
 
 
 class NotebookMarkdownCell(StrictModel):
+    task_id: str | None = None
     cell_type: Literal["markdown"] = "markdown"
     cell_id: str = Field(min_length=1)
     source: str
@@ -49,3 +51,4 @@ class NotebookState(StrictModel):
     notebook_id: str = Field(min_length=1)
     cells: list[NotebookCell | NotebookMarkdownCell] = Field(default_factory=list)
     source_watermark: int = Field(ge=0)
+    source_watermarks: dict[str, int] = Field(default_factory=dict)

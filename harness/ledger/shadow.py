@@ -14,15 +14,17 @@ from .importers import import_harness_event
 class LedgerBackedEventStore:
     """Serve task events from the ledger while retaining the JSONL compatibility write."""
 
-    def __init__(self, operational: EventStore, ledger: LedgerStore) -> None:
+    def __init__(self, operational: EventStore, ledger: LedgerStore, *, repair: bool = True) -> None:
         self.operational = operational
         self.ledger = ledger
+        self.repair = repair
 
     def read(self, task_id: str, *, after_sequence: int = 0) -> list[HarnessEvent]:
         # Read-repair makes existing state safe to open before the one-time backfill CLI
         # is run. Imports are idempotent, so this is cheap after the first read.
-        for event in self.operational.read(task_id):
-            import_harness_event(self.ledger, event)
+        if self.repair:
+            for event in self.operational.read(task_id):
+                import_harness_event(self.ledger, event)
         events = [event for event in self.ledger.read(task_id) if event.source == "harness_event"]
         return [
             HarnessEvent(

@@ -6,8 +6,8 @@
   owned-continuity configuration with dependency and budget validation.
 - [ ] Integrate bounded history/aggregate programs, receipts, notes, and safe artifact reads.
 - [ ] Publish replayable context epochs and bounded advisory/PTC handoffs.
-- [ ] Bind operation identities and checkpoint integrity to safe ADK resume.
-- [ ] Add explicitly owned prior-run recall and conversation notebook continuity.
+- [x] Bind operation identities and checkpoint integrity to safe ADK resume.
+- [x] Add explicitly owned prior-run recall and conversation notebook continuity.
 - [ ] Prepare executable context experiment profiles, schedules, and independent graders.
 - [ ] Run the ADR's live paired experiments and decide promotion independently per feature.
 
@@ -67,7 +67,7 @@ does not satisfy the live empirical gates; default behavior remains unchanged.
 - [x] Add bounded `agent.state.list()` and `agent.state.describe(name)` metadata views,
   compact state deltas, and a regression proving bulk nested capability results remain
   in Python until explicitly selected.
-- [ ] Key notebook/REPL recovery by stable owned conversation identity rather than a
+- [x] Key notebook/REPL recovery by stable owned conversation identity rather than a
   server run ID, with process/server restart and concurrent-run rejection tests.
 - [ ] Add the metadata-only REPL state catalog and last committed kernel epoch to the
   compaction handoff without moving them into the cache-stable prefix.

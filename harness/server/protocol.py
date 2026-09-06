@@ -53,6 +53,7 @@ class StartTaskMessage(FrozenModel):
     input: str = Field(min_length=1, max_length=50_000)
     thread_id: str | None = Field(default=None, max_length=256)
     metadata: dict[str, str] = Field(default_factory=dict)
+    source_run_ids: tuple[str, ...] = Field(default=(), max_length=100)
 
 
 class AttachTaskMessage(FrozenModel):

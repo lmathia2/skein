@@ -9,6 +9,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -21,6 +22,7 @@ from google.genai import types
 
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
+from harness.environment.async_call import run_managed_thread
 from harness.models.agent_step import StructuredAgentStep
 from harness.notebook import (
     NotebookCell,
@@ -31,6 +33,7 @@ from harness.notebook import (
 )
 from harness.repl import PersistentPythonWorker
 from harness.state import EventKind, EventStore, JsonlEventStore
+from harness.state.events import HarnessEvent
 from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
 from harness.tools.output import bound_output
 
@@ -104,6 +107,9 @@ def build_coding_worker(
     approvals: ApprovalWaiter | None = None,
     replies: PublicReplies | None = None,
     capabilities: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
+    conversation_notebook_id: str | None = None,
+    prior_notebook_events: tuple[HarnessEvent, ...] = (),
+    notebook_root: Path | None = None,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -113,6 +119,7 @@ def build_coding_worker(
     active_generation_config = generation_config or GenerationConfig()
     active_ptc_config = ptc_config or NotebookPtcConfig()
     active_event_store = event_store or JsonlEventStore(settings.state_root / "events")
+
     read_default_lines = active_tool_config.read_default_lines
     bash_default_timeout = active_tool_config.bash_default_timeout_seconds
     capability_handlers = capabilities or {}
@@ -172,7 +179,7 @@ def build_coding_worker(
         if replies is not None:
             replies.guard_tool(tool_context)
         del tool_context
-        return await asyncio.to_thread(
+        return await run_managed_thread(
             _invoke_tool,
             "read",
             lambda: active_tools.read(path=path, offset=offset, limit=limit),
@@ -185,7 +192,7 @@ def build_coding_worker(
     ) -> dict[str, Any]:
         """Run a bounded command or an in-process indexed search operation."""
 
-        task_scope, _ = _runtime_identity(tool_context)
+        task_scope, invocation_id = _runtime_identity(tool_context)
         if replies is not None:
             replies.guard_tool(tool_context)
         # Even apparently read-only shell can contain redirections/substitutions.
@@ -196,12 +203,14 @@ def build_coding_worker(
                 command=command,
                 timeout_seconds=timeout_seconds,
                 task_scope=task_scope,
+                invocation_id=invocation_id,
+                operation_id=getattr(tool_context, "function_call_id", None),
             ))
-        result = await asyncio.to_thread(invoke)
+        result = await run_managed_thread(invoke)
         if approvals is not None and result.get("approval_required") is True:
             decision = await approvals.wait(str(result["approval_request_id"]), task_scope or "")
             if decision.status == "approved":
-                return await asyncio.to_thread(invoke)
+                return await run_managed_thread(invoke)
             return {**result, "approval_required": False,
                     "model_text": f"Command not executed: approval {decision.status}."}
         return result
@@ -219,7 +228,7 @@ def build_coding_worker(
         if replies is not None:
             replies.guard_tool(tool_context)
         _require_verification(tool_context)
-        return await asyncio.to_thread(
+        return await run_managed_thread(
             _invoke_tool,
             "edit",
             lambda: active_tools.edit(
@@ -229,6 +238,7 @@ def build_coding_worker(
                 expected_sha256=expected_sha256,
                 task_scope=task_scope,
                 invocation_id=invocation_id,
+                operation_id=getattr(tool_context, "function_call_id", None),
             ),
         )
 
@@ -245,7 +255,7 @@ def build_coding_worker(
         if replies is not None:
             replies.guard_tool(tool_context)
         _require_verification(tool_context)
-        return await asyncio.to_thread(
+        return await run_managed_thread(
             _invoke_tool,
             "write",
             lambda: active_tools.write(
@@ -255,6 +265,7 @@ def build_coding_worker(
                 expected_absent=expected_absent,
                 task_scope=task_scope,
                 invocation_id=invocation_id,
+                operation_id=getattr(tool_context, "function_call_id", None),
             ),
         )
 
@@ -265,6 +276,9 @@ def build_coding_worker(
     )
     restored_kernel_epoch: str | None = None
     active_notebooks: dict[str, str] = {}
+
+    def notebook_events(task_id: str) -> list[HarnessEvent]:
+        return [*prior_notebook_events, *active_event_store.read(task_id)]
 
     class _RestoreBroker:
         @staticmethod
@@ -371,6 +385,8 @@ def build_coding_worker(
                     command=command,
                     timeout_seconds=timeout_seconds,
                     task_scope=self.task_id,
+                    invocation_id=self.invocation_id,
+                    operation_id=f"{self.attempt_id}:{self.call_index}",
                 )
                 if approvals is not None and result.get("approval_required") is True:
                     decision = asyncio.run_coroutine_threadsafe(
@@ -382,6 +398,8 @@ def build_coding_worker(
                             command=command,
                             timeout_seconds=timeout_seconds,
                             task_scope=self.task_id,
+                            invocation_id=self.invocation_id,
+                            operation_id=f"{self.attempt_id}:{self.call_index}",
                         )
                     return {
                         **result,
@@ -418,6 +436,7 @@ def build_coding_worker(
                     expected_sha256=expected_sha256,
                     task_scope=self.task_id,
                     invocation_id=self.invocation_id,
+                    operation_id=f"{self.attempt_id}:{self.call_index}",
                 ),
             )
 
@@ -443,6 +462,7 @@ def build_coding_worker(
                     expected_absent=expected_absent,
                     task_scope=self.task_id,
                     invocation_id=self.invocation_id,
+                    operation_id=f"{self.attempt_id}:{self.call_index}",
                 ),
             )
 
@@ -503,20 +523,24 @@ def build_coding_worker(
         _require_verification(tool_context)
         task_scope, invocation_id = _runtime_identity(tool_context)
         task_id = task_scope or "unscoped"
-        notebook_id = hashlib.sha256(task_id.encode()).hexdigest()[:32]
+        notebook_id = conversation_notebook_id or hashlib.sha256(task_id.encode()).hexdigest()[:32]
         active_notebooks[task_id] = notebook_id
-        cell_id = uuid4().hex
-        attempt_id = uuid4().hex
+        function_call_id = getattr(tool_context, "function_call_id", None)
+        attempt_id = (
+            hashlib.sha256(f"{invocation_id}\0{function_call_id}".encode()).hexdigest()
+            if function_call_id else uuid4().hex
+        )
+        cell_id = attempt_id
         kernel_epoch = await asyncio.to_thread(lambda: worker.kernel_epoch)
         if restored_kernel_epoch != kernel_epoch:
-            previous = reduce_notebook(active_event_store.read(task_id), notebook_id)
+            previous = reduce_notebook(notebook_events(task_id), notebook_id)
             restored_cells: list[str] = []
             for prior_cell in previous.cells:
                 if not isinstance(prior_cell, NotebookCell):
                     continue
                 if prior_cell.status != "completed" or prior_cell.replay_policy != "safe":
                     continue
-                restored = await asyncio.to_thread(
+                restored = await run_managed_thread(
                     worker.execute,
                     prior_cell.source,
                     _RestoreBroker(),
@@ -544,6 +568,20 @@ def build_coding_worker(
                     idempotency_key=f"repl-restore:{kernel_epoch}",
                 )
             restored_kernel_epoch = kernel_epoch
+        previous_attempt = next((
+            cell for cell in reduce_notebook(notebook_events(task_id), notebook_id).cells
+            if isinstance(cell, NotebookCell) and cell.attempt_id == attempt_id
+        ), None)
+        if previous_attempt is not None:
+            if previous_attempt.source != code:
+                return {"status": "blocked", "model_text": "Python operation identity reused with different source"}
+            if previous_attempt.status != "completed":
+                return {"status": "blocked", "reconciliation_required": True,
+                        "model_text": "Interrupted Python cell requires reconciliation; automatic replay refused"}
+            return {"status": "ok", "replayed": True, "cell_id": cell_id,
+                    "attempt_id": attempt_id, "kernel_epoch": kernel_epoch,
+                    "model_text": "Cell already completed; effects were not repeated. Inspect durable history for its outputs.",
+                    "state_available": previous_attempt.replay_policy == "safe"}
         replay_policy = _replay_policy(code)
         cell_payload = {
             "notebook_id": notebook_id,
@@ -565,10 +603,10 @@ def build_coding_worker(
             cell_payload,
             idempotency_key=f"repl-cell:{attempt_id}:submitted",
         )
-        notebook_path = settings.state_root / "notebooks" / f"{notebook_id}.ipynb"
+        notebook_path = (notebook_root or settings.state_root / "notebooks") / f"{notebook_id}.ipynb"
         await asyncio.to_thread(
             materialize_notebook,
-            reduce_notebook(active_event_store.read(task_id), notebook_id),
+            reduce_notebook(notebook_events(task_id), notebook_id),
             notebook_path,
         )
         broker = _CellBroker(
@@ -579,7 +617,7 @@ def build_coding_worker(
             attempt_id=attempt_id,
             event_loop=asyncio.get_running_loop(),
         )
-        result = await asyncio.to_thread(
+        result = await run_managed_thread(
             worker.execute,
             code,
             broker,
@@ -618,6 +656,7 @@ def build_coding_worker(
             "state": {
                 "count": result.state_count,
                 "delta": list(result.state_delta),
+                "manifest": list(result.state_manifest),
             },
         }
         if display_data is not None:
@@ -636,7 +675,7 @@ def build_coding_worker(
             terminal_payload,
             idempotency_key=f"repl-cell:{attempt_id}:terminal",
         )
-        notebook_state = reduce_notebook(active_event_store.read(task_id), notebook_id)
+        notebook_state = reduce_notebook(notebook_events(task_id), notebook_id)
         notebook_bytes = await asyncio.to_thread(
             materialize_notebook,
             notebook_state,
@@ -695,8 +734,8 @@ def build_coding_worker(
         assert python_worker is not None
         try:
             for task_id, notebook_id in sorted(active_notebooks.items()):
-                notebook_state = reduce_notebook(active_event_store.read(task_id), notebook_id)
-                notebook_path = settings.state_root / "notebooks" / f"{notebook_id}.ipynb"
+                notebook_state = reduce_notebook(notebook_events(task_id), notebook_id)
+                notebook_path = (notebook_root or settings.state_root / "notebooks") / f"{notebook_id}.ipynb"
                 notebook_bytes = materialize_notebook(notebook_state, notebook_path)
                 artifact_uri = put_artifact(
                     settings.state_root / "artifacts" / "sha256", notebook_bytes

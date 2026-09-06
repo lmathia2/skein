@@ -66,6 +66,7 @@ class PythonExecutionResult:
     output_truncated: bool = False
     state_count: int = 0
     state_delta: tuple[str, ...] = ()
+    state_manifest: tuple[dict[str, Any], ...] = ()
 
 
 class _BoundedText(io.TextIOBase):
@@ -339,6 +340,7 @@ def _execute_cell(
             "output_truncated": stdout.truncated or stderr.truncated,
             "state_count": len(manifest),
             "state_delta": sorted(touched_names),
+            "state_manifest": manifest[:64],
         }
     except BaseException as error:
         return {
@@ -529,6 +531,7 @@ class PersistentPythonWorker:
                         output_truncated=bool(response.get("output_truncated", False)),
                         state_count=int(response.get("state_count", 0)),
                         state_delta=tuple(str(name) for name in response.get("state_delta", ())),
+                        state_manifest=tuple(response.get("state_manifest", ())),
                     )
             except (EOFError, BrokenPipeError, OSError) as error:
                 self._discard()

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -16,6 +17,7 @@ from urllib.parse import unquote, urlsplit
 
 from harness.approvals import ApprovalRequest, ApprovalStore
 from harness.environment import LocalWorkspaceEnvironment, WorkspaceEnvironment
+from harness.environment.runtime import LocalRepositoryRuntime
 from harness.models import ToolEnvelope
 from harness.repo import FffSearchService, SearchBackend, SearchError, SearchPage
 from harness.safety import ApprovalAction, ApprovalPolicy, SecretRedactor
@@ -163,16 +165,32 @@ class _ArtifactResolver:
 
         raise ValueError("unsupported artifact URI scheme")
 
-    def read(self, uri: str, *, offset: int, limit: int) -> dict[str, Any]:
+    def read(
+        self, uri: str, *, offset: int, limit: int,
+        max_source_bytes: int = _MAX_ARTIFACT_BYTES, deadline: float | None = None,
+    ) -> dict[str, Any]:
         if offset < 1:
             raise ValueError("offset must be at least 1")
         if limit < 1 or limit > 400:
             raise ValueError("limit must be between 1 and 400 lines")
         target, expected_digest = self._target(uri)
-        with target.open("rb") as stream:
-            content = stream.read(_MAX_ARTIFACT_BYTES + 1)
-        if len(content) > _MAX_ARTIFACT_BYTES:
+        maximum = min(max_source_bytes, _MAX_ARTIFACT_BYTES)
+        if maximum < 1 or target.stat().st_size > maximum:
             raise ValueError("artifact exceeds the managed read byte limit")
+        chunks: list[bytes] = []
+        size = 0
+        with target.open("rb") as stream:
+            while True:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError("artifact read deadline exceeded")
+                chunk = stream.read(min(65_536, maximum + 1 - size))
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > maximum:
+                    raise ValueError("artifact exceeds the managed read byte limit")
+                chunks.append(chunk)
+        content = b"".join(chunks)
         size = len(content)
         actual_digest = hashlib.sha256(content).hexdigest()
         if actual_digest != expected_digest:
@@ -204,6 +222,8 @@ class _ArtifactResolver:
             selected_bytes,
             bounded.omitted_bytes,
         )
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError("artifact rendering deadline exceeded")
         return {
             "status": "ok",
             "model_text": f"{header}\n\n{bounded.text}",
@@ -509,6 +529,8 @@ class _ManagedTools:
         timeout_seconds: int = 120,
         *,
         task_scope: str | None = None,
+        invocation_id: str | None = None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         if not 1 <= timeout_seconds <= self.bash_max_timeout_seconds:
             raise ValueError(
@@ -577,13 +599,19 @@ class _ManagedTools:
                 "approval_request_id": request_id,
                 "risk": decision.risk.value,
             }
-        return self._redact(
-            self.sandbox.execute(
+        def execute() -> dict[str, Any]:
+            return self._redact(self.sandbox.execute(
                 SandboxRequest(
                     command=command,
                     timeout_seconds=timeout_seconds,
                 )
-            ).to_tool_result()
+            ).to_tool_result())
+
+        if operation_id is None:
+            return execute()
+        return self._mutate(
+            "bash", {"command": command, "timeout_seconds": timeout_seconds}, execute,
+            task_scope=task_scope, invocation_id=invocation_id, operation_id=operation_id,
         )
 
     def _mutate(
@@ -594,19 +622,35 @@ class _ManagedTools:
         *,
         task_scope: str | None = None,
         invocation_id: str | None = None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         active_scope = task_scope or self.task_scope
         arguments_hash = _canonical_hash(tool_name, arguments)
-        tool_call_id = arguments_hash[:32]
-        receipt = self.receipts.begin(
-            task_id=active_scope,
-            invocation_id=invocation_id or "content-addressed",
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            arguments_hash=arguments_hash,
-            side_effect_key=arguments_hash,
+        tool_call_id = (
+            hashlib.sha256(f"{invocation_id}\0{operation_id}".encode()).hexdigest()
+            if operation_id is not None else arguments_hash[:32]
         )
+        try:
+            receipt = self.receipts.begin(
+                task_id=active_scope,
+                invocation_id=invocation_id or "content-addressed",
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                arguments_hash=arguments_hash,
+                side_effect_key=tool_call_id if operation_id is not None else arguments_hash,
+                claim=operation_id is not None,
+                workspace_before=(
+                    LocalRepositoryRuntime(self.workspace).fingerprint()
+                    if operation_id is not None else None
+                ),
+            )
+        except RuntimeError as error:
+            return {"status": "blocked", "model_text": str(error),
+                    "reconciliation_required": True, "receipt_id": tool_call_id}
         if receipt.status == "completed":
+            if receipt.result_json is not None:
+                return {**json.loads(receipt.result_json), "replayed": True,
+                        "receipt_id": tool_call_id}
             return {
                 "status": "ok",
                 "model_text": f"{tool_name} already completed for this exact content",
@@ -633,6 +677,11 @@ class _ManagedTools:
             status="completed" if result.get("status") == "ok" else "failed",
             result_hash=result_hash,
             artifact_uri=result.get("artifact_uri"),
+            result_json=json.dumps(result, sort_keys=True, default=str),
+            workspace_after=(
+                LocalRepositoryRuntime(self.workspace).fingerprint()
+                if operation_id is not None else None
+            ),
         )
         result["receipt_id"] = tool_call_id
         if result.get("status") == "ok" and self.search_backend is not None:
@@ -651,6 +700,7 @@ class _ManagedTools:
         *,
         task_scope: str | None = None,
         invocation_id: str | None = None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         arguments = {
             "path": path,
@@ -673,6 +723,7 @@ class _ManagedTools:
             ),
             task_scope=task_scope,
             invocation_id=invocation_id,
+            operation_id=operation_id,
         )
 
     def write(
@@ -684,6 +735,7 @@ class _ManagedTools:
         *,
         task_scope: str | None = None,
         invocation_id: str | None = None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         arguments = {
             "path": path,
@@ -707,6 +759,7 @@ class _ManagedTools:
             ),
             task_scope=task_scope,
             invocation_id=invocation_id,
+            operation_id=operation_id,
         )
 
 

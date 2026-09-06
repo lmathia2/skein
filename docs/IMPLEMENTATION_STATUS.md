@@ -13,9 +13,20 @@ Optional semantic ranking is scope-filtered, canonically hydrated, and executed 
 a killable worker; an explicit versioned, spawn-compatible embedding provider is
 required. No model, index, or dependency is downloaded automatically.
 
-Factory integration, recovery, and executable experiment schedules are tracked in
-the context-program TODO section. Passing deterministic contracts is not a live
-quality or promotion claim.
+Recovery now uses real ADK invocation identities, durable operation and validation
+intents/results, publish-last integrity-bound checkpoints, preserved input budgets,
+and exclusive workspace ownership. The opt-in safe-auto path resumes the original
+ADK invocation without another user message; unknown effects, unavailable evidence,
+expired permissions/budgets, and workspace divergence remain explicit blockers.
+Six real subprocess cases include verified successful continuation and safe refusal
+for incomplete or unsafe cases. This is same-machine, initialized-Git recovery, not
+a workspace restore service or exactly-once arbitrary shell execution.
+
+Owned prior-run recall and explicit other-session source selection are separate from
+optional conversation notebook continuity. Only existing safe self-contained cells
+restore; definitions, imports, dependent computations, and capabilities are not
+silently replayed. Notebook metadata records source-task watermarks and attribution.
+Passing deterministic contracts is not a live quality or promotion claim.
 
 ## Retained and verified
 
@@ -172,10 +183,10 @@ not a model-quality benchmark.
 
 Remaining limitations include the host-local trust boundary, single-process state
 ownership, experimental ADK APIs, and the still-complex server run controller.
-The live CPython heap and notebook recovery stream are still scoped to one server run,
-not a stable conversation identity. State metadata is available on demand but is not
-yet injected into ADK compaction handoffs, and provider-request capture has not yet
-proven bounded growth across hundreds of PTC cells.
+The default CPython heap/notebook remains run-scoped; the opt-in conversation mode
+restores only approved replay-safe data across owned runs. The live heap remains
+disposable. Provider-request capture across hundreds of PTC cells and live quality
+comparisons remain empirical work, not implied by deterministic continuity tests.
 Notebook-native PTC supports trusted local workspaces. Its source guard
 blocks direct imports, file/process/network primitives, dunder traversal, and common
 introspection bypasses, but it is not a security sandbox. Production or adversarial
