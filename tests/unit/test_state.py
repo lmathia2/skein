@@ -19,6 +19,7 @@ from harness.state import (
     register_action,
     register_action_batch,
     route_for_progress,
+    verification_fingerprint,
 )
 
 
@@ -186,3 +187,32 @@ def test_action_batches_detect_loops_across_replans() -> None:
             assert ledger.no_progress_count == 2
 
     assert route_for_progress(ledger) == ProgressRoute.NEEDS_INPUT
+
+
+def test_verification_fingerprint_ignores_volatile_fields() -> None:
+    report = {
+        "passed": False,
+        "validations": [{
+            "category": "test",
+            "command": "pytest -q",
+            "required": True,
+            "strength": "behavioral",
+            "status": "error",
+            "exit_code": 1,
+            "summary": "1 failed",
+            "duration_ms": 100,
+            "artifact_uri": "artifact://first",
+        }],
+        "tests_failed": 1,
+    }
+    changed = {
+        **report,
+        "validations": [{**report["validations"][0], "duration_ms": 200, "artifact_uri": "artifact://second"}],
+    }
+    different = {
+        **report,
+        "validations": [{**report["validations"][0], "exit_code": 2}],
+    }
+
+    assert verification_fingerprint(report) == verification_fingerprint(changed)
+    assert verification_fingerprint(report) != verification_fingerprint(different)

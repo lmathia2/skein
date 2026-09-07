@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any
 
@@ -29,6 +30,46 @@ def action_fingerprint(
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def verification_fingerprint(report: Mapping[str, Any]) -> str:
+    """Fingerprint semantic verification evidence, excluding volatile metadata."""
+
+    validations = report.get("validations", [])
+    stable_validations = []
+    if isinstance(validations, list):
+        for validation in validations:
+            if not isinstance(validation, Mapping):
+                continue
+            stable_validations.append(
+                {
+                    key: validation.get(key)
+                    for key in ("category", "command", "required", "strength", "status", "exit_code", "summary")
+                }
+            )
+    criteria = report.get("criteria", [])
+    stable_criteria = []
+    if isinstance(criteria, list):
+        for criterion in criteria:
+            if isinstance(criterion, Mapping):
+                stable_criteria.append(
+                    {key: criterion.get(key) for key in ("criterion", "satisfied")}
+                )
+    return action_fingerprint(
+        "verification",
+        {
+            "passed": report.get("passed"),
+            "commands_run": report.get("commands_run", []),
+            "validations": stable_validations,
+            "criteria": stable_criteria,
+            "tests_passed": report.get("tests_passed", 0),
+            "tests_failed": report.get("tests_failed", 0),
+            "scope_violations": report.get("scope_violations", []),
+            "unresolved_diagnostics": report.get("unresolved_diagnostics", []),
+            "required_strength": report.get("required_strength"),
+            "achieved_strength": report.get("achieved_strength"),
+        },
+    )
 
 
 def register_action(

@@ -9,6 +9,7 @@ from .progress import (
     register_action,
     register_action_batch,
     route_for_progress,
+    verification_fingerprint,
 )
 from .receipts import ToolReceipt, ToolReceiptStore
 from .steering import (
@@ -41,4 +42,5 @@ __all__ = [
     "register_action",
     "register_action_batch",
     "route_for_progress",
+    "verification_fingerprint",
 ]

@@ -46,6 +46,7 @@ from harness.state import (
     ToolReceiptStore,
     rebuild_ledger,
     register_action_batch,
+    verification_fingerprint,
 )
 from harness.state.recovery import validate_recovery_evidence
 from harness.telemetry import MetricsStore, TaskOutcomeSample
@@ -799,12 +800,29 @@ async def _verification_transition(
         idempotency_key=f"verify:{ledger.iteration}",
     )
     if not report["passed"]:
+        ledger = register_action_batch(
+            ledger,
+            [verification_fingerprint(report)],
+            history_limit=deps.progress_history_limit,
+        )
+        repeated_verification = ledger.no_progress_count >= deps.progress_replan_threshold
+        blocked_on_verification = ledger.no_progress_count >= deps.progress_human_threshold
         previous = ledger
+        blockers = list(ledger.blockers)
+        if blocked_on_verification:
+            blockers.append(
+                "Verification repeated without meaningful progress; human review is required"
+            )
         ledger = TaskLedger.model_validate({
             **ledger.model_dump(mode="python"),
-            "phase": "implement",
-            "status": "active",
-            "next_action": report.get("recommended_next_action"),
+            "phase": "blocked" if blocked_on_verification else ("plan" if repeated_verification else "implement"),
+            "status": "needs_input" if blocked_on_verification else "active",
+            "blockers": list(dict.fromkeys(blockers)),
+            "next_action": (
+                "Reassess the current evidence and choose a materially different approach"
+                if repeated_verification and not blocked_on_verification
+                else report.get("recommended_next_action")
+            ),
         })
         deps.event_store.append(
             ledger.task_id,
@@ -820,7 +838,12 @@ async def _verification_transition(
             compaction_id=compaction_id,
             invocation_id=ctx.get_invocation_context().invocation_id,
         )
-        return _VerificationTransition(ledger=ledger)
+        result = (
+            _blocked_result(deps, ledger=ledger, started=started)
+            if blocked_on_verification
+            else None
+        )
+        return _VerificationTransition(ledger=ledger, result=result)
 
     pending_steering = (
         deps.steering_enabled

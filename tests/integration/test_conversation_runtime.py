@@ -310,6 +310,27 @@ async def test_answer_after_write_is_withheld_and_forces_verification(tmp_path, 
 
 
 @pytest.mark.asyncio
+async def test_repeated_identical_verification_failure_blocks_without_unbounded_loop(
+    tmp_path, monkeypatch
+) -> None:
+    model = ScriptedModel(model="fixture")
+    model._responses = [reply("done", "Implemented") for _ in range(6)]
+
+    events, _, calls = await run_fixture(
+        tmp_path,
+        model,
+        "Implement the requested feature",
+        monkeypatch=monkeypatch,
+        max_iterations=10,
+    )
+
+    result = next(e.value for e in events if e.name == "coding.workflow.output")
+    assert result["status"] == "blocked"
+    assert model._calls == 3
+    assert len(calls) == 3
+
+
+@pytest.mark.asyncio
 async def test_two_turns_keep_adk_history_but_reset_task_budgets_and_skills(tmp_path) -> None:
     from harness.persistence import build_service_bundle, settings_from_composition
     from harness.server.registry import SqliteRunEventStore
