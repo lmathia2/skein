@@ -802,6 +802,7 @@ def build_coding_worker(
         static_instruction=settings.static_instruction,
         instruction="",
         tools=model_tools,
+        include_contents="default" if active_ptc_config.enabled else "none",
         output_schema=(
             StructuredAgentStep
             if getattr(getattr(model, "capabilities", None), "output_schema_and_tools", False)

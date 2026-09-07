@@ -113,6 +113,8 @@ def test_factory_exposes_only_python_when_notebook_ptc_is_enabled(tmp_path: Path
         getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.tools
     }
     assert tool_names == {"python"}
+    assert worker.include_contents == "default"
+    assert "include_contents" in worker.model_fields_set
     assert assembly.build_info.tool_names == ("python",)
     assert "never parse notebook JSON" in worker.static_instruction
     assert "Batch related bounded operations in one cell" in worker.static_instruction
@@ -145,6 +147,8 @@ def test_default_factory_keeps_main_four_tool_path_without_canonical_memory(
             for tool in worker.tools
         }
         assert tool_names == {"read", "bash", "edit", "write"}
+        assert worker.include_contents == "none"
+        assert "include_contents" in worker.model_fields_set
         assert not (state / "ledger.duckdb").exists()
         assert not (state / "ledger.jsonl").exists()
     finally:
