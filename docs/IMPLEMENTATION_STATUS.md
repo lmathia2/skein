@@ -97,6 +97,11 @@ Passing deterministic contracts is not a live quality or promotion claim.
   every expected canonical event byte-for-byte, not only counts. The live task-event
   reader proves byte-equal reconstruction when canonical memory is enabled; otherwise
   task replay, recent context, and compaction retain the main JSONL path.
+  DuckDB synchronously maintains per-task/source/kind/status counts and a stream
+  watermark/hash in the append transaction. Unfiltered `events.count` and
+  `failures.by_kind` reads use that projection without loading event payloads into
+  Python; temporal, searched, filtered, and cross-ledger reads retain the exact
+  bounded event path. Projections rebuild deterministically from `ledger_events`.
 - Versioned deterministic memory programs provide model history, task progress,
   open/unknown-effect execution, time, query-relevant task memory, and dream/failure
   views. P0-P3 prompt manifests account for source view IDs and stable hashes. A

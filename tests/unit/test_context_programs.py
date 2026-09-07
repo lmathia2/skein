@@ -141,6 +141,20 @@ def test_duckdb_context_backend_equality(tmp_path: Path):
     assert a == b
 
 
+def test_duckdb_count_projection_tracks_appends_restart_and_erasure(tmp_path: Path):
+    path = tmp_path / "ledger.duckdb"
+    store = DuckDbLedgerStore(path)
+    seed(store, 3)
+    store.append(task_id="task", source="context", source_id="failed",
+                 kind="action.recorded", status="failed")
+    runtime = MemoryProgramRuntime(DuckDbLedgerStore(path), authorized_tasks=("task",), reuse=True)
+    assert runtime.compute(ViewRequest(task_id="task", program="events.count")).data["count"] == 4
+    failures = runtime.compute(ViewRequest(task_id="task", program="failures.by_kind"))
+    assert failures.data["by_kind"] == {"action.recorded": 1}
+    store.erase_task("task")
+    assert store.event_counts("task") == (0, "", [])
+
+
 def test_oversized_exact_event_is_recoverable_in_utf8_ranges(tmp_path: Path):
     from harness.ledger.models import canonical_json
     from harness.memory.context import project

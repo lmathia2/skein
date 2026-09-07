@@ -444,6 +444,13 @@ tools, thresholds, and budgets otherwise fixed. Include evidence present only
 before compaction and beyond inline output truncation; grade source IDs/bytes and
 the final workspace independently.
 
+DuckDB additionally maintains the measured hot full-set aggregates
+`events.count` and `failures.by_kind` transactionally with their source watermark
+and stream hash. These programs use the projection only for unfiltered current-state
+queries; temporal, searched, filtered, and cross-ledger requests scan bounded canonical
+evidence. The projection is disposable and deterministically rebuilt from
+`ledger_events`, which remains authoritative.
+
 Gate: deterministic/exposure tests pass; live retrieval recovers required evidence
 and meets the common promotion criteria. Keep linear scans while latency fits the
 declared budget. DuckDB is not a prerequisite.

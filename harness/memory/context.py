@@ -16,7 +16,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from harness.ledger import JsonlLedgerStore, LedgerEvent, LedgerStore
-from harness.ledger.models import canonical_json
+from harness.ledger.models import canonical_json, extend_event_hash
 from harness.safety.redaction import SecretRedactor
 
 from .lance import LanceMemorySearch
@@ -194,6 +194,31 @@ def compute_context(
         except (ValueError, KeyError, TypeError):
             return result({"reason": "invalid cursor"}, "unavailable")
     try:
+        from harness.ledger.store import DuckDbLedgerStore
+
+        if (
+            isinstance(ledger, DuckDbLedgerStore)
+            and request.program in {"events.count", "failures.by_kind"}
+            and not source_ledgers and len(tasks) == 1 and request.watermark is None
+            and request.recorded_before is None and request.as_of is None
+            and request.observed_after is None and not request.query
+            and request.retrieval == "keyword" and not request.kinds and not request.statuses
+        ):
+            watermark, stream_hash, groups = ledger.event_counts(tasks[0])
+            manifest[tasks[0]] = {"watermark": watermark, "hash": stream_hash}
+            visible_groups = [row for row in groups if row[1] in _FIELDS or (
+                row[0] == "tool_receipt" and row[1] in {"tool.read", "tool.bash", "tool.edit", "tool.write", "tool.python"}
+            )]
+            if request.program == "failures.by_kind":
+                visible_groups = [row for row in visible_groups if row[2] in {"failed", "timeout", "blocked"}]
+            counts = dict(sorted((kind, sum(count for _, candidate, _, count in visible_groups if candidate == kind))
+                                 for kind in {row[1] for row in visible_groups}))
+            statuses = dict(sorted((status, sum(count for _, _, candidate, count in visible_groups if candidate == status))
+                                   for status in {row[2] for row in visible_groups}))
+            data = {"count": sum(counts.values()), "by_kind": counts, "by_status": statuses,
+                    "complete": True, "evidence_manifest_hash": _hash([counts, statuses])}
+            execution_hash = _hash({"parameters": parameters, "sources": manifest, "program": program_hash})
+            return result(data)
         if source_ledgers:
             events = []
             scan_budget = [request.max_scan_events]
@@ -216,9 +241,10 @@ def compute_context(
             if previous:
                 boundary = int(previous["manifest"][task]["watermark"])
             retained = [event for event in source if event.sequence <= boundary]
-            manifest[task] = {"watermark": boundary, "hash": _hash([
-                (event.event_id, event.payload_hash) for event in retained
-            ])}
+            stream_hash = ""
+            for event in retained:
+                stream_hash = extend_event_hash(stream_hash, event.event_id, event.payload_hash)
+            manifest[task] = {"watermark": boundary, "hash": stream_hash}
             if previous and manifest[task] != previous["manifest"][task]:
                 return result({"reason": "snapshot evidence changed or was erased"}, "unavailable")
             for event in retained:
@@ -258,7 +284,7 @@ def compute_context(
             counts = dict(sorted(Counter(row["kind"] for row in visible).items()))
             statuses = dict(sorted(Counter(row["status"] for row in visible).items()))
             data = {"count": len(visible), "by_kind": counts, "by_status": statuses, "complete": not ranked_partial,
-                    "evidence_manifest_hash": _hash([row["event_id"] for row in visible])}
+                    "evidence_manifest_hash": _hash([counts, statuses])}
             if len(canonical_json(data).encode()) > request.max_bytes:
                 return result({"reason": "aggregate output exceeds budget", "complete": False}, "partial")
             return result(data, "partial" if ranked_partial else "ok")

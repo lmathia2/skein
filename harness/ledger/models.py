@@ -19,6 +19,11 @@ def canonical_json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def extend_event_hash(previous: str, event_id: str, payload_hash: str) -> str:
+    """Append one event identity to a deterministic stream hash."""
+    return hashlib.sha256(canonical_json([previous, event_id, payload_hash]).encode()).hexdigest()
+
+
 class LedgerEvent(BaseModel):
     """One immutable fact; projections are always derived from these rows."""
 

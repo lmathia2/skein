@@ -11,7 +11,7 @@ from typing import Any
 
 import duckdb
 
-from .models import EffectStatus, EventStatus, LedgerEvent, canonical_json
+from .models import EffectStatus, EventStatus, LedgerEvent, canonical_json, extend_event_hash
 
 _LOCK_REGISTRY_GUARD = threading.Lock()
 _LOCKS: dict[Path, threading.RLock] = {}
@@ -55,9 +55,56 @@ class DuckDbLedgerStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS ledger_task_kind ON ledger_events(task_id, kind, sequence)"
             )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS ledger_event_counts (
+                    task_id VARCHAR NOT NULL, source VARCHAR NOT NULL, kind VARCHAR NOT NULL,
+                    status VARCHAR NOT NULL, count BIGINT NOT NULL,
+                    PRIMARY KEY(task_id, source, kind, status)
+                )"""
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS ledger_stream_heads (
+                    task_id VARCHAR PRIMARY KEY, watermark BIGINT NOT NULL, stream_hash VARCHAR NOT NULL
+                )"""
+            )
+            count = connection.execute("SELECT COUNT(*) FROM ledger_events").fetchone()[0]
+            projected = connection.execute("SELECT COALESCE(SUM(count), 0) FROM ledger_event_counts").fetchone()[0]
+            if count != projected:
+                self._rebuild_aggregates(connection)
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
         return duckdb.connect(str(self.database))
+
+    @staticmethod
+    def _rebuild_aggregates(connection: duckdb.DuckDBPyConnection) -> None:
+        connection.execute("DELETE FROM ledger_event_counts")
+        connection.execute("DELETE FROM ledger_stream_heads")
+        rows = connection.execute(
+            "SELECT task_id, sequence, event_id, payload_hash FROM ledger_events ORDER BY task_id, sequence"
+        ).fetchall()
+        heads: dict[str, tuple[int, str]] = {}
+        for task_id, sequence, event_id, payload_hash in rows:
+            heads[task_id] = (sequence, extend_event_hash(heads.get(task_id, (0, ""))[1], event_id, payload_hash))
+        connection.execute(
+            """INSERT INTO ledger_event_counts
+               SELECT task_id, source, kind, status, COUNT(*) FROM ledger_events
+               GROUP BY task_id, source, kind, status"""
+        )
+        if heads:
+            connection.executemany("INSERT INTO ledger_stream_heads VALUES (?, ?, ?)",
+                                   [(task, *head) for task, head in heads.items()])
+
+    def event_counts(self, task_id: str) -> tuple[int, str, list[tuple[str, str, str, int]]]:
+        """Return the incrementally maintained complete aggregate at its watermark."""
+        with self._connect() as connection:
+            head = connection.execute(
+                "SELECT watermark, stream_hash FROM ledger_stream_heads WHERE task_id=?", [task_id]
+            ).fetchone()
+            rows = connection.execute(
+                """SELECT source, kind, status, count FROM ledger_event_counts
+                   WHERE task_id=? ORDER BY source, kind, status""", [task_id]
+            ).fetchall()
+        return (int(head[0]), str(head[1]), [(str(a), str(b), str(c), int(d)) for a, b, c, d in rows]) if head else (0, "", [])
 
     @staticmethod
     def _from_row(row: tuple[Any, ...]) -> LedgerEvent:
@@ -162,6 +209,23 @@ class DuckDbLedgerStore:
                         event.idempotency_key,
                     ],
                 )
+                connection.execute(
+                    """INSERT INTO ledger_event_counts VALUES (?, ?, ?, ?, 1)
+                       ON CONFLICT (task_id, source, kind, status)
+                       DO UPDATE SET count=ledger_event_counts.count + 1""",
+                    [task_id, source, kind, status],
+                )
+                previous_head = connection.execute(
+                    "SELECT stream_hash FROM ledger_stream_heads WHERE task_id=?", [task_id]
+                ).fetchone()
+                stream_hash = extend_event_hash(str(previous_head[0]) if previous_head else "",
+                                                event.event_id, event.payload_hash)
+                connection.execute(
+                    """INSERT INTO ledger_stream_heads VALUES (?, ?, ?)
+                       ON CONFLICT (task_id) DO UPDATE SET
+                       watermark=excluded.watermark, stream_hash=excluded.stream_hash""",
+                    [task_id, sequence, stream_hash],
+                )
                 connection.execute("COMMIT")
                 return event
             except BaseException:
@@ -225,6 +289,8 @@ class DuckDbLedgerStore:
                 ).fetchone()
                 assert row is not None
                 connection.execute("DELETE FROM ledger_events WHERE task_id=?", [task_id])
+                connection.execute("DELETE FROM ledger_event_counts WHERE task_id=?", [task_id])
+                connection.execute("DELETE FROM ledger_stream_heads WHERE task_id=?", [task_id])
                 connection.execute("COMMIT")
                 connection.execute("CHECKPOINT")
             except BaseException:
