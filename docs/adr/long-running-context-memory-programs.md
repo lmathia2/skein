@@ -217,6 +217,116 @@ actual provider prefix bytes remain stable within an execution profile. Safety,
 redaction, verification, and effect checks have no ablation bypass. Configuration
 does not upgrade the trusted-local adapter into a production sandbox.
 
+## Operational model: ledger, programs, projections, and notebook
+
+The simplest model is one immutable history with several disposable ways to read it:
+
+```text
+observed action or message
+          |
+          v
+canonical ledger event  <-------------------------------+
+          |                                               |
+          +--> deterministic reducer --> current state    |
+          +--> context program -------> bounded view      |
+          +--> incremental projection -> fast aggregate  |
+          +--> notebook reducer ------> .ipynb workbench  |
+                                                          |
+all projections, views, caches, and notebooks rebuild ----+
+```
+
+The **canonical ledger** answers “what happened?” It stores immutable, ordered facts
+from harness events, tool receipts, traces, approvals, checkpoints, steering, ADK
+sessions, and metrics in one common envelope. JSONL and DuckDB are physical backends
+for that contract. During cutover, older per-task JSONL and SQLite stores remain
+operational compatibility projections; they are not additional historical authority.
+
+A **projection** answers a narrower question derived from ledger evidence. Examples
+include current task state, the latest working note, counts grouped by kind/status,
+and the notebook document. A projection may be stored for speed, but it is not new
+evidence. It declares the ledger watermark through which it is current and can be
+discarded and rebuilt. If its watermark/hash disagrees with the ledger, the projection
+is stale or corrupt and cannot silently answer the request.
+
+For example, a completed Bash call may yield canonical events for request, start,
+receipt, and verification. `events.count@1` does not copy those records into memory.
+It returns a bounded result such as:
+
+```json
+{
+  "count": 4,
+  "by_kind": {"tool.bash": 2, "verification.completed": 1, "action.recorded": 1},
+  "by_status": {"completed": 3, "started": 1},
+  "complete": true
+}
+```
+
+The result also carries the program identity, parameters, source scope, ledger
+watermark/hash, output hash, and completeness outside this abbreviated example.
+The model requests the logical program (`memory query --program events.count`); it
+does not discover tables or choose SQL. The harness selects the physical execution
+path while preserving the same `ViewResult` contract.
+
+### Program versions and result reuse
+
+Program storage and result caching are different:
+
+| Item | Identity and storage | Reuse rule |
+| --- | --- | --- |
+| Checked-in Python program | Name/version plus source, contract, dependency, and exposure-policy hash | Re-execute only the reviewed dispatch entry for the requested version. |
+| Cataloged SQL program | Exact SQL bytes plus name/version and candidate/shadow/active state | Only an active reviewed version can serve retrieval; execution occurs in a bounded isolated DuckDB worker. |
+| Deterministic result | Program hash, canonical parameters, authorized scope, source manifest/watermark, and result bytes | May be reused only when every identity component matches and the source evidence remains available. |
+| Model-generated summary | Source-view hash plus prompt/model/settings versions and the recorded output | Optional explicit cache; always advisory, and invalidated by changed or erased evidence. |
+
+The implementation currently recomputes ordinary Python and SQL views rather than
+persisting a general result cache. Only evidence-bound summaries have an explicit
+result cache. This is intentional: cheap deterministic computations need no cache,
+and a general cache would add invalidation machinery without a measured benefit.
+When a deterministic view is materialized later, its cache key must include program,
+execution, source-manifest, and exposure identities; matching a program name alone is
+never sufficient.
+
+### Incremental computations
+
+An incremental projection moves repeated work from read time to append time:
+
+```text
+append event in one transaction
+  1. insert canonical event
+  2. increment affected aggregate row
+  3. advance projection watermark and stream hash
+  4. commit all or neither
+```
+
+DuckDB currently does this for per-task/source/kind/status counts. Unfiltered
+current-state `events.count@1` and `failures.by_kind@1` read those aggregate rows
+without loading every payload into Python. Temporal, keyword, filtered,
+cross-ledger, and historical-watermark requests still execute against bounded
+canonical evidence because the count projection does not encode those dimensions.
+Startup rebuilds the projection from `ledger_events` when its event count disagrees;
+task erasure removes the corresponding aggregate and stream head transactionally.
+
+Do not incrementally maintain every possible query. Add one projection only after a
+measured repeated query justifies its write amplification and recovery contract.
+The canonical events remain sufficient to reproduce and verify every projection.
+
+### Notebook role
+
+The notebook is the durable PTC session document, not the database and not the live
+Python heap. Its reducer turns ledger-backed task/message/steering/compaction events
+into Markdown cells and PTC lifecycle events into exact code cells with selected
+outputs, attempt IDs, kernel epochs, artifact references, status, and source
+watermarks. Materialization at the same watermark must produce the same bytes.
+
+An agent may prototype a useful memory computation in a notebook cell. That cell is
+recorded as evidence, but it does not become trusted procedural memory automatically.
+Repeated value can justify promoting it into a reviewed, typed, versioned Python
+function or SQL catalog entry. Conversely, a registered program may return a compact
+view that the agent uses inside the notebook without copying the complete ledger into
+the model context. On restart, the notebook is rebuilt; only explicitly classified
+replay-safe data cells may restore heap values, and effectful cells are never rerun
+merely to reconstruct memory.
+
 ## Context-program contract
 
 Extend `ViewRequest`, `ViewResult`, and `MemoryProgramRuntime`. Initially a
