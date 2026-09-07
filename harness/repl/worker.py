@@ -197,6 +197,29 @@ class _RemoteOperation:
 
 
 _RESERVED_NAMES = frozenset({"agent"})
+_AGENT_HELP = {
+    "fs.read": "agent.fs.read(path, offset=1, limit=400)",
+    "fs.write": (
+        "agent.fs.write(path, content, expected_sha256=None, expected_absent=False)"
+    ),
+    "fs.edit": "agent.fs.edit(path, old_text, new_text, expected_sha256=None)",
+    "shell.run": "agent.shell.run(command, timeout_seconds=120)",
+    "mcp.call": "agent.mcp.call(capability, arguments)",
+    "state.list": "agent.state.list()",
+    "state.describe": "agent.state.describe(name)",
+}
+
+
+def _agent_help(prefix: str | None = None) -> dict[str, str]:
+    """Return bounded, deterministic capability signatures."""
+
+    if prefix is not None and not isinstance(prefix, str):
+        raise TypeError("help prefix must be a string or None")
+    return {
+        name: signature
+        for name, signature in _AGENT_HELP.items()
+        if prefix is None or name.startswith(prefix)
+    }
 
 
 def _binding_description(
@@ -260,6 +283,7 @@ def _agent_proxy(
     metadata: Mapping[str, Mapping[str, str]],
 ) -> SimpleNamespace:
     return SimpleNamespace(
+        help=_agent_help,
         fs=SimpleNamespace(
             read=_RemoteOperation(connection, "fs.read"),
             write=_RemoteOperation(connection, "fs.write"),

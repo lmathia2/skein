@@ -79,6 +79,17 @@ result = agent.shell.run("git status --short", timeout_seconds=7)
     assert [name for name, _ in broker.calls] == ["read", "write", "edit", "bash"]
 
 
+def test_worker_exposes_bounded_capability_help() -> None:
+    with PersistentPythonWorker() as worker:
+        all_help = worker.execute("agent.help()", _Broker(), 5)
+        read_help = worker.execute("agent.help('fs.read')", _Broker(), 5)
+
+    assert all_help.status == "ok"
+    assert "agent.fs.read(path, offset=1, limit=400)" in (all_help.value_repr or "")
+    assert "agent.shell.run(command, timeout_seconds=120)" in (all_help.value_repr or "")
+    assert read_help.value_repr == "{'fs.read': 'agent.fs.read(path, offset=1, limit=400)'}"
+
+
 def test_worker_returns_mime_bundle_as_rich_display() -> None:
     with PersistentPythonWorker() as worker:
         result = worker.execute('{"image/png": b"png-bytes", "text/plain": "plot"}', _Broker(), 5)
