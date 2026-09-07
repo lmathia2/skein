@@ -50,6 +50,17 @@ def test_classifier_uses_highest_risk_shell_segment() -> None:
     assert classify_command("cd /tmp && pytest -q", workspace=workspace) == CommandRisk.UNKNOWN
 
 
+def test_classifier_rejects_shell_and_git_bypass_forms() -> None:
+    assert classify_command("git -C . push origin main") == CommandRisk.PUBLISH_OR_DEPLOY
+    assert classify_command("ls & curl https://example.com") == CommandRisk.NETWORK_ACCESS
+    assert classify_command("echo $(curl https://example.com)") == CommandRisk.UNKNOWN
+    assert classify_command("find . -exec rm -rf {} +") == CommandRisk.UNKNOWN
+    assert classify_command("find .. -delete") == CommandRisk.UNKNOWN
+    assert classify_command("cat ../../etc/passwd") == CommandRisk.UNKNOWN
+    assert classify_command("npx package command") == CommandRisk.DEPENDENCY_INSTALL
+    assert classify_command("npx --no-install eslint .") == CommandRisk.BUILD_OR_TEST
+
+
 def test_policy_requires_approval_and_never_auto_allows_destructive() -> None:
     policy = ApprovalPolicy()
     assert policy.decide("pytest").action == ApprovalAction.ALLOW

@@ -126,8 +126,9 @@ _DESTRUCTIVE_PATTERNS = (
     re.compile(r"(?:^|\s)git\s+clean\s+-[A-Za-z]*f"),
     re.compile(r"(?:^|\s)git\s+push\s+.*(?:--force|-f)(?:\s|$)"),
 )
-_SHELL_SPLIT = re.compile(r"\s*(?:&&|\|\||;|\n)\s*")
+_SHELL_SPLIT = re.compile(r"\s*(?:&&|\|\||;|\n|(?<![>&])&(?![>&]))\s*")
 _HOST_ROOT_READ = re.compile(r"(?:^|\s)(?:du|find|ls)\s+/(?:\s|$)")
+_SHELL_SUBSTITUTION = re.compile(r"\$\(|`|[<>]\(")
 
 
 def _tokens(segment: str) -> list[str]:
@@ -138,9 +139,21 @@ def _tokens(segment: str) -> list[str]:
 
 
 def _git_risk(tokens: list[str]) -> CommandRisk:
-    if len(tokens) < 2:
+    index = 1
+    options_with_values = {
+        "-C",
+        "-c",
+        "--config-env",
+        "--git-dir",
+        "--namespace",
+        "--work-tree",
+    }
+    while index < len(tokens) and tokens[index].startswith("-"):
+        option = tokens[index].split("=", 1)[0]
+        index += 2 if option in options_with_values and "=" not in tokens[index] else 1
+    if index >= len(tokens):
         return CommandRisk.READ_ONLY
-    subcommand = tokens[1]
+    subcommand = tokens[index]
     if subcommand in {
         "add",
         "am",
@@ -173,6 +186,12 @@ def _package_risk(tokens: list[str]) -> CommandRisk:
         return CommandRisk.UNKNOWN
     command = tokens[0].rsplit("/", 1)[-1]
     args = set(tokens[1:])
+    if command == "npx":
+        return (
+            CommandRisk.BUILD_OR_TEST
+            if "--no-install" in args
+            else CommandRisk.DEPENDENCY_INSTALL
+        )
     if command == "uv":
         if args & {"add", "remove", "sync", "pip"}:
             return CommandRisk.DEPENDENCY_INSTALL
@@ -239,6 +258,8 @@ def classify_command(command: str, *, workspace: Path | None = None) -> CommandR
             return CommandRisk.DESTRUCTIVE
     if _HOST_ROOT_READ.search(normalized):
         return CommandRisk.UNKNOWN
+    if _SHELL_SUBSTITUTION.search(normalized):
+        return CommandRisk.UNKNOWN
 
     risks: list[CommandRisk] = []
     for segment in _SHELL_SPLIT.split(normalized):
@@ -270,14 +291,29 @@ def classify_command(command: str, *, workspace: Path | None = None) -> CommandR
                 else:
                     risks.append(CommandRisk.WORKSPACE_MUTATION)
             elif executable in _BUILD_COMMANDS:
-                risks.append(CommandRisk.BUILD_OR_TEST)
+                risks.append(
+                    CommandRisk.DEPENDENCY_INSTALL
+                    if executable == "npx" and "--no-install" not in tokens[1:]
+                    else CommandRisk.BUILD_OR_TEST
+                )
             elif executable in _SAFE_READ_COMMANDS:
-                risks.append(CommandRisk.READ_ONLY)
+                if executable == "find" and {
+                    "-delete",
+                    "-exec",
+                    "-execdir",
+                    "-ok",
+                    "-okdir",
+                } & set(tokens[1:]) or any(
+                    ".." in Path(token).parts for token in tokens[1:]
+                ):
+                    risks.append(CommandRisk.UNKNOWN)
+                else:
+                    risks.append(CommandRisk.READ_ONLY)
             elif executable in {"gcloud", "kubectl", "terraform", "helm", "docker"}:
                 if any(word in _PUBLISH_WORDS for word in tokens[1:]):
                     risks.append(CommandRisk.PUBLISH_OR_DEPLOY)
                 else:
-                    risks.append(CommandRisk.REQUIRE_APPROVAL if False else CommandRisk.UNKNOWN)
+                    risks.append(CommandRisk.UNKNOWN)
             else:
                 risks.append(CommandRisk.UNKNOWN)
 

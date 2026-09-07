@@ -132,5 +132,5 @@ def test_previously_used_approval_stops_authorizing_after_expiry(
     assert tools.bash(command, task_scope="task")["status"] == "ok"
     monkeypatch.setattr(ApprovalStore, "_now", lambda self: now + timedelta(seconds=120))
     expired = tools.bash(command, task_scope="task")
-    assert expired["status"] == "blocked" and not expired["approval_required"]
-    assert "expired" in expired["model_text"]
+    assert expired["status"] == "blocked" and expired["approval_required"]
+    assert expired["approval_request_id"] != request.request_id

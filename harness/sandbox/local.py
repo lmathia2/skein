@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import resource
+import signal
 import subprocess
 import sys
 import time
@@ -95,43 +96,36 @@ class LocalSandbox:
             )
         )
         try:
-            completed = subprocess.run(
+            process = subprocess.Popen(
                 request.command,
                 cwd=self.workspace,
                 shell=True,
                 executable="/bin/bash",
-                check=False,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout,
                 env=environment,
+                start_new_session=True,
                 preexec_fn=lambda: _limit_resources(
                     max_memory_bytes=self.max_memory_bytes,
                     max_processes=self.max_processes,
                     max_file_bytes=self.max_file_bytes,
                 ),
             )
+            stdout, stderr = process.communicate(timeout=timeout)
             return bounded_result(
-                status="ok" if completed.returncode == 0 else "error",
-                exit_code=completed.returncode,
-                stdout=completed.stdout,
-                stderr=completed.stderr,
+                status="ok" if process.returncode == 0 else "error",
+                exit_code=process.returncode,
+                stdout=stdout,
+                stderr=stderr,
                 duration_ms=int((time.monotonic() - started) * 1_000),
                 artifact_root=self.artifact_root,
                 max_bytes=self.max_output_bytes,
                 known_secrets=known_secrets,
             )
-        except subprocess.TimeoutExpired as exc:
-            stdout = (
-                exc.stdout.decode(errors="replace")
-                if isinstance(exc.stdout, bytes)
-                else (exc.stdout or "")
-            )
-            stderr = (
-                exc.stderr.decode(errors="replace")
-                if isinstance(exc.stderr, bytes)
-                else (exc.stderr or "")
-            )
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate()
             return bounded_result(
                 status="timeout",
                 exit_code=124,

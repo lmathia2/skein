@@ -104,7 +104,7 @@ class ManagedValidationExecutor:
         policy = self.policy
         if persisted and persisted.status == "approved":
             policy = replace(policy, approved_fingerprints=policy.approved_fingerprints | {fingerprint})
-        elif persisted and persisted.status in {"denied", "expired"}:
+        elif persisted and persisted.status == "denied":
             return self._blocked(
                 validation,
                 risk=CommandRisk(persisted.risk),

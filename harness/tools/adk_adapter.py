@@ -562,7 +562,7 @@ class _ManagedTools:
             policy = replace(
                 policy, approved_fingerprints=policy.approved_fingerprints | {fingerprint}
             )
-        elif persisted and persisted.status in {"denied", "expired"}:
+        elif persisted and persisted.status == "denied":
             return {
                 "status": "blocked",
                 "model_text": self.redactor.redact_text(

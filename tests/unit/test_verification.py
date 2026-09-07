@@ -45,7 +45,9 @@ def test_validation_does_not_cache_an_expired_approval(tmp_path: Path, monkeypat
     assert executor(validation).passed
     monkeypatch.setattr(ApprovalStore, "_now", lambda self: now + timedelta(seconds=120))
     expired = executor(validation)
-    assert expired.status == "blocked" and "expired" in expired.stderr
+    assert expired.status == "blocked"
+    assert expired.approval_request_id != request.request_id
+    assert "requires explicit approval" in expired.stderr
     assert len(sandbox.requests) == 1
     assert executor.policy.approved_fingerprints == set()
 

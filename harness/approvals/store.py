@@ -85,6 +85,7 @@ class ApprovalStore:
         reason: str,
         expires_at: str | None = None,
     ) -> ApprovalRequest:
+        self.expire_due()
         candidate = ApprovalRequest(
             task_id=task_id,
             fingerprint=fingerprint,
@@ -95,6 +96,18 @@ class ApprovalStore:
             requested_at=self._now().isoformat(),
         )
         with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE approval_requests
+                SET request_id=:request_id, operation=:operation, risk=:risk,
+                    reason=:reason, status='pending', requested_at=:requested_at,
+                    decided_at=NULL, decided_by=NULL, decision_note=NULL,
+                    expires_at=:expires_at
+                WHERE task_id=:task_id AND fingerprint=:fingerprint
+                    AND status='expired'
+                """,
+                candidate.model_dump(mode="python"),
+            )
             connection.execute(
                 """
                 INSERT OR IGNORE INTO approval_requests (
