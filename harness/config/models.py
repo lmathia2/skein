@@ -223,7 +223,7 @@ class ContextConfig(FrozenModel):
     window_management: bool = False
     reconstruction: Literal["handoff_tail", "fresh"] = "handoff_tail"
     work_packet_tokens: int = Field(default=20_000, ge=2_000, le=256_000)
-    max_task_input_tokens: int = Field(default=200_000, ge=8_000, le=20_000_000)
+    max_task_input_tokens: int = Field(default=200_000, ge=8_000, le=1_000_000_000)
     recent_event_limit: int = Field(default=12, ge=1, le=100)
     project_instruction_bytes: int = Field(default=16_000, ge=0, le=1_000_000)
     skill_context_bytes: int = Field(default=24_000, ge=0, le=1_000_000)

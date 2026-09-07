@@ -58,7 +58,9 @@ class EvaluationRunRequest(BaseModel):
     config_template: Path = DEFAULT_COMPOSITION_PATH
     client_version: str | None = None
     max_iterations: int | None = Field(default=None, ge=1, le=1_000)
-    max_task_input_tokens: int | None = Field(default=None, ge=8_000, le=20_000_000)
+    max_task_input_tokens: int | None = Field(
+        default=None, ge=8_000, le=1_000_000_000
+    )
     max_output_tokens: int | None = Field(default=None, ge=256, le=131_072)
     wall_time_seconds: float = Field(default=1_800, gt=0, le=86_400)
     trust_project: bool = False

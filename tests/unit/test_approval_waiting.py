@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,7 +15,7 @@ from harness.approvals import ApprovalStore
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import RuntimeBindings, load_harness_composition
 from harness.sandbox import SandboxResult
-from harness.state import JsonlEventStore, ToolReceiptStore
+from harness.state import JsonlEventStore
 from harness.tools.adk_adapter import create_adk_tools
 from harness.verification import (
     CommandResult,
@@ -144,29 +143,21 @@ async def test_verification_uses_same_wait_and_never_blocks_the_event_loop(tmp_p
 
 
 @pytest.mark.asyncio
-async def test_verification_reruns_targeted_model_test_once_per_workspace(
+async def test_verification_runs_targeted_test_once_per_workspace(
     tmp_path, monkeypatch
 ) -> None:
     state = tmp_path / "state"
     command = "pytest tests/test_solver.py"
-    receipts = ToolReceiptStore(state / "managed-tools.db")
-    receipt = receipts.begin(
-        task_id="task",
-        invocation_id="worker",
-        tool_call_id="test-call",
-        tool_name="bash",
-        arguments_hash="hash",
-        arguments_json=json.dumps({"command": command}),
-    )
-    receipts.finish(
-        task_id="task",
-        tool_call_id=receipt.tool_call_id,
-        status="completed",
-    )
     monkeypatch.setattr(
         "app.agent.workflow.discover_validation_plan",
         lambda *args, **kwargs: ValidationPlan(
             commands=[
+                ValidationCommand(
+                    category="test",
+                    command=command,
+                    source="adjacent test",
+                    targeted=True,
+                ),
                 ValidationCommand(
                     category="diff", command="git diff --check", source="git"
                 )

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import shlex
 import time
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
@@ -440,51 +439,6 @@ async def _verify_task(
                 strength="behavioral",
             )
         )
-    existing_commands = {command.command for command in plan.commands}
-    diff_index = next(
-        (
-            index
-            for index, command in enumerate(plan.commands)
-            if command.category == "diff"
-        ),
-        len(plan.commands),
-    )
-    for receipt in ToolReceiptStore(
-        getattr(deps.settings, "state_root", deps.settings.workspace / "state")
-        / "managed-tools.db"
-    ).for_task(ledger.task_id):
-        if receipt.tool_name != "bash" or not receipt.arguments_json:
-            continue
-        try:
-            command = str(json.loads(receipt.arguments_json)["command"])
-            words = shlex.split(command.lower())
-        except (KeyError, TypeError, ValueError):
-            continue
-        test_runners = {"pytest", "unittest", "vitest", "jest", "mocha"}
-        is_test = bool(test_runners.intersection(words)) or (
-            "test" in words
-            and any(
-                word in {"npm", "pnpm", "yarn", "cargo", "go"} for word in words
-            )
-        )
-        targets_test = any(
-            (word != "test" and "test" in word and word not in test_runners)
-            or any(path.lower() in word for path in plan.changed_paths)
-            for word in words
-        )
-        if not is_test or not targets_test or command in existing_commands:
-            continue
-        plan.commands.insert(
-            diff_index,
-            ValidationCommand(
-                category="test",
-                command=command,
-                source="model-requested targeted test",
-                targeted=True,
-            ),
-        )
-        diff_index += 1
-        existing_commands.add(command)
     evidence_map: dict[str, list[str]] = {
         claim["criterion"]: list(claim.get("evidence", [])) for claim in claims
     }
@@ -607,6 +561,15 @@ async def _ensure_validation_baseline(
     executor = deps.validation_executor(task_id)
     initial_workspace = _workspace_fingerprint(deps, task_id)
     for index, command in enumerate(commands):
+        deps.event_store.append(
+            task_id,
+            "validation.baseline_requested",
+            {
+                "command": command.command,
+                "workspace_fingerprint": initial_workspace,
+            },
+            idempotency_key=f"validation-baseline:{index}:requested",
+        )
         result = enforce_test_count(
             command,
             await run_managed_thread(executor, command),

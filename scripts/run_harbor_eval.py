@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -221,6 +222,16 @@ def execute(
         except ProcessLookupError:
             pass
         return 124, True
+    except BaseException:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        raise
 
 
 def cached_task(task: dict[str, Any]) -> Path:
@@ -261,7 +272,7 @@ def run_command(
         "--agent-kwarg",
         "max_iterations=24",
         "--agent-kwarg",
-        "max_task_input_tokens=20000000",
+        "max_task_input_tokens=1000000000",
         "--agent-kwarg",
         "wall_time_seconds=5400",
         "--n-concurrent",

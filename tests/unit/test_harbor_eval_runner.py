@@ -63,6 +63,7 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
     ]
     assert "harness.evals.harbor:SkeinPierAgent" in command
     assert command[command.index("--model") + 1] == "openai/gpt-5.5"
+    assert "max_task_input_tokens=1000000000" in command
     assert str(ROOT) in runner.pier_environment({})["PYTHONPATH"].split(":")
 
 

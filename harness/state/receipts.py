@@ -73,8 +73,6 @@ class ToolReceiptStore:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(tool_receipts)")}
             if "result_json" not in columns:
                 connection.execute("ALTER TABLE tool_receipts ADD COLUMN result_json TEXT")
-            if "arguments_json" not in columns:
-                connection.execute("ALTER TABLE tool_receipts ADD COLUMN arguments_json TEXT")
             for column in ("workspace_before", "workspace_after"):
                 if column not in columns:
                     connection.execute(f"ALTER TABLE tool_receipts ADD COLUMN {column} TEXT")
@@ -106,7 +104,6 @@ class ToolReceiptStore:
         tool_call_id: str,
         tool_name: str,
         arguments_hash: str,
-        arguments_json: str | None = None,
         side_effect_key: str | None = None,
         claim: bool = False,
         workspace_before: str | None = None,
@@ -118,9 +115,8 @@ class ToolReceiptStore:
                     """
                     INSERT INTO tool_receipts(
                         task_id, invocation_id, tool_call_id, tool_name,
-                        arguments_hash, arguments_json, status, side_effect_key,
-                        started_at, workspace_before
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'started', ?, ?, ?)
+                        arguments_hash, status, side_effect_key, started_at, workspace_before
+                    ) VALUES (?, ?, ?, ?, ?, 'started', ?, ?, ?)
                     """,
                     (
                         task_id,
@@ -128,7 +124,6 @@ class ToolReceiptStore:
                         tool_call_id,
                         tool_name,
                         arguments_hash,
-                        arguments_json,
                         side_effect_key,
                         now,
                         workspace_before,
