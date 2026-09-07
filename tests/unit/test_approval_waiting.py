@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,8 +16,14 @@ from harness.approvals import ApprovalStore
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import RuntimeBindings, load_harness_composition
 from harness.sandbox import SandboxResult
+from harness.state import JsonlEventStore, ToolReceiptStore
 from harness.tools.adk_adapter import create_adk_tools
-from harness.verification import ManagedValidationExecutor, ValidationCommand, ValidationPlan
+from harness.verification import (
+    CommandResult,
+    ManagedValidationExecutor,
+    ValidationCommand,
+    ValidationPlan,
+)
 
 
 async def pending(waiter: ApprovalWaiter, task: asyncio.Task | None = None) -> dict:
@@ -112,7 +119,6 @@ async def test_verification_uses_same_wait_and_never_blocks_the_event_loop(tmp_p
         changed_paths=lambda base: ["test.py"],
         fingerprint=lambda: "fixture-workspace",
     )
-    from harness.state import JsonlEventStore
     deps = SimpleNamespace(settings=SimpleNamespace(workspace=tmp_path), repository=repository, approvals=waiter,
                            workspace_manager=None, event_store=JsonlEventStore(state / "events"),
                            validation_executor=lambda task: executor)
@@ -135,3 +141,92 @@ async def test_verification_uses_same_wait_and_never_blocks_the_event_loop(tmp_p
         release.set()
         running.cancel()
         await asyncio.gather(running, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_verification_reruns_targeted_model_test_once_per_workspace(
+    tmp_path, monkeypatch
+) -> None:
+    state = tmp_path / "state"
+    command = "pytest tests/test_solver.py"
+    receipts = ToolReceiptStore(state / "managed-tools.db")
+    receipt = receipts.begin(
+        task_id="task",
+        invocation_id="worker",
+        tool_call_id="test-call",
+        tool_name="bash",
+        arguments_hash="hash",
+        arguments_json=json.dumps({"command": command}),
+    )
+    receipts.finish(
+        task_id="task",
+        tool_call_id=receipt.tool_call_id,
+        status="completed",
+    )
+    monkeypatch.setattr(
+        "app.agent.workflow.discover_validation_plan",
+        lambda *args, **kwargs: ValidationPlan(
+            commands=[
+                ValidationCommand(
+                    category="diff", command="git diff --check", source="git"
+                )
+            ],
+            changed_paths=["solver.py"],
+        ),
+    )
+    calls: list[str] = []
+
+    def execute(validation: ValidationCommand) -> CommandResult:
+        calls.append(validation.command)
+        return CommandResult(
+            category=validation.category,
+            command=validation.command,
+            exit_code=0,
+            stdout="1 passed" if validation.category == "test" else "",
+        )
+
+    deps = SimpleNamespace(
+        settings=SimpleNamespace(workspace=tmp_path, state_root=state),
+        repository=SimpleNamespace(
+            manifest=lambda: SimpleNamespace(),
+            changed_paths=lambda base: ["solver.py"],
+            fingerprint=lambda: "unchanged-workspace",
+        ),
+        approvals=None,
+        workspace_manager=None,
+        event_store=JsonlEventStore(state / "events"),
+        validation_executor=lambda task: execute,
+    )
+    ctx = SimpleNamespace(
+        get_invocation_context=lambda: SimpleNamespace(invocation_id="verify")
+    )
+    request = {"goal": "fix solver", "mode": "coding"}
+
+    results = []
+    for iteration in (1, 2):
+        results.append(
+            await _verify_task(
+                deps,
+                ctx,
+                {
+                    "request": request,
+                    "ledger": {
+                        "task_id": "task",
+                        "goal": "fix solver",
+                        "acceptance_criteria": ["solver works"],
+                        "base_revision": "base",
+                        "workspace_id": "workspace",
+                        "iteration": iteration,
+                    },
+                },
+            )
+        )
+
+    assert all(result["report"]["passed"] for result in results)
+    assert calls == [command, "git diff --check"]
+    completed = [
+        event
+        for event in deps.event_store.read("task")
+        if event.kind == "execution.validation_completed"
+    ]
+    assert [event.payload["cached"] for event in completed] == [False, False, True, True]

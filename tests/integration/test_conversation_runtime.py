@@ -326,8 +326,8 @@ async def test_repeated_identical_verification_failure_blocks_without_unbounded_
 
     result = next(e.value for e in events if e.name == "coding.workflow.output")
     assert result["status"] == "blocked"
-    assert model._calls == 3
-    assert len(calls) == 3
+    assert model._calls == 2
+    assert len(calls) == 2
 
 
 @pytest.mark.asyncio

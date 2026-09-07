@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, Protocol
 
+from harness.models.task import ValidationResult
 from harness.models.verification import (
     CriterionEvidence,
     EvidenceReference,
@@ -69,6 +70,45 @@ def _diagnostic(result: CommandResult) -> str:
     return f"{result.category} failed: {result.command}\n{body}".strip()
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_FAILURE_PATTERNS = (
+    re.compile(r"^FAILED\s+([^\s]+)", re.MULTILINE),
+    re.compile(r"^\s*FAIL\s+([^\n]+?)(?:\s+\[|$)", re.MULTILINE),
+    re.compile(r"^\s*--- FAIL:\s+(\S+)", re.MULTILINE),
+    re.compile(r"^test\s+(\S+)\s+\.\.\.\s+FAILED", re.MULTILINE),
+    re.compile(r"^\s*\d+\)\s+([^\n]+)", re.MULTILINE),
+)
+
+
+def failure_identifiers(result: CommandResult) -> list[str]:
+    """Extract stable failing-test identities from common test runners."""
+
+    text = _ANSI_ESCAPE.sub("", f"{result.stdout}\n{result.stderr}")
+    return sorted(
+        {
+            " ".join(match.group(1).strip().split())
+            for pattern in _FAILURE_PATTERNS
+            for match in pattern.finditer(text)
+            if match.group(1).strip()
+        }
+    )
+
+
+def passes_recorded_baseline(
+    result: CommandResult,
+    baseline: CommandResult | None,
+) -> bool:
+    """Accept the same known failing tests as no-regression evidence only."""
+
+    if baseline is None or baseline.passed:
+        return False
+    current_failures = set(failure_identifiers(result))
+    return bool(
+        current_failures
+        and current_failures <= set(failure_identifiers(baseline))
+    )
+
+
 _STRENGTH_ORDER = {"none": -1, "syntax": 0, "static": 1, "behavioral": 2}
 _EXECUTABLE_SUFFIXES = {
     ".c", ".cc", ".cpp", ".cs", ".go", ".java", ".js", ".jsx", ".kt",
@@ -122,14 +162,39 @@ def build_report(
     criterion_evidence: Mapping[str, list[str]] | None = None,
     changed_paths: list[str] | None = None,
     required_strength: VerificationStrength | Literal["auto"] = "auto",
+    baseline_results: Mapping[str, CommandResult] | None = None,
 ) -> VerificationReport:
     evidence_map = criterion_evidence or {}
     changed = changed_paths or []
     required = _required_strength(changed, required_strength)
+    baselines = baseline_results or {}
+    effective: list[CommandResult] = []
+    new_failures: set[str] = set()
+    fixed_failures: set[str] = set()
+    baseline_relative_commands: list[str] = []
+    for result in results:
+        baseline = baselines.get(result.command)
+        current_failures = set(failure_identifiers(result))
+        baseline_failures = set(failure_identifiers(baseline)) if baseline else set()
+        new_failures.update(current_failures - baseline_failures)
+        fixed_failures.update(baseline_failures - current_failures)
+        baseline_relative = passes_recorded_baseline(result, baseline)
+        if baseline_relative:
+            baseline_relative_commands.append(result.command)
+        effective.append(
+            result.model_copy(update={"status": "ok", "exit_code": 0})
+            if baseline_relative
+            else result
+        )
     required_commands_passed = all(
-        result.passed for result in results if result.required
+        result.passed for result in effective if result.required
     )
-    verified_references, achieved = _verified_references(results, required)
+    evidence_results = [
+        result
+        for result in effective
+        if result.command not in baseline_relative_commands
+    ]
+    verified_references, achieved = _verified_references(evidence_results, required)
     strength_satisfied = _STRENGTH_ORDER[achieved] >= _STRENGTH_ORDER[required]
     criteria_rows = [
         CriterionEvidence(
@@ -153,7 +218,11 @@ def build_report(
         )
         for criterion in criteria
     ]
-    diagnostics = [_diagnostic(result) for result in results if not result.passed]
+    diagnostics = [
+        _diagnostic(result)
+        for result, accepted in zip(results, effective, strict=True)
+        if not accepted.passed
+    ]
     if not strength_satisfied:
         diagnostics.append(
             f"completion requires {required} verification; strongest successful "
@@ -185,6 +254,24 @@ def build_report(
         scope_violations=scope_violations,
         unresolved_diagnostics=diagnostics,
         changed_paths=changed,
+        validations=[
+            ValidationResult(
+                command=result.command,
+                exit_code=result.exit_code,
+                passed=accepted.passed,
+                summary=(
+                    "passed relative to recorded baseline"
+                    if result.command in baseline_relative_commands
+                    else "passed" if accepted.passed else "failed"
+                ),
+                duration_ms=result.duration_ms,
+                artifact_uri=result.artifact_uri,
+            )
+            for result, accepted in zip(results, effective, strict=True)
+        ],
+        new_failures=sorted(new_failures),
+        fixed_failures=sorted(fixed_failures),
+        baseline_relative_commands=baseline_relative_commands,
         required_strength=required,
         achieved_strength=achieved,
         recommended_next_action=next_action,
@@ -200,6 +287,7 @@ def run_validation_plan(
     executor: CommandExecutor,
     stop_on_failure: bool = True,
     required_strength: VerificationStrength | Literal["auto"] = "auto",
+    baseline_results: Mapping[str, CommandResult] | None = None,
 ) -> tuple[VerificationReport, list[CommandResult]]:
     results: list[CommandResult] = []
     for command in plan.commands:
@@ -211,7 +299,12 @@ def run_validation_plan(
             }
         )
         results.append(result)
-        if stop_on_failure and command.required and not result.passed:
+        if (
+            stop_on_failure
+            and command.required
+            and not result.passed
+            and not passes_recorded_baseline(result, (baseline_results or {}).get(command.command))
+        ):
             break
     violations = check_scope(
         plan.changed_paths,
@@ -226,6 +319,7 @@ def run_validation_plan(
             criterion_evidence=criterion_evidence,
             changed_paths=plan.changed_paths,
             required_strength=required_strength,
+            baseline_results=baseline_results,
         ),
         results,
     )

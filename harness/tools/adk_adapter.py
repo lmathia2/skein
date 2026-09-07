@@ -637,6 +637,9 @@ class _ManagedTools:
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
                 arguments_hash=arguments_hash,
+                arguments_json=json.dumps(
+                    self._redact(arguments), sort_keys=True, default=str
+                ),
                 side_effect_key=tool_call_id if operation_id is not None else arguments_hash,
                 claim=operation_id is not None,
                 workspace_before=(

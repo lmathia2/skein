@@ -119,7 +119,12 @@ Passing deterministic contracts is not a live quality or promotion claim.
 - Deterministic completion verification sharing the configured sandbox and
   task-scoped approvals. Coding tasks preserve the full request as their default
   criterion and receive one durable, task-agnostic counterexample pass before
-  verification after workspace changes or mutation-capable tool use.
+  verification after workspace changes or mutation-capable tool use. Repository
+  test failures are recorded before coding so later runs can prove no regression
+  without treating a broken baseline as proof of requested behavior. Targeted test
+  commands already exercised by the worker are rerun by deterministic verification;
+  unchanged validation results are reused from trace evidence, and two identical
+  failures on an unchanged workspace stop autonomous retry.
 - Local task events, SQLite checkpoints/steering/metrics/run registry,
   SQLite or in-memory ADK sessions, and local or in-memory artifacts.
 - WebSocket/AG-UI transport, replay, steering, cancellation, and Pi-toolkit terminal.

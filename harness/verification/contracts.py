@@ -81,6 +81,7 @@ class CommandResult(BaseModel):
     command: str
     source: str = ""
     required: bool = True
+    targeted: bool = False
     strength: VerificationStrength = "static"
     status: ValidationStatus = "ok"
     exit_code: int | None = None

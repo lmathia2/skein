@@ -44,6 +44,7 @@ from harness.evals.runner import (
     run_evaluation_sync,
     write_evaluation_result,
 )
+from harness.models.task import TaskRequest
 from harness.repo import RepositoryManifest, repository_manifest_from_snapshot
 from harness.sandbox import CommandSandbox, SandboxRequest, SandboxResult
 from harness.sandbox.output import bounded_result, environment_secret_values
@@ -447,7 +448,7 @@ class SkeinPierAgent(BaseAgent):
             state_root=state_root,
             auth_state_root=self.auth_state_root,
             task_id=task_id,
-            prompt=instruction,
+            prompt=TaskRequest(goal=instruction, mode="coding").model_dump_json(),
             provider=self._skein_provider,
             model=self.model_name or "gpt-5.6-luna",
             reasoning=self._skein_reasoning,

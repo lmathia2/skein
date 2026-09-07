@@ -340,6 +340,56 @@ def test_successful_behavioral_check_binds_typed_evidence(tmp_path: Path) -> Non
     assert "arbitrary prose" not in reference.model_dump_json()
 
 
+def test_baseline_failure_proves_no_regression_but_not_requested_behavior(
+    tmp_path: Path,
+) -> None:
+    broad = ValidationCommand(
+        category="test",
+        command="pytest -q",
+        source="repository test configuration",
+    )
+    targeted = ValidationCommand(
+        category="test",
+        command="pytest -q tests/test_solver.py",
+        source="adjacent test",
+        targeted=True,
+    )
+    baseline = CommandResult(
+        category="test",
+        command=broad.command,
+        exit_code=1,
+        stderr="FAILED tests/test_legacy.py::test_legacy - AssertionError",
+    )
+
+    no_regression, _ = run_validation_plan(
+        tmp_path,
+        ValidationPlan(changed_paths=["solver.py"], commands=[broad]),
+        acceptance_criteria=["Solver works"],
+        executor=lambda command: baseline,
+        baseline_results={broad.command: baseline},
+    )
+    with_target, _ = run_validation_plan(
+        tmp_path,
+        ValidationPlan(changed_paths=["solver.py"], commands=[broad, targeted]),
+        acceptance_criteria=["Solver works"],
+        executor=lambda command: (
+            baseline
+            if command.command == broad.command
+            else CommandResult(
+                category="test", command=command.command, exit_code=0, stdout="1 passed"
+            )
+        ),
+        baseline_results={broad.command: baseline},
+    )
+
+    assert not no_regression.passed
+    assert no_regression.baseline_relative_commands == [broad.command]
+    assert no_regression.new_failures == []
+    assert no_regression.achieved_strength == "none"
+    assert with_target.passed
+    assert with_target.achieved_strength == "behavioral"
+
+
 def test_environmental_evidence_does_not_require_model_completion_prose(
     tmp_path: Path,
 ) -> None:

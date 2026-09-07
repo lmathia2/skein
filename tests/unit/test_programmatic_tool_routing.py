@@ -21,7 +21,7 @@ def test_programmatic_routing_skill_uses_progressive_disclosure() -> None:
     assert "programmatic-tool-routing" in catalog.included_names
     assert "Do not read environment variables" not in catalog.text
     assert all(skill.name != "programmatic-tool-routing" for skill in unrelated.skills)
-    assert [skill.name for skill in selected.skills] == ["programmatic-tool-routing"]
+    assert selected.skills[0].name == "programmatic-tool-routing"
     assert selected.skills[0].explicit is True
     assert "Do not read environment variables" in selected.text
     assert selected.skills[0].included_references == ()

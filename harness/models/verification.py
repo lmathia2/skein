@@ -40,6 +40,9 @@ class VerificationReport(StrictModel):
     scope_violations: list[str] = Field(default_factory=list)
     unresolved_diagnostics: list[str] = Field(default_factory=list)
     changed_paths: list[str] = Field(default_factory=list)
+    new_failures: list[str] = Field(default_factory=list)
+    fixed_failures: list[str] = Field(default_factory=list)
+    baseline_relative_commands: list[str] = Field(default_factory=list)
     required_strength: Literal["syntax", "static", "behavioral"] = "static"
     achieved_strength: Literal["none", "syntax", "static", "behavioral"] = "none"
     recommended_next_action: str | None = None

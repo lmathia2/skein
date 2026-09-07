@@ -95,6 +95,7 @@ class LocalSandbox:
                 }
             )
         )
+        process: subprocess.Popen[str] | None = None
         try:
             process = subprocess.Popen(
                 request.command,
@@ -124,6 +125,7 @@ class LocalSandbox:
                 known_secrets=known_secrets,
             )
         except subprocess.TimeoutExpired:
+            assert process is not None
             os.killpg(process.pid, signal.SIGKILL)
             stdout, stderr = process.communicate()
             return bounded_result(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import shlex
 import time
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
@@ -58,6 +59,7 @@ from harness.verification import (
     check_scope,
     discover_validation_plan,
     enforce_test_count,
+    passes_recorded_baseline,
 )
 from harness.workspace import GitWorktreeManager
 
@@ -438,13 +440,67 @@ async def _verify_task(
                 strength="behavioral",
             )
         )
+    existing_commands = {command.command for command in plan.commands}
+    diff_index = next(
+        (
+            index
+            for index, command in enumerate(plan.commands)
+            if command.category == "diff"
+        ),
+        len(plan.commands),
+    )
+    for receipt in ToolReceiptStore(
+        getattr(deps.settings, "state_root", deps.settings.workspace / "state")
+        / "managed-tools.db"
+    ).for_task(ledger.task_id):
+        if receipt.tool_name != "bash" or not receipt.arguments_json:
+            continue
+        try:
+            command = str(json.loads(receipt.arguments_json)["command"])
+            words = shlex.split(command.lower())
+        except (KeyError, TypeError, ValueError):
+            continue
+        test_runners = {"pytest", "unittest", "vitest", "jest", "mocha"}
+        is_test = bool(test_runners.intersection(words)) or (
+            "test" in words
+            and any(
+                word in {"npm", "pnpm", "yarn", "cargo", "go"} for word in words
+            )
+        )
+        targets_test = any(
+            (word != "test" and "test" in word and word not in test_runners)
+            or any(path.lower() in word for path in plan.changed_paths)
+            for word in words
+        )
+        if not is_test or not targets_test or command in existing_commands:
+            continue
+        plan.commands.insert(
+            diff_index,
+            ValidationCommand(
+                category="test",
+                command=command,
+                source="model-requested targeted test",
+                targeted=True,
+            ),
+        )
+        diff_index += 1
+        existing_commands.add(command)
     evidence_map: dict[str, list[str]] = {
         claim["criterion"]: list(claim.get("evidence", [])) for claim in claims
     }
     executor = deps.validation_executor(ledger.task_id)
+    baseline_results = {
+        str(event.payload["command"]): CommandResult.model_validate(
+            event.payload["result"]
+        )
+        for event in deps.event_store.read(ledger.task_id)
+        if event.kind == "validation.baseline" and event.payload.get("valid") is True
+    }
 
     async def execute_validation(command: ValidationCommand, operation_id: str) -> CommandResult:
         events = deps.event_store.read(ledger.task_id)
+        workspace_before = _workspace_fingerprint(deps, ledger.task_id)
+        command_sha256 = hashlib.sha256(command.command.encode()).hexdigest()
         prior = next((event for event in events if event.kind == "execution.validation_completed"
                       and event.payload.get("operation_id") == operation_id), None)
         if prior is not None:
@@ -454,13 +510,32 @@ async def _verify_task(
         if any(event.kind == "execution.validation_requested" and event.payload.get("operation_id") == operation_id
                for event in events):
             raise ValueError("interrupted validation requires reconciliation")
+        cached = next(
+            (
+                event
+                for event in reversed(events)
+                if event.kind == "execution.validation_completed"
+                and event.payload.get("command_sha256") == command_sha256
+                and event.payload.get("workspace_after") == workspace_before
+                and event.payload.get("result", {}).get("status") in {"ok", "error"}
+            ),
+            None,
+        )
         deps.event_store.append(ledger.task_id, "execution.validation_requested", {
             "operation_id": operation_id, "command": command.command,
+            "command_sha256": command_sha256, "workspace_before": workspace_before,
         }, idempotency_key=f"validation:{operation_id}:requested")
-        result = await run_managed_thread(executor, command)
+        result = (
+            CommandResult.model_validate(cached.payload["result"])
+            if cached is not None
+            else await run_managed_thread(executor, command)
+        )
         deps.event_store.append(ledger.task_id, "execution.validation_completed", {
             "operation_id": operation_id, "result": result.model_dump(mode="json"),
             "workspace_after": _workspace_fingerprint(deps, ledger.task_id),
+            "command_sha256": command_sha256,
+            "cached": cached is not None,
+            "source_operation_id": cached.payload.get("operation_id") if cached else None,
         }, idempotency_key=f"validation:{operation_id}:completed")
         return result
 
@@ -479,10 +554,20 @@ async def _verify_task(
                     }
                 )
         result = enforce_test_count(command, result).model_copy(
-            update={"required": command.required, "strength": command.effective_strength}
+            update={
+                "required": command.required,
+                "targeted": command.targeted,
+                "strength": command.effective_strength,
+            }
         )
         command_results.append(result)
-        if command.required and not result.passed:
+        if (
+            command.required
+            and not result.passed
+            and not passes_recorded_baseline(
+                result, baseline_results.get(command.command)
+            )
+        ):
             break
     report = build_report(
         criteria=ledger.acceptance_criteria,
@@ -495,12 +580,63 @@ async def _verify_task(
         criterion_evidence=evidence_map,
         required_strength=request.verification_level,
         changed_paths=plan.changed_paths,
+        baseline_results=baseline_results,
     )
     return {
         "report": report.model_dump(mode="json"),
         "commands": [result.model_dump(mode="json") for result in command_results],
         "changed_paths": modified,
+        "workspace_fingerprint": _workspace_fingerprint(deps, ledger.task_id),
     }
+
+
+async def _ensure_validation_baseline(
+    deps: SkeinWorkflowDependencies,
+    task_id: str,
+) -> None:
+    """Record repository test behavior before the coding worker mutates it."""
+
+    events = deps.event_store.read(task_id)
+    if any(event.kind == "validation.baseline.completed" for event in events):
+        return
+    commands = [
+        command
+        for command in discover_validation_plan(deps.repository.manifest(), []).commands
+        if command.category == "test"
+    ]
+    executor = deps.validation_executor(task_id)
+    initial_workspace = _workspace_fingerprint(deps, task_id)
+    for index, command in enumerate(commands):
+        result = enforce_test_count(
+            command,
+            await run_managed_thread(executor, command),
+        ).model_copy(
+            update={
+                "required": command.required,
+                "targeted": command.targeted,
+                "strength": command.effective_strength,
+            }
+        )
+        workspace_after = _workspace_fingerprint(deps, task_id)
+        deps.event_store.append(
+            task_id,
+            "validation.baseline",
+            {
+                "command": command.command,
+                "result": result.model_dump(mode="json"),
+                "workspace_fingerprint": initial_workspace,
+                "valid": workspace_after == initial_workspace,
+            },
+            idempotency_key=f"validation-baseline:{index}",
+        )
+        if workspace_after != initial_workspace:
+            break
+    deps.event_store.append(
+        task_id,
+        "validation.baseline.completed",
+        {"commands": len(commands), "workspace_fingerprint": initial_workspace},
+        idempotency_key="validation-baseline:completed",
+    )
 
 
 def _initialize_run(
@@ -800,29 +936,35 @@ async def _verification_transition(
         idempotency_key=f"verify:{ledger.iteration}",
     )
     if not report["passed"]:
-        ledger = register_action_batch(
-            ledger,
-            [verification_fingerprint(report)],
-            history_limit=deps.progress_history_limit,
+        fingerprint = verification_fingerprint(report)
+        workspace = verification.get("workspace_fingerprint") or _workspace_fingerprint(
+            deps, ledger.task_id
         )
-        repeated_verification = ledger.no_progress_count >= deps.progress_replan_threshold
-        blocked_on_verification = ledger.no_progress_count >= deps.progress_human_threshold
+        consecutive = 0
+        for event in reversed(deps.event_store.read(ledger.task_id)):
+            if event.kind != EventKind.VERIFICATION_COMPLETED:
+                continue
+            event_report = event.payload.get("report", {})
+            if (
+                event_report.get("passed")
+                or event.payload.get("workspace_fingerprint", workspace) != workspace
+                or verification_fingerprint(event_report) != fingerprint
+            ):
+                break
+            consecutive += 1
+        blocked_on_verification = consecutive >= 2
         previous = ledger
         blockers = list(ledger.blockers)
         if blocked_on_verification:
             blockers.append(
-                "Verification repeated without meaningful progress; human review is required"
+                "Verification failed twice on an unchanged workspace; autonomous retry stopped"
             )
         ledger = TaskLedger.model_validate({
             **ledger.model_dump(mode="python"),
-            "phase": "blocked" if blocked_on_verification else ("plan" if repeated_verification else "implement"),
+            "phase": "blocked" if blocked_on_verification else "implement",
             "status": "needs_input" if blocked_on_verification else "active",
             "blockers": list(dict.fromkeys(blockers)),
-            "next_action": (
-                "Reassess the current evidence and choose a materially different approach"
-                if repeated_verification and not blocked_on_verification
-                else report.get("recommended_next_action")
-            ),
+            "next_action": report.get("recommended_next_action"),
         })
         deps.event_store.append(
             ledger.task_id,
@@ -953,6 +1095,10 @@ async def _orchestrate_owned(
         yield Event()
     if skill_initialized:
         yield Event()
+
+    if request.mode == "coding" and ledger.iteration == 0:
+        await _ensure_validation_baseline(deps, task_id)
+        current_fingerprint = _workspace_fingerprint(deps, task_id)
 
     while ledger.iteration < max_iterations:
         leased = (

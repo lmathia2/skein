@@ -297,13 +297,13 @@ def classify_command(command: str, *, workspace: Path | None = None) -> CommandR
                     else CommandRisk.BUILD_OR_TEST
                 )
             elif executable in _SAFE_READ_COMMANDS:
-                if executable == "find" and {
+                if (executable == "find" and {
                     "-delete",
                     "-exec",
                     "-execdir",
                     "-ok",
                     "-okdir",
-                } & set(tokens[1:]) or any(
+                } & set(tokens[1:])) or any(
                     ".." in Path(token).parts for token in tokens[1:]
                 ):
                     risks.append(CommandRisk.UNKNOWN)
