@@ -1,6 +1,7 @@
 # Skein: review findings and trace-native cutover plan
 
-> Status: proposal, 2026-09-06. Reviewed at `main` @ `afcf3cd`.
+> Status: proposal, 2026-09-06. Reviewed at `main` @ `afcf3cd`; live PTC
+> execution update recorded 2026-09-07 through `48e2e3b`.
 > Targets: [trace-native harness ADR](adr/trace-native-harness.md),
 > [context and memory ADR](adr/context-and-memory.md),
 > [trace-native design](design/trace-native-repl-agent.md) tenets T1-T17.
@@ -45,6 +46,67 @@ committed:
    start the ~15,000-line cutover on the strength of this document.
 
 ## 2. Baseline health
+
+### 2.1 Live notebook-PTC execution update (2026-09-07)
+
+The corrected six-task four-tool run and the clean PTC+JSONL v4 run used the
+same `meta/muse-spark-1.3-contributor` provider defaults, task set, one attempt,
+zero retries, and sequential execution. The PTC run is at `e63c24f`; its raw
+artifacts are in
+`skein-muse-spark-1.3-contributor-deepswe-remaining-6-ptc-jsonl-v4-20260907`.
+
+| Measure | Four tools | PTC+JSONL v4 | Change |
+| --- | ---: | ---: | ---: |
+| Official rewards | 4/6 | 2/6 | -2 |
+| Model calls | 479 | 429 | -10.4% |
+| Model-visible tool calls | 533 | 442 | -17.1% |
+| Agent wall time | 5,180 s | 4,921 s | -5.0% |
+| Model latency | 3,108 s | 2,994 s | -3.7% |
+| Input tokens | 29.1M | 43.2M | +48.1% |
+| Uncached input tokens | 926k | 1.66M | +78.8% |
+| Output tokens | 305k | 301k | -1.2% |
+| Provider cost | $0.210 | $0.309 | +47.0% |
+
+PTC is operational: all six tasks completed their notebook lifecycle, nested
+capabilities shared the normal broker, failed cells did not dirty later epochs,
+notebooks snapshotted, and two tasks received full official reward. It also
+reduced aggregate calls. It does **not** pass the promotion gate: reward fell,
+input/cost rose, and no compaction occurred while per-task peak context reached
+81k-228k tokens. The four-tool profile therefore remains the default.
+
+The first PTC run exposed a separate harness defect that invalidated the old
+claim that trace persistence was always negligible. `LedgerBackedEventStore.read`
+repaired the complete operational JSONL stream into the canonical JSONL ledger
+on every notebook projection. Canonical append idempotency itself rescans JSONL,
+so the combined path was quadratic. Commit `e63c24f` repairs each task once and
+keeps subsequent appends dual-written. Matched late-cell measurements were:
+
+| Task | PTC v3 last-10 materialization | PTC v4 last-10 | Improvement |
+| --- | ---: | ---: | ---: |
+| kombu | 2,763 ms | 29.6 ms | 93x |
+| koota | 12,249 ms | 49.0 ms | 250x |
+| ofetch | 1,799 ms | 25.0 ms | 72x |
+
+Across all v4 tasks, final last-10 means were 20-49 ms and maxima were 26-107
+ms at 255-647 events. The notebook reducer, canonical encoding, atomic write,
+and fsync were not the bottleneck; making them asynchronous would retain the
+bad algorithm and weaken durability. One-time read repair is the root fix.
+
+There is no existing flag that directly reduces inner PTC model calls.
+`context.window_management` bounds reconstructed outer work packets; it does
+not compact the ADK tool-call history accumulated inside one worker invocation.
+PTC call reduction comes from composing already-known capability operations in
+one Python cell. Stronger prompt pressure reduced Wazero from 40 calls to 26 and
+32 in two repeats, but both repeats lost the same two regression tests and
+scored zero. That wording was backed off in `48e2e3b`; only exact result-shape
+guidance and the explicit `open()` prohibition remain.
+
+The next isolated treatment is PTC-only bounded inner history: retain recent
+exact Python call/response pairs, replace older selected output bodies with a
+deterministic ledger/notebook reference, and measure quality before enabling it.
+Do not enable the broad `context-ptc.yaml` bundle as a shortcut because it
+changes retrieval, notes, reconstruction, and windows together and cannot
+attribute a result.
 
 | Check | Result |
 | --- | --- |
@@ -173,8 +235,12 @@ continuity change is what then reduces output tokens and model calls.
 ### 3.4 Where per-call harness time goes (measured 2026-09-07)
 
 Question asked: can logging and writing be made async to speed the harness up?
-Answer: no measurable gain. The synchronous work that costs time is workspace
-fingerprinting, and under Harbor, container round trips.
+The original four-tool measurements below correctly show that individual event,
+receipt, and trace appends are not worth making asynchronous. The later PTC run
+found a different algorithmic problem in canonical read repair, documented in
+section 2.1; fixing that repeated full-stream work produced the material gain.
+The remaining synchronous cost in the four-tool path is workspace fingerprinting
+and, under Harbor, container round trips.
 
 Local profile on a 384-file clone of this repo (`create_adk_tools`, real
 receipts/traces/metrics stores, cProfile over ten `bash` calls):

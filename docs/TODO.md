@@ -49,7 +49,9 @@ does not satisfy the live empirical gates; default behavior remains unchanged.
 - [x] Add candidate, shadow, active, retired lifecycle enforcement for restricted relational memory programs.
 - [x] Add atomic deterministic Parquet sealing with hot-versus-sealed watermark equality; defer DuckLake until scale measurements justify it.
 - [x] Add explicit physical task erasure covering ledger rows, recognized operational SQLite rows, JSONL, notebooks, uniquely referenced artifacts, and manifested sealed segments.
-- [ ] Run the four-tool versus notebook-PTC quality, token, latency, and cache-hit ablation before changing the default.
+- [x] Run the four-tool versus notebook-PTC quality, token, latency, and cache-hit
+  ablation before changing the default; the six-task gate failed, so four tools
+  remain the default.
 - [x] Define notebook PTC's supported execution boundary as trusted local workspaces; production/adversarial isolation is an optional future deployment profile, not an activation gate.
 - [x] Add standalone executable notebooks for PTC state, cache-aware compaction, and versioned trace-memory programs.
 - [x] Project task, public message, steering, and compaction events into timestamped notebook Markdown cells.
