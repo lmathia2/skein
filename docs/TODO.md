@@ -79,6 +79,22 @@ does not satisfy the live empirical gates; default behavior remains unchanged.
 See `docs/design/trace-native-repl-agent.md` for tenets, contracts, phased gates,
 and the implementation/evaluation rubric.
 
+## PTC execution refinement
+
+- [x] Reconcile the PTC proposal with the Anthropic sources, reference runtimes,
+  and current Skein execution path; publish an actionable implementation plan.
+- [ ] Add machine-readable capability results and actual provider-payload checks.
+- [ ] Add executable phase-aware programming examples using the existing policy surface.
+- [ ] Add bounded brokered parallel reads and deadline/reconciliation checks.
+- [ ] Remove redundant verification/snapshot work without weakening evidence.
+- [ ] Freeze bounded context handoffs at explicit cache-stable epochs.
+- [ ] Validate the bundle on the same six DeepSWE tasks with Muse Spark 1.3 Contributor.
+
+See [PTC execution refinement](design/ptc-execution-refinement.md) for scope,
+implementation seams, deterministic checks, and the single bundled live screen.
+This replaces per-feature paid ablations for this proposal, not the safety or
+independent-completion contracts. Existing runtime defaults remain unchanged.
+
 ## Pi terminal experience
 
 - [x] Prove standalone Pi toolkit reuse with deterministic rendering fixtures.
