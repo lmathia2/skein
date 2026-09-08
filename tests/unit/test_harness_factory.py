@@ -39,6 +39,7 @@ from harness.ai.openrouter_responses import OpenRouterResponsesLlm
 from harness.config import (
     GenerationConfig,
     HarnessComposition,
+    NotebookPtcConfig,
     RuntimeBindings,
     SkeinConfig,
     load_harness_composition,
@@ -46,6 +47,7 @@ from harness.config import (
 )
 from harness.models.agent_step import StructuredAgentStep
 from harness.server import PROTOCOL_VERSION, ServerHello
+from harness.state import EventKind, JsonlEventStore
 from harness.tools.adk_adapter import AdkCodingTools
 
 
@@ -435,6 +437,58 @@ async def test_worker_rejects_cache_stable_request_prefix_mutation(tmp_path: Pat
 
     with pytest.raises(RuntimeError, match="cache-stable request prefix changed"):
         await callback(callback_context=cast(Any, None), llm_request=request)
+
+
+@pytest.mark.asyncio
+async def test_ptc_worker_yields_before_an_extra_model_call_after_read_only_churn(
+    tmp_path: Path,
+) -> None:
+    events = JsonlEventStore(tmp_path / "events")
+    for index in range(2):
+        events.append(
+            "task-1",
+            EventKind.REPL_CELL_COMPLETED,
+            {
+                "work_batch_id": "1",
+                "effect": "observed",
+                "cell_id": str(index),
+            },
+            idempotency_key=f"cell:{index}",
+        )
+    settings = settings_from_composition(
+        load_harness_composition(),
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
+    )
+    worker = build_coding_worker(
+        settings,
+        cast(BaseLlm, "test-model"),
+        ptc_config=NotebookPtcConfig(
+            enabled=True,
+            no_progress_cells_per_batch=2,
+            max_cells_per_batch=3,
+        ),
+        event_store=events,
+    )
+    callback = worker.agent.canonical_before_model_callbacks[0]
+    context = SimpleNamespace(
+        state={"task_id": "task-1", "ptc_work_batch_id": "1"}
+    )
+    response = await callback(
+        callback_context=cast(Any, context),
+        llm_request=LlmRequest(
+            model="test-model",
+            config=types.GenerateContentConfig(system_instruction="stable"),
+        ),
+    )
+
+    assert response is not None
+    assert response.custom_metadata == {"skein_work_batch_yield": True}
+    assert context.state["ptc_work_batch_yield"]["reason"] == "no_workspace_change"
+    assert [event.kind for event in events.read("task-1")].count(
+        EventKind.WORK_BATCH_YIELDED
+    ) == 1
+    if worker.close is not None:
+        worker.close()
 
 
 def test_worker_passes_generation_settings_through_adk(tmp_path: Path) -> None:

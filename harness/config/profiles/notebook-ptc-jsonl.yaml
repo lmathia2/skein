@@ -70,6 +70,8 @@ harness:
       default_timeout_seconds: 120  # Default cell execution timeout.
       max_timeout_seconds: 600
       max_output_bytes: 16000  # Inline cell output; oversized MIME becomes artifacts.
+      no_progress_cells_per_batch: 24  # Return to the outer criterion review after read-only churn.
+      max_cells_per_batch: 48  # Bound one provider-owned tool loop without resetting its notebook.
 
     memory:
       enabled: true  # Shadow-capture the canonical trace alongside operational stores.

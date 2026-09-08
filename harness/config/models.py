@@ -172,6 +172,8 @@ class NotebookPtcConfig(FrozenModel):
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
     max_timeout_seconds: int = Field(default=600, ge=1, le=3_600)
     max_output_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
+    no_progress_cells_per_batch: int = Field(default=24, ge=1, le=256)
+    max_cells_per_batch: int = Field(default=48, ge=1, le=256)
     batching_instruction: str = Field(
         default=(
             "Use the task phase in the current work packet to compose cells. During understand "
@@ -193,6 +195,8 @@ class NotebookPtcConfig(FrozenModel):
             raise ValueError("conversation continuity requires notebook PTC")
         if self.default_timeout_seconds > self.max_timeout_seconds:
             raise ValueError("default notebook PTC timeout cannot exceed its maximum")
+        if self.no_progress_cells_per_batch > self.max_cells_per_batch:
+            raise ValueError("no-progress cell limit cannot exceed the work-batch limit")
         return self
 
 

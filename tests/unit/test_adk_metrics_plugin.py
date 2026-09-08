@@ -109,6 +109,29 @@ def test_plugin_records_one_model_call(tmp_path) -> None:
     assert summary["prefix_versions"] == 1
 
 
+def test_plugin_does_not_count_host_work_batch_yield_as_a_model_call(tmp_path) -> None:
+    plugin = HarnessMetricsPlugin(
+        database=tmp_path / "metrics.db",
+        static_prefix_hash="prefix",
+        static_prefix_tokens=500,
+        default_model="test-model",
+        default_task_id="task-1",
+    )
+    context = _Context(state={"task_id": "task-1"})
+    asyncio.run(plugin.before_model_callback(callback_context=context, llm_request=_Request()))
+    asyncio.run(
+        plugin.after_model_callback(
+            callback_context=context,
+            llm_response=_Response(
+                usage_metadata=_Usage(),
+                custom_metadata={"skein_work_batch_yield": True},
+            ),
+        )
+    )
+
+    assert plugin.store.task_summary("task-1")["model_calls"] == 0
+
+
 def test_plugin_enforces_actual_input_budget_before_each_inner_model_call(tmp_path) -> None:
     plugin = HarnessMetricsPlugin(
         database=tmp_path / "metrics.db",

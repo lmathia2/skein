@@ -39,6 +39,7 @@ class EventKind(StrEnum):
     REPL_CELL_FAILED = "repl.cell_failed"
     REPL_CELL_TIMEOUT = "repl.cell_timeout"
     REPL_STATE_RESTORED = "repl.state_restored"
+    WORK_BATCH_YIELDED = "work_batch.yielded"
     CAPABILITY_REQUESTED = "capability.requested"
     CAPABILITY_COMPLETED = "capability.completed"
     CAPABILITY_FAILED = "capability.failed"

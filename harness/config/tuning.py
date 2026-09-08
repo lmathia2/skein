@@ -185,6 +185,24 @@ def tuning_spec(composition: HarnessComposition) -> TuningSpec:
         "Cache-stable phase-aware PTC cell-composition policy",
         experimental=True,
     )
+    add(
+        "notebook_ptc.no_progress_cells_per_batch",
+        config.notebook_ptc.no_progress_cells_per_batch,
+        "integer",
+        "Cells without a workspace change before a host review boundary",
+        minimum=1,
+        maximum=256,
+        experimental=True,
+    )
+    add(
+        "notebook_ptc.max_cells_per_batch",
+        config.notebook_ptc.max_cells_per_batch,
+        "integer",
+        "Absolute cells before a host review boundary",
+        minimum=1,
+        maximum=256,
+        experimental=True,
+    )
 
     context = config.context
     context_parameters = (

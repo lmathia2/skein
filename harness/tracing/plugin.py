@@ -124,11 +124,15 @@ def _jsonable(value: Any, *, depth: int = 0) -> Any:
 
 def _metadata(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {
+        result = {
             "type": "object",
             "keys": sorted(str(key) for key in value),
             "field_count": len(value),
         }
+        profile = value.get("request_profile")
+        if isinstance(profile, Mapping):
+            result["request_profile"] = dict(profile)
+        return result
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return {"type": "array", "length": len(value)}
     if isinstance(value, str):
@@ -156,6 +160,36 @@ def _bounded_json(value: Any, max_bytes: int) -> tuple[str, int]:
             high = middle - 1
     preview = json.loads(best)["preview"]
     return best, full_size - len(preview.encode())
+
+
+def _request_profile(llm_request: Any) -> dict[str, Any]:
+    """Hash and size canonical request regions without retaining prompt content."""
+
+    request = _jsonable(llm_request)
+    if not isinstance(request, Mapping):
+        request = {"request": request}
+    contents = request.get("contents", [])
+    if not isinstance(contents, list):
+        contents = []
+
+    def region(value: Any) -> dict[str, Any]:
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
+        return {"bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest()}
+
+    stable = {
+        "model": request.get("model"),
+        "config": request.get("config"),
+        "tools_dict": request.get("tools_dict"),
+    }
+    return {
+        "serialization": "canonical_adk_json_v1",
+        "content_count": len(contents),
+        "total": region(request),
+        "stable": region(stable),
+        "work_packet": region(contents[:1]),
+        "retained_history": region(contents[1:-2] if len(contents) > 2 else []),
+        "latest_interaction": region(contents[-2:] if len(contents) > 1 else contents),
+    }
 
 
 def _tool_trace_name(tool: Any, tool_args: Mapping[str, Any]) -> str:
@@ -489,7 +523,7 @@ class HarnessTracePlugin(BasePlugin):
             category="model",
             phase="start",
             name=name,
-            content={"request": llm_request},
+            content={"request": llm_request, "request_profile": _request_profile(llm_request)},
         )
 
     async def after_model_callback(self, *, callback_context: Any, llm_response: Any) -> None:

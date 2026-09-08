@@ -17,6 +17,7 @@ from google.adk import Agent
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import BaseLlm
 from google.adk.models.llm_request import LlmRequest
+from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 from google.genai import types
 
@@ -283,6 +284,8 @@ def build_coding_worker(
     )
     restored_kernel_epoch: str | None = None
     active_notebooks: dict[str, str] = {}
+    batch_cells: dict[tuple[str, str], int] = {}
+    batch_changed: set[tuple[str, str]] = set()
 
     def notebook_events(task_id: str) -> list[HarnessEvent]:
         return [*prior_notebook_events, *active_event_store.read(task_id)]
@@ -303,6 +306,7 @@ def build_coding_worker(
             notebook_id: str,
             cell_id: str,
             attempt_id: str,
+            work_batch_id: str,
             event_loop: asyncio.AbstractEventLoop,
         ) -> None:
             self.task_id = task_id
@@ -310,6 +314,7 @@ def build_coding_worker(
             self.notebook_id = notebook_id
             self.cell_id = cell_id
             self.attempt_id = attempt_id
+            self.work_batch_id = work_batch_id
             self.event_loop = event_loop
             self.call_index = 0
             self.operations: list[str] = []
@@ -332,6 +337,7 @@ def build_coding_worker(
                 "notebook_id": self.notebook_id,
                 "cell_id": self.cell_id,
                 "attempt_id": self.attempt_id,
+                "work_batch_id": self.work_batch_id,
                 "operation_id": operation_id,
                 "operation": operation,
                 "arguments_sha256": arguments_hash,
@@ -447,6 +453,7 @@ def build_coding_worker(
                         "environment": dict(MANAGED_COMMAND_ENVIRONMENT),
                         "workspace_before": workspace_before,
                         "workspace_after": workspace_after,
+                        "work_batch_id": self.work_batch_id,
                         "result": {
                             "status": "ok",
                             "exit_code": result.get("exit_code"),
@@ -576,6 +583,9 @@ def build_coding_worker(
             if function_call_id else uuid4().hex
         )
         cell_id = attempt_id
+        work_batch_id = (
+            str(tool_context.state.get("ptc_work_batch_id", "")) if tool_context else ""
+        )
         kernel_epoch = await asyncio.to_thread(lambda: worker.kernel_epoch)
         if restored_kernel_epoch != kernel_epoch:
             previous = reduce_notebook(notebook_events(task_id), notebook_id)
@@ -636,6 +646,7 @@ def build_coding_worker(
             "kernel_epoch": kernel_epoch,
             "replay_policy": replay_policy,
             "phase": str(tool_context.state.get("task_phase", "")) if tool_context else "",
+            "work_batch_id": work_batch_id,
         }
         active_event_store.append(
             task_id,
@@ -661,6 +672,7 @@ def build_coding_worker(
             notebook_id=notebook_id,
             cell_id=cell_id,
             attempt_id=attempt_id,
+            work_batch_id=work_batch_id,
             event_loop=asyncio.get_running_loop(),
         )
         result = await run_managed_thread(
@@ -694,6 +706,7 @@ def build_coding_worker(
             "notebook_id": notebook_id,
             "cell_id": cell_id,
             "attempt_id": attempt_id,
+            "work_batch_id": work_batch_id,
             "kernel_epoch": kernel_epoch,
             "effect": effect,
             "stdout": result.stdout,
@@ -723,6 +736,10 @@ def build_coding_worker(
             terminal_payload,
             idempotency_key=f"repl-cell:{attempt_id}:terminal",
         )
+        batch_key = (task_id, work_batch_id)
+        batch_cells[batch_key] = batch_cells.get(batch_key, 0) + 1
+        if effect == "changed":
+            batch_changed.add(batch_key)
         notebook_state = reduce_notebook(notebook_events(task_id), notebook_id)
         notebook_bytes = await asyncio.to_thread(
             materialize_notebook,
@@ -819,7 +836,7 @@ def build_coding_worker(
     async def before_model(
         callback_context: CallbackContext,
         llm_request: LlmRequest,
-    ) -> None:
+    ) -> LlmResponse | None:
         nonlocal stable_request_prefix
         config = llm_request.config.model_dump(
             mode="json",
@@ -836,8 +853,72 @@ def build_coding_worker(
             stable_request_prefix = current
         elif current != stable_request_prefix:
             raise RuntimeError("The coding worker's cache-stable request prefix changed")
+        if active_ptc_config.enabled and callback_context is not None:
+            state = callback_context.state
+            task_id = str(state.get("task_id") or settings.task_id_override or "unscoped")
+            work_batch_id = str(state.get("ptc_work_batch_id", ""))
+            if work_batch_id:
+                batch_key = (task_id, work_batch_id)
+                if batch_key not in batch_cells:
+                    terminal_kinds = {
+                        EventKind.REPL_CELL_COMPLETED,
+                        EventKind.REPL_CELL_FAILED,
+                        EventKind.REPL_CELL_TIMEOUT,
+                    }
+                    prior = [
+                        event
+                        for event in active_event_store.read(task_id)
+                        if event.kind in terminal_kinds
+                        and str(event.payload.get("work_batch_id", "")) == work_batch_id
+                    ]
+                    batch_cells[batch_key] = len(prior)
+                    if any(event.payload.get("effect") == "changed" for event in prior):
+                        batch_changed.add(batch_key)
+                count = batch_cells[batch_key]
+                reason = None
+                if count >= active_ptc_config.max_cells_per_batch:
+                    reason = "max_cells"
+                elif (
+                    count >= active_ptc_config.no_progress_cells_per_batch
+                    and batch_key not in batch_changed
+                ):
+                    reason = "no_workspace_change"
+                if reason is not None:
+                    payload = {
+                        "work_batch_id": work_batch_id,
+                        "cell_count": count,
+                        "reason": reason,
+                        "workspace_changed": batch_key in batch_changed,
+                    }
+                    active_event_store.append(
+                        task_id,
+                        EventKind.WORK_BATCH_YIELDED,
+                        payload,
+                        idempotency_key=f"work-batch-yield:{work_batch_id}",
+                    )
+                    state["ptc_work_batch_yield"] = payload
+                    structured = {
+                        "status": "blocked",
+                        "message": "",
+                        "progress": [],
+                        "next_action": "Continue from the durable notebook after host review.",
+                        "decisions": [],
+                        "questions": [],
+                        "discovered_constraints": [],
+                        "files_in_focus": [],
+                        "completion_claims": [],
+                    }
+                    return LlmResponse(
+                        content=types.Content(
+                            role="model",
+                            parts=[types.Part.from_text(text=json.dumps(structured))],
+                        ),
+                        turn_complete=True,
+                        custom_metadata={"skein_work_batch_yield": True},
+                    )
         if replies is not None:
             await replies.before_model(callback_context, llm_request)
+        return None
 
     agent = Agent(
         name="coding_worker",

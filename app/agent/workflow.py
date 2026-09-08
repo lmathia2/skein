@@ -1194,6 +1194,8 @@ async def _orchestrate_owned(
             steering_packet_message_ids=tuple(message.message_id for message in leased),
         )
         ctx.state["task_phase"] = ledger.phase.value
+        ctx.state["ptc_work_batch_id"] = str(ledger.iteration + 1)
+        ctx.state["ptc_work_batch_yield"] = None
 
         async def allow_reply(step: AgentStep, active_request: TaskRequest = request) -> bool:
             eligible = can_answer_directly(
@@ -1236,7 +1238,16 @@ async def _orchestrate_owned(
         if reply_stream is not None:
             step = reply_stream.finish(step)
 
-        if step.status == "continue":
+        batch_yield = ctx.state.get("ptc_work_batch_yield")
+        if isinstance(batch_yield, dict) and step.status == "blocked":
+            step = step.model_copy(
+                update={
+                    "status": "continue",
+                    "next_action": "Audit criterion gaps, then continue from the durable notebook.",
+                    "questions": [],
+                }
+            )
+        elif step.status == "continue":
             # The ADK coding worker owns its complete model/tool loop. A final
             # response cannot hand ordinary coding work back to this workflow.
             step = step.model_copy(
@@ -1328,6 +1339,29 @@ async def _orchestrate_owned(
             _ledger_patch(previous, ledger),
             idempotency_key=f"agent-step:{ledger.iteration}",
         )
+        if isinstance(batch_yield, dict):
+            previous = ledger
+            first_review = not ledger.counterexample_review_completed
+            update: dict[str, Any] = {
+                "phase": "review" if first_review else "implement",
+                "status": "active",
+                "next_action": (
+                    _criterion_review_action(ledger, step)
+                    if first_review
+                    else "Continue from the durable notebook with the smallest remaining action."
+                ),
+            }
+            if first_review:
+                update["counterexample_review_completed"] = True
+            ledger = TaskLedger.model_validate(
+                {**ledger.model_dump(mode="python"), **update}
+            )
+            deps.event_store.append(
+                task_id,
+                EventKind.LEDGER_PATCHED,
+                _ledger_patch(previous, ledger),
+                idempotency_key=f"work-batch-review:{batch_yield.get('work_batch_id', ledger.iteration)}",
+            )
         delivered = deps.steering_queue.leased_by(task_id, owner)
         if delivered:
             deps.steering_queue.ack(

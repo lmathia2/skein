@@ -41,14 +41,16 @@ restore; definitions, imports, dependent computations, and capabilities are not
 silently replayed. Notebook metadata records source-task watermarks and attribution.
 Passing deterministic contracts is not a live quality or promotion claim.
 
-The standard notebook-PTC profiles now enable deterministic `handoff_tail` context
-windows. Public ADK history is captured incrementally, and each context epoch keeps
-the latest complete tool interaction. PTC cell composition uses a cache-stable,
-optimizer-visible phase policy; cell terminal events record capability counts and
-operation classes. Complete successful build/test cells on an unchanged workspace
-can satisfy an identical deterministic validation command under the same managed
-environment. The existing criterion review now enumerates missing evidence and
-directs the worker to verification as soon as its criterion gaps close.
+The standard notebook-PTC profiles keep exact ADK history; bounded context windows
+remain an explicit experiment after a live screen showed exploration churn. PTC cell
+composition uses a cache-stable, optimizer-visible phase policy, and tunable host
+boundaries yield after 24 read-only cells or 48 total cells without resetting the
+durable notebook/kernel. The first boundary reuses the existing criterion-gap review;
+synthetic host yields are excluded from provider-call metrics. Cell terminal events
+record capability counts and operation classes. Complete successful build/test cells
+on an unchanged workspace can satisfy an identical deterministic validation command
+under the same managed environment. Metadata-only traces also record canonical ADK
+request region byte counts and hashes without retaining prompt text.
 
 ## Retained and verified
 
@@ -217,8 +219,8 @@ Remaining limitations include the host-local trust boundary, single-process stat
 ownership, experimental ADK APIs, and the still-complex server run controller.
 The default CPython heap/notebook remains run-scoped; the opt-in conversation mode
 restores only approved replay-safe data across owned runs. The live heap remains
-disposable. Provider-request capture across hundreds of PTC cells remains empirical
-work. The live six-task PTC ablation reduced model calls but increased cost and lost
+disposable. Wire-level provider-request capture remains empirical work; canonical ADK
+request regions are now measured on every call. The live six-task PTC ablation reduced model calls but increased cost and lost
 two official rewards, so it did not pass the default-promotion gate.
 Notebook-native PTC supports trusted local workspaces. Its source guard
 blocks direct imports, file/process/network primitives, dunder traversal, and common

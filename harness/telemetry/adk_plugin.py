@@ -441,6 +441,10 @@ class HarnessMetricsPlugin(BasePlugin):
             return None
 
         invocation_id = self._invocation_id(callback_context)
+        metadata = _attribute(llm_response, "custom_metadata", "customMetadata", default={})
+        if isinstance(metadata, Mapping) and metadata.get("skein_work_batch_yield") is True:
+            self._pop_start(invocation_id)
+            return None
         pending = self._pop_start(invocation_id)
         if pending is None:
             started = time.monotonic()

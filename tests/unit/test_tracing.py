@@ -117,6 +117,31 @@ def test_metadata_only_is_default_and_never_persists_content(tmp_path: Path) -> 
     assert len(span.content_hash) == 64
 
 
+def test_model_start_records_hashed_request_regions_without_prompt_content(
+    tmp_path: Path,
+) -> None:
+    plugin = HarnessTracePlugin(database=tmp_path / "trace.db", clock=_clock)
+    request = LlmRequest(
+        model="test-model",
+        contents=[
+            types.Content(role="user", parts=[types.Part.from_text(text="work packet")]),
+            types.Content(role="model", parts=[types.Part.from_text(text="tool call")]),
+            types.Content(role="user", parts=[types.Part.from_text(text="tool result")]),
+        ],
+    )
+
+    asyncio.run(
+        plugin.before_model_callback(callback_context=_context(), llm_request=request)
+    )
+
+    payload = json.loads(plugin.store.query("task-1")[0].payload_json)
+    profile = payload["request_profile"]
+    assert profile["content_count"] == 3
+    assert profile["total"]["bytes"] > profile["work_packet"]["bytes"]
+    assert len(profile["latest_interaction"]["sha256"]) == 64
+    assert "work packet" not in plugin.store.export_jsonl("task-1")
+
+
 def test_metadata_only_classifies_virtual_search_without_query_bodies(
     tmp_path: Path,
 ) -> None:
