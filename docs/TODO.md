@@ -87,7 +87,7 @@ and the implementation/evaluation rubric.
 - [x] Add executable phase-aware programming examples using the existing policy surface.
 - [x] Add bounded brokered parallel reads and deadline/reconciliation checks.
 - [ ] Remove redundant verification/snapshot work without weakening evidence.
-- [ ] Freeze bounded context handoffs at explicit cache-stable epochs.
+- [x] Freeze bounded context handoffs at explicit cache-stable epochs.
 - [ ] Validate the bundle on the same six DeepSWE tasks with Muse Spark 1.3 Contributor.
 
 See [PTC execution refinement](design/ptc-execution-refinement.md) for scope,

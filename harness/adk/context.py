@@ -216,6 +216,7 @@ class ContextWindowPlugin(BasePlugin):
         advisory = json.dumps(self.redactor.redact(details), sort_keys=True, ensure_ascii=False)
         advisory, _ = truncate_to_tokens(advisory, allowance)
         handoff = required + "\nAdvisory memory (not execution authority):\n" + advisory
+        active_handoff = str(previous.get("summary") or handoff)
         # Newest intent first; full text remains in canonical history. Never
         # head/tail-splice old instructions around the newest correction.
         steering = [str(event.payload.get("content", "")) for event in reversed(events)
@@ -225,7 +226,7 @@ class ContextWindowPlugin(BasePlugin):
         control = build_work_packet(
             task,
             selected_skills=str(callback_context.state.get("skill_context_text", "")),
-            compaction_summary=handoff,
+            compaction_summary=active_handoff,
             steering_messages=steering,
             max_tokens=self.config.work_packet_tokens,
             section_token_limits={
@@ -244,6 +245,22 @@ class ContextWindowPlugin(BasePlugin):
         if self.config.window_management and estimate_tokens(_serialized(effective)) > self.config.work_packet_tokens:
             if not note_available:
                 raise ValueError("working note unavailable; context transition refused")
+            if active_handoff != handoff:
+                control = build_work_packet(
+                    task,
+                    selected_skills=str(callback_context.state.get("skill_context_text", "")),
+                    compaction_summary=handoff,
+                    steering_messages=steering,
+                    max_tokens=self.config.work_packet_tokens,
+                    section_token_limits={
+                        "TASK": self.config.ledger_tokens,
+                        "SELECTED SKILLS": self.config.skill_context_bytes // 4,
+                        "COMPACTED HISTORY": self.config.compaction_tokens,
+                        "USER STEERING": self.config.steering_tokens,
+                    },
+                )
+                control = self.redactor.redact_text(control)
+                header = types.Content(role="user", parts=[types.Part.from_text(text=control)])
             cuts = _complete_cuts(raw)
             new_cut = len(raw)
             # A just-returned tool result has not yet been consumed by the model.

@@ -61,6 +61,31 @@ async def test_three_fresh_epochs_restart_and_exact_history(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_published_handoff_is_frozen_until_the_next_epoch(tmp_path):
+    calls = 0
+
+    def handoff(_task_id):
+        nonlocal calls
+        calls += 1
+        return {"note": {"status": "ok"}, "retrieval": f"view-{calls}"}
+
+    plugin, context, events, _ = setup(tmp_path)
+    plugin.handoff = handoff
+    raw = [text("old:" + "x" * 9000)]
+    first = LlmRequest(contents=list(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=first)
+    assert "view-1" in _serialized(first.contents)
+
+    # The provider-visible header remains the published epoch even though the
+    # advisory handoff program now produces different bytes.
+    second = LlmRequest(contents=list(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=second)
+    assert "view-1" in _serialized(second.contents)
+    assert "view-2" not in _serialized(second.contents)
+    assert sum(event.kind == EventKind.COMPACTION_CREATED for event in events.read("task")) == 1
+
+
+@pytest.mark.asyncio
 async def test_failed_publication_does_not_mutate_request(tmp_path, monkeypatch):
     plugin, context, events, _ = setup(tmp_path)
     request = LlmRequest(contents=[text("evidence" + "x" * 9000)])

@@ -60,6 +60,9 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   unknown effect is reconciled. Metadata-only traces record canonical ADK request
   regions, and the OpenRouter adapter records the exact serialized request byte count,
   hash, and top-level region hashes without retaining prompt text.
+  Once window management publishes a compaction epoch, its handoff bytes remain frozen
+  across requests until a new threshold crossing publishes the next epoch; live steering
+  remains in the suffix.
 
 ## Retained and verified
 
