@@ -408,17 +408,65 @@ Do not promote PTC by averaging away a lost Wazero regression or by comparing it
 six tasks with mini-swe's eight-task total. PTC becomes the default only after the
 final confirmation gate above is met.
 
+## 7. First combined live run (v7)
+
+Commit `25babd1` ran the same six tasks with Muse Spark 1.3 Contributor,
+provider defaults, one attempt, and zero retries. An earlier screen was stopped
+after bounded history caused Kombu to reach 106 calls and 28 compactions without
+an edit; v7 kept exact history and retained P2-P4.
+
+| Measure | PTC v4 | PTC v7 | mini-swe, matching six |
+| --- | ---: | ---: | ---: |
+| Official passes | 2/6 | 2/6 | 2/6 |
+| Agent wall time | 4,926 s | 5,409 s | 3,471 s |
+| Model calls | 429 | 542 | 409 |
+| Input tokens | 43.2M | 63.6M | 40.5M |
+| Uncached input tokens | 1.66M | 1.47M | 4.21M |
+| Output tokens | 301k | 292k | 315k |
+| Provider cost | $0.309 | $0.330 | $0.557 |
+| Peak context | 228k | 307k | 261k |
+
+The pass sets changed: v4 passed Ofetch and Wazero; v7 passed Koota and Ofetch;
+mini-swe passed Koota and Ofetch. Wazero's v7 verifier failed before any test ran
+because the Go assembler segfaulted while obtaining a build ID. Its 0/80 result is
+an evaluator failure, not evidence that the produced patch regressed. Koota's new
+official pass is real, but one unseeded sample cannot attribute it to P2 or P4.
+
+| Task | v4 calls | v7 calls | Delta | v7 reward |
+| --- | ---: | ---: | ---: | ---: |
+| Kombu | 98 | 67 | -31 | 0 |
+| Koota | 92 | 221 | +129 | 1 |
+| Ofetch | 74 | 49 | -25 | 1 |
+| Testem | 54 | 53 | -1 | 0 |
+| Textual | 71 | 112 | +41 | 0 |
+| Wazero | 40 | 40 | 0 | 0 (verifier infrastructure) |
+
+P4 did not meet its promotion gate: 577 capabilities across 520 completed cells
+is 1.11 capabilities per cell, and 542 calls exceeds both v4 and the 350-call
+target. It helped bounded discovery on Kombu and Ofetch, but dependent edit/test
+repair on Koota and Textual dominated the total. Keep the instruction as a
+learnable policy, not as evidence of a global speedup.
+
+P3 recorded 22 complete validation receipts and reused eight exact command,
+environment, and workspace matches. Total deterministic validation time was
+essentially unchanged (203 s in both runs) because the expensive checks did not
+match and common `pnpm -F ... test` / `npm run test` forms were not recognized.
+The command classifier now covers those forms. No verifier rule was weakened.
+
+The combined treatment is therefore not promoted as a latency win. Exact history
+stays enabled in the standard PTC profile, bounded history stays experimental, and
+the next optimization should target runaway dependent edit/test repair without
+generic batching pressure.
+
 ## Expected order of impact
 
-1. **P1 history window:** largest cost and model-latency reduction; likely quality
-   benefit from keeping the task and current evidence salient.
-2. **P2 criterion audit:** highest quality leverage without an additional review
+1. **P2 criterion audit:** highest quality leverage without an additional review
    call.
-3. **P3 receipt reuse:** safe removal of duplicated test execution.
-4. **P4 phase-aware composition:** call and latency reduction after quality is stable.
-5. **P5 conditional baseline:** closes the remaining latency gap without adopting
+2. **P3 receipt reuse:** safe removal of duplicated test execution where commands match.
+3. **P4 phase-aware composition:** retain as a tunable policy; v7 did not promote it.
+4. **P5 conditional baseline:** closes the remaining latency gap without adopting
    mini-swe's regression risk.
+5. **P1 history window:** experimental only until a wider exact tail avoids the
+   observed exploration loop.
 
-The first implementation should therefore be the isolated PTC history-window
-profile and request capture. Further trace/notebook storage optimization is not on
-the critical path.
+Further trace/notebook storage optimization is not on the critical path.

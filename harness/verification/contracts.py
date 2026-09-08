@@ -28,7 +28,9 @@ _SYNTAX_ONLY_PATTERNS = (
 )
 _REUSABLE_COMMAND_PATTERN = re.compile(
     r"(?:^|[\s;&|])(?:python\s+-m\s+)?(?:pytest|unittest|vitest|jest)(?:\s|$)"
-    r"|(?:^|[\s;&|])(?:go|cargo|npm|pnpm|yarn)\s+(?:test|check)(?:\s|$)"
+    r"|(?:^|[\s;&|])(?:go|cargo)\s+(?:test|check)(?:\s|$)"
+    r"|(?:^|[\s;&|])(?:npm|pnpm|yarn)"
+    r"(?:\s+--?[\w-]+(?:[=\s]+[^\s;&|]+)?)*\s+(?:run\s+)?(?:test|check)(?:\s|$)"
     r"|(?:^|[\s;&|])(?:mvn|gradle|gradlew)(?:\s+[^;&|]+)?\s+test(?:\s|$)",
     re.IGNORECASE,
 )
