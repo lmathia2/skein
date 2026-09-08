@@ -183,4 +183,8 @@ caching, and resumability. The harness adds coding-specific contracts, not a
 replacement framework.
 
 See [simplification results](simplification.md), [development](development.md),
-and [current status](IMPLEMENTATION_STATUS.md).
+and [current status](IMPLEMENTATION_STATUS.md). The durable decisions are split into
+three short ADRs: [trace-native harness and notebook PTC](adr/trace-native-harness.md),
+[context and memory](adr/context-and-memory.md), and
+[execution and recovery](adr/execution-and-recovery.md). The normative current-code
+mapping is the [implementation specification](specification.md).

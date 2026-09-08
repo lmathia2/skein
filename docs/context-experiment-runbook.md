@@ -170,6 +170,6 @@ tokens, output/model/tool counts, context bytes, and median/p95 latency. Declare
 thresholds before execution. Zero observed safety violations is necessary, not a
 proof of general safety. Insufficient evidence leaves the feature opt-in.
 
-See the [ADR](adr/long-running-context-memory-programs.md) for phase-specific
+See the [context and memory ADR](adr/context-and-memory.md) for phase-specific
 failure cases, limitations, and promotion rules. SQL/semantic/summary-cache pairs
 remain separate gated extensions, not hidden dependencies of this corpus.

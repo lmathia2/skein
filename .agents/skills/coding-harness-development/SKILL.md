@@ -84,9 +84,9 @@ Preserve these invariants:
     indexes, or a storage backend only after a controlled ablation demonstrates
     value.
 
-The normative source is `docs/design/trace-native-repl-agent.md` T1-T17. Read
-`docs/adr/long-running-context-memory-programs.md` for the memory-program contract
-and `docs/adr/coding-harness-minimal-sota-extensions.md` for the target surface.
+The detailed design source is `docs/design/trace-native-repl-agent.md` T1-T17. Read
+`docs/adr/trace-native-harness.md`, `docs/adr/context-and-memory.md`, and
+`docs/adr/execution-and-recovery.md` for the current decisions and implementation boundary.
 
 ## Required workflow
 
@@ -97,7 +97,7 @@ Read, in order:
 1. `docs/IMPLEMENTATION_STATUS.md`
 2. `docs/TODO.md`
 3. `docs/architecture.md`
-4. the relevant sections of the three normative documents above
+4. the relevant sections of the three current ADRs above
 5. the typed model and every caller on the path being changed
 6. focused unit and integration tests
 
@@ -281,8 +281,10 @@ Reject regardless of score if the change:
 ## Reference documents
 
 - `docs/design/trace-native-repl-agent.md`
-- `docs/adr/long-running-context-memory-programs.md`
-- `docs/adr/coding-harness-minimal-sota-extensions.md`
+- `docs/adr/trace-native-harness.md`
+- `docs/adr/context-and-memory.md`
+- `docs/adr/execution-and-recovery.md`
+- `docs/specification.md`
 - `docs/design/pi-inspired-adk-coding-harness.md`
 - `docs/architecture.md`
 - `docs/security.md`

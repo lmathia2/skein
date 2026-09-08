@@ -1,8 +1,8 @@
 # Skein: review findings and trace-native cutover plan
 
 > Status: proposal, 2026-09-06. Reviewed at `main` @ `afcf3cd`.
-> Targets: [minimal SOTA extensions ADR](adr/coding-harness-minimal-sota-extensions.md),
-> [context programs ADR](adr/long-running-context-memory-programs.md),
+> Targets: [trace-native harness ADR](adr/trace-native-harness.md),
+> [context and memory ADR](adr/context-and-memory.md),
 > [trace-native design](design/trace-native-repl-agent.md) tenets T1-T17.
 > Evidence: DeepSWE-8 traces for Skein (`skein-eval-results/skein-muse-spark-1.3-contributor-deepswe-8-sequential-20260906`)
 > and mini-swe-agent (`skein-eval-results/mini-swe-agent-muse-spark-1.3-contributor-deepswe-8-sequential-20260905-uncapped`).
