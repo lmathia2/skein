@@ -27,12 +27,11 @@ only what is useful. `agent` is prebound; do not import or introspect it. Core s
 `agent.fs.write(path, content, expected_sha256=None, expected_absent=False)`,
 `agent.fs.edit(path, old_text, new_text, expected_sha256=None)`, and
 `agent.shell.run(command, timeout_seconds=120)`. `agent.help()` lists all exact signatures.
-Each `python` cell costs a model turn; nested capability calls do not. Before calling
-`python`, include every bounded operation whose arguments are already known. Batch
-independent reads and searches in loops or comprehensions, retain their result mappings,
-and inspect the `model_text` field in Python. Print only the derived facts or short excerpts
-needed for the next decision, never whole result mappings. Split cells only when the next
-operation depends on the current result. Use `agent.state.list()` or
+Capability calls return result mappings; inspect their `model_text` field in Python and
+print only the facts or short excerpts needed for the next decision. Batch related bounded
+operations in one cell when their next steps are already known, and retain reusable
+intermediate values instead of spending a model turn on each trivial capability call. Use
+`agent.state.list()` or
 `agent.state.describe(name)` to inspect
 live variable metadata without exposing values. For `.ipynb` files, use `nb read` or
 `nb search` through `agent.shell.run`; never parse notebook JSON in Python. The notebook

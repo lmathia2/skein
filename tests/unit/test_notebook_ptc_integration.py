@@ -115,7 +115,7 @@ def test_factory_exposes_only_python_when_notebook_ptc_is_enabled(tmp_path: Path
     assert tool_names == {"python"}
     assert worker.include_contents == "default"
     assert "include_contents" in worker.model_fields_set
-    assert "Each `python` cell costs a model turn" in worker.static_instruction
+    assert "Capability calls return result mappings" in worker.static_instruction
     assert "`open()`" in worker.static_instruction
     assert assembly.build_info.tool_names == ("python",)
     assert "never parse notebook JSON" in worker.static_instruction
