@@ -96,7 +96,7 @@ class CodingWorkerBundle:
     bash: ToolFunction
     edit: ToolFunction
     write: ToolFunction
-    python: ToolFunction | None = None
+    execute_code: ToolFunction | None = None
     close: Callable[[], None] | None = None
 
 
@@ -640,7 +640,7 @@ def build_coding_worker(
                 return "changed"
             return "observed" if "observed" in self.effects else "none"
 
-    async def python(
+    async def execute_code(
         code: str,
         timeout_seconds: int = active_ptc_config.default_timeout_seconds,
         tool_context: ToolContext | None = None,
@@ -937,7 +937,7 @@ def build_coding_worker(
             python_worker.close()
 
     model_tools: list[Any] = (
-        [python]
+        [execute_code]
         if native_ptc_enabled
         else [code_mode_tool]
         if code_mode_tool is not None
@@ -1068,7 +1068,7 @@ def build_coding_worker(
         bash=bash,
         edit=edit,
         write=write,
-        python=python if native_ptc_enabled else None,
+        execute_code=execute_code if native_ptc_enabled else None,
         close=close if python_worker is not None else None,
     )
 

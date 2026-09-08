@@ -241,7 +241,7 @@ class SkeinHarnessFactory:
             raise TypeError("skein_v1 requires SkeinConfig")
         settings = settings_from_composition(composition, bindings)
         tool_names = (
-            (("python",) if config.notebook_ptc.implementation == "skein_notebook" else ("execute_code",))
+            ("execute_code",)
             if config.notebook_ptc.enabled
             else FOUR_CODING_TOOLS
         )
@@ -691,7 +691,7 @@ class SkeinHarnessFactory:
                     name: model.provider for name, model in sorted(config.models.items())
                 },
                 tool_names=(
-                    (("python",) if config.notebook_ptc.implementation == "skein_notebook" else ("execute_code",))
+                    ("execute_code",)
                     if config.notebook_ptc.enabled
                     else FOUR_CODING_TOOLS
                 ),

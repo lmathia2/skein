@@ -16,7 +16,7 @@ To exercise the notebook-native PTC path with isolated state:
 ./start-ptc.sh /absolute/path/to/project
 ```
 
-The PTC launcher selects one persistent `python` tool and enables canonical JSONL
+The PTC launcher selects one persistent `execute_code` tool and enables canonical JSONL
 memory. It does not install DuckDB or LanceDB. Those are optional development extras:
 
 ```bash

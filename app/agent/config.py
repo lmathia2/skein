@@ -19,7 +19,7 @@ from harness.repo import collect_project_instructions
 
 NOTEBOOK_PTC_INSTRUCTION = """
 Notebook-native programmatic tool calling is enabled. Your only model-visible tool is
-`python(code)`. Each call appends and executes one durable notebook cell in a persistent
+`execute_code(code)`. Each call appends and executes one durable notebook cell in a persistent
 CPython worker. Compose managed capabilities through `agent.fs.read`, `agent.fs.write`,
 `agent.fs.edit`, and `agent.shell.run`; filter intermediate results in Python and expose
 only what is useful. `agent` is prebound; do not import or introspect it. Core signatures:
@@ -207,7 +207,7 @@ def settings_from_composition(
                 + "\n\nPhase-aware cell composition:\n"
                 + config.notebook_ptc.batching_instruction.strip()
             )
-            tool_names = ("python",)
+            tool_names = ("execute_code",)
         else:
             instruction += "\n\n" + ADK_CODE_MODE_INSTRUCTION
             tool_names = ("execute_code",)

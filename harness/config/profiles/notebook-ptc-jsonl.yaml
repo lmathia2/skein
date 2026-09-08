@@ -66,7 +66,7 @@ harness:
         max_page_size: 50
 
     notebook_ptc:
-      enabled: true  # Replace four top-level tools with one persistent python tool.
+      enabled: true  # Replace four top-level tools with one persistent execute_code tool.
       implementation: skein_notebook  # Compared independently with adk_code_mode.
       default_timeout_seconds: 120  # Default cell execution timeout.
       max_timeout_seconds: 600

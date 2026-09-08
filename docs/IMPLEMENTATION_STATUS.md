@@ -89,7 +89,7 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   compact repository manifests, native FFF discovery, and ADK-owned token-threshold
   event compaction.
 - Experimental, disabled-by-default notebook-native PTC mode for the local sandbox:
-  the worker exposes one persistent `python` tool, routes nested file and shell calls
+  the worker exposes one persistent `execute_code` tool, routes nested file and shell calls
   through the existing policy/approval adapters, appends lifecycle events, and
   deterministically materializes a durable nbformat transcript. Only self-contained
   data-construction cells restore automatically; calls, imports, definitions,
@@ -109,7 +109,7 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   `start-ptc.sh` enables this
   path together with the dependency-free canonical JSONL ledger and an isolated state
   root; the ordinary launcher retains the four-tool default.
-- PTC selection is now explicit: `skein_notebook` exposes `python`, while the vendored
+- PTC selection is now explicit: `skein_notebook` exposes `execute_code`, while the vendored
   ADK Code Mode 1.6.0 arm exposes `execute_code` using an explicitly pinned Docker
   image. Both call the same four brokered capabilities. Memory is independently
   optional: `trace_native` retains versioned ledger programs and `pi` uses native ADK

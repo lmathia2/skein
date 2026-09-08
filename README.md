@@ -9,7 +9,7 @@ inside a minimal deterministic harness for execution, memory, policy, and verifi
 
 ## Key features
 
-- **One-tool PTC:** optional notebook mode exposes one persistent `python` tool that
+- **One-tool PTC:** optional notebook mode exposes one persistent `execute_code` tool that
   composes guarded file, shell, CLI, and MCP capabilities.
 - **Memory as programs:** versioned programs derive bounded, reproducible views from
   append-only traces; JSONL is dependency-free, with DuckDB and LanceDB optional.

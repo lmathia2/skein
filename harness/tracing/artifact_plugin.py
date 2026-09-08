@@ -15,7 +15,7 @@ from harness.state import EventKind, EventStore
 
 LOGGER = logging.getLogger(__name__)
 
-_CODING_TOOL_NAMES = frozenset({"read", "bash", "edit", "write", "python"})
+_CODING_TOOL_NAMES = frozenset({"read", "bash", "edit", "write", "execute_code"})
 
 
 def _context_state_value(context: Any, name: str) -> Any:

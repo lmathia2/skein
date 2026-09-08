@@ -50,7 +50,7 @@ def project(event: LedgerEvent, redactor: SecretRedactor) -> dict[str, Any] | No
     """The exact retained representation available to the model, not raw payloads."""
     fields = _FIELDS.get(event.kind)
     if event.source == "tool_receipt" and event.kind in {
-        "tool.read", "tool.bash", "tool.edit", "tool.write", "tool.python"
+        "tool.read", "tool.bash", "tool.edit", "tool.write", "tool.python", "tool.execute_code"
     }:
         fields = _TOOL_FIELDS
     if fields is None:
@@ -207,7 +207,7 @@ def compute_context(
             watermark, stream_hash, groups = ledger.event_counts(tasks[0])
             manifest[tasks[0]] = {"watermark": watermark, "hash": stream_hash}
             visible_groups = [row for row in groups if row[1] in _FIELDS or (
-                row[0] == "tool_receipt" and row[1] in {"tool.read", "tool.bash", "tool.edit", "tool.write", "tool.python"}
+                row[0] == "tool_receipt" and row[1] in {"tool.read", "tool.bash", "tool.edit", "tool.write", "tool.python", "tool.execute_code"}
             )]
             if request.program == "failures.by_kind":
                 visible_groups = [row for row in visible_groups if row[2] in {"failed", "timeout", "blocked"}]

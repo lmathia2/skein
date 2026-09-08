@@ -4,7 +4,7 @@ Skein now separates two independent choices:
 
 | Axis | Option | Model surface | State and history |
 | --- | --- | --- | --- |
-| PTC | `skein_notebook` | `python` | Persistent CPython heap within the run, write-ahead cells, trace-derived notebook |
+| PTC | `skein_notebook` | `execute_code` | Persistent CPython heap within the run, write-ahead cells, trace-derived notebook |
 | PTC | `adk_code_mode` | `execute_code` | Turn-scoped Docker Python; workspace effects still call Skein's four brokered capabilities |
 | Memory | disabled | unchanged | Existing operational events and bounded work packets only |
 | Memory | `trace_native` | reserved `memory` commands when active | Versioned programs over the canonical JSONL/DuckDB ledger |

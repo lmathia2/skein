@@ -87,9 +87,9 @@ async def test_parallel_reads_overlap_and_keep_ordered_receipts(tmp_path: Path) 
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
-    assert worker.python is not None
+    assert worker.execute_code is not None
     try:
-        result = await worker.python(
+        result = await worker.execute_code(
             "agent.parallel(["
             "{'operation': 'fs.read', 'arguments': {'path': 'a'}},"
             "{'operation': 'fs.read', 'arguments': {'path': 'b'}}"
@@ -138,9 +138,9 @@ async def test_parallel_rejects_effects_before_dispatch(tmp_path: Path) -> None:
         tools=AdkCodingTools(read=effect, bash=effect, edit=effect, write=effect),
         ptc_config=config.notebook_ptc,
     )
-    assert worker.python is not None
+    assert worker.execute_code is not None
     try:
-        result = await worker.python(
+        result = await worker.execute_code(
             "agent.parallel([{'operation': 'fs.write', 'arguments': {'path': 'x'}}])"
         )
     finally:
@@ -177,10 +177,10 @@ async def test_failed_read_does_not_require_effect_reconciliation(tmp_path: Path
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
-    assert worker.python is not None
+    assert worker.execute_code is not None
     try:
-        failed = await worker.python('agent.fs.read("missing")["data"]["text"]')
-        continued = await worker.python("40 + 2")
+        failed = await worker.execute_code('agent.fs.read("missing")["data"]["text"]')
+        continued = await worker.execute_code("40 + 2")
     finally:
         assert worker.close is not None
         worker.close()
@@ -211,14 +211,14 @@ async def test_conversation_notebook_restores_only_safe_cells_with_run_attributi
             conversation_notebook_id="conversation", prior_notebook_events=prior,
             notebook_root=tmp_path / "conversation",
         )
-        assert worker.python is not None and worker.close is not None
+        assert worker.execute_code is not None and worker.close is not None
         try:
             if task_id == "a":
-                assert (await worker.python("value = 40"))["status"] == "ok"
-                assert (await worker.python("dependent = value + 1"))["status"] == "ok"
+                assert (await worker.execute_code("value = 40"))["status"] == "ok"
+                assert (await worker.execute_code("dependent = value + 1"))["status"] == "ok"
             else:
-                assert (await worker.python("value + 2"))["model_text"] == "42"
-                assert (await worker.python("dependent"))["status"] == "error"
+                assert (await worker.execute_code("value + 2"))["model_text"] == "42"
+                assert (await worker.execute_code("dependent"))["status"] == "error"
         finally:
             worker.close()
         prior = (*prior, *events.read(task_id))
@@ -227,7 +227,7 @@ async def test_conversation_notebook_restores_only_safe_cells_with_run_attributi
     assert set(notebook["metadata"]["agent"]["source_watermarks"]) == {"a", "b"}
 
 
-def test_factory_exposes_only_python_when_notebook_ptc_is_enabled(tmp_path: Path) -> None:
+def test_factory_exposes_only_execute_code_when_notebook_ptc_is_enabled(tmp_path: Path) -> None:
     registry = default_harness_registry()
     payload = load_harness_composition(config_models=registry.config_models()).model_dump(
         mode="python"
@@ -245,20 +245,20 @@ def test_factory_exposes_only_python_when_notebook_ptc_is_enabled(tmp_path: Path
     tool_names = {
         getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.tools
     }
-    assert tool_names == {"python"}
+    assert tool_names == {"execute_code"}
     assert worker.include_contents == "default"
     assert "include_contents" in worker.model_fields_set
     assert "Capability calls\nreturn mappings" in worker.static_instruction
     assert "agent.parallel" in worker.static_instruction
     assert "`open()`" in worker.static_instruction
-    assert assembly.build_info.tool_names == ("python",)
+    assert assembly.build_info.tool_names == ("execute_code",)
     assert "never parse notebook JSON" in worker.static_instruction
     resources = registry.resources(
         composition,
         RuntimeBindings(workspace=workspace, state_root=tmp_path / "state", task_id="task"),
     )
     assert resources is not None
-    assert {item.name for item in resources.items if item.kind == "tool"} == {"python"}
+    assert {item.name for item in resources.items if item.kind == "tool"} == {"execute_code"}
     assert assembly.close is not None
     assembly.close()
 
@@ -446,16 +446,16 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
-    assert worker.python is not None
-    python_tool = worker.python
+    assert worker.execute_code is not None
+    execute_code_tool = worker.execute_code
 
     try:
-        first = await python_tool("value = 40")
-        second = await python_tool(
+        first = await execute_code_tool("value = 40")
+        second = await execute_code_tool(
             'agent.fs.write("answer.txt", str(value + 2), expected_absent=True)\n'
             'agent.fs.read("answer.txt")["model_text"]'
         )
-        rich = await python_tool('{"image/png": b"x" * 17000, "text/plain": "plot"}')
+        rich = await execute_code_tool('{"image/png": b"x" * 17000, "text/plain": "plot"}')
     finally:
         assert worker.close is not None
         worker.close()
@@ -463,7 +463,7 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     tool_names = {
         getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.agent.tools
     }
-    assert tool_names == {"python"}
+    assert tool_names == {"execute_code"}
     assert first["status"] == "ok"
     assert second["status"] == "ok"
     assert rich["status"] == "ok"
@@ -487,7 +487,7 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert terminal.payload["capability_count"] == 2
     assert terminal.payload["capability_operations"] == ["fs.write", "fs.read"]
     assert kinds[-1] == EventKind.NOTEBOOK_SNAPSHOTTED
-    assert '"tools":["python"]' in settings.static_prefix
+    assert '"tools":["execute_code"]' in settings.static_prefix
     assert "During verify, group already-selected" in settings.static_instruction
 
 
@@ -514,9 +514,9 @@ async def test_successful_complete_ptc_shell_result_becomes_validation_evidence(
         event_store=events,
         workspace_fingerprint=lambda: "stable",
     )
-    assert worker.python is not None
+    assert worker.execute_code is not None
     try:
-        result = await worker.python(
+        result = await worker.execute_code(
             'agent.shell.run("pytest -q")',
             tool_context=SimpleNamespace(
                 state={"task_id": "task", "workspace_fingerprint": "stable"},
@@ -562,8 +562,8 @@ async def test_worker_close_snapshots_complete_notebook_once(tmp_path: Path) -> 
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
-    assert worker.python is not None
-    result = await worker.python("answer = 42")
+    assert worker.execute_code is not None
+    result = await worker.execute_code("answer = 42")
     message = events.append(
         "task-snapshot",
         EventKind.MESSAGE_RECORDED,
@@ -614,11 +614,11 @@ async def test_python_routes_registered_mcp_capability_and_blocks_unknown(
         ptc_config=config.notebook_ptc,
         capabilities={"issues.search": lambda arguments: {"status": "ok", "items": [arguments["q"]]}},
     )
-    assert worker.python is not None
-    result = await worker.python("agent.mcp.call('issues.search', {'q': 'timeout'})")
+    assert worker.execute_code is not None
+    result = await worker.execute_code("agent.mcp.call('issues.search', {'q': 'timeout'})")
     assert result["status"] == "ok"
     assert "timeout" in result["model_text"]
-    blocked = await worker.python("agent.mcp.call('missing.tool', {})")
+    blocked = await worker.execute_code("agent.mcp.call('missing.tool', {})")
     assert blocked["status"] == "ok"
     assert "blocked" in blocked["model_text"]
     assert worker.close is not None
@@ -646,13 +646,13 @@ async def test_nested_result_remains_in_python_state_until_explicitly_selected(
         ptc_config=config.notebook_ptc,
         capabilities={"bulk.read": lambda _arguments: {"status": "ok", "items": [marker] * 2000}},
     )
-    assert worker.python is not None
+    assert worker.execute_code is not None
     try:
-        selected = await worker.python(
+        selected = await worker.execute_code(
             "records = agent.mcp.call('bulk.read', {})['items']\nlen(records)"
         )
-        catalog = await worker.python("agent.state.describe('records')")
-        reused = await worker.python("len(records)")
+        catalog = await worker.execute_code("agent.state.describe('records')")
+        reused = await worker.execute_code("len(records)")
     finally:
         assert worker.close is not None
         worker.close()
@@ -683,9 +683,9 @@ async def test_restart_replays_only_self_contained_data_cells(tmp_path: Path) ->
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
-    assert worker.python is not None
-    await worker.python("literal = {'value': 7}")
-    await worker.python("derived = len(literal)")
+    assert worker.execute_code is not None
+    await worker.execute_code("literal = {'value': 7}")
+    await worker.execute_code("derived = len(literal)")
     assert worker.close is not None
     worker.close()
 
@@ -703,10 +703,10 @@ async def test_restart_replays_only_self_contained_data_cells(tmp_path: Path) ->
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
-    assert replacement.python is not None
+    assert replacement.execute_code is not None
     try:
-        restored = await replacement.python("literal")
-        missing = await replacement.python("derived")
+        restored = await replacement.execute_code("literal")
+        missing = await replacement.execute_code("derived")
     finally:
         assert replacement.close is not None
         replacement.close()
@@ -734,13 +734,13 @@ async def test_failed_cell_rolls_back_partial_namespace_mutation(tmp_path: Path)
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
-    assert worker.python is not None
-    python_tool = worker.python
+    assert worker.execute_code is not None
+    execute_code_tool = worker.execute_code
 
     try:
-        await python_tool("value = 9\nmarker = 'agent.'")
-        failed = await python_tool("value = 99\n1 / 0")
-        restored = await python_tool("value")
+        await execute_code_tool("value = 9\nmarker = 'agent.'")
+        failed = await execute_code_tool("value = 99\n1 / 0")
+        restored = await execute_code_tool("value")
     finally:
         assert worker.close is not None
         worker.close()
@@ -757,9 +757,9 @@ async def test_failed_cell_rolls_back_partial_namespace_mutation(tmp_path: Path)
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
-    assert replacement.python is not None
+    assert replacement.execute_code is not None
     try:
-        after_restart = await replacement.python("value, marker")
+        after_restart = await replacement.execute_code("value, marker")
     finally:
         assert replacement.close is not None
         replacement.close()
