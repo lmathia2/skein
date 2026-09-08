@@ -27,15 +27,18 @@ only what is useful. `agent` is prebound; do not import or introspect it. Core s
 `agent.fs.write(path, content, expected_sha256=None, expected_absent=False)`,
 `agent.fs.edit(path, old_text, new_text, expected_sha256=None)`, and
 `agent.shell.run(command, timeout_seconds=120)`. `agent.help()` lists all exact signatures.
-Batch related bounded operations in one cell when their next steps
-are already known, and retain reusable intermediate values instead of spending a model
-turn on each trivial capability call. Use `agent.state.list()` or
+Each `python` cell costs a model turn; nested capability calls do not. Before calling
+`python`, include every bounded operation whose arguments are already known. Batch
+independent reads and searches in loops or comprehensions, retain their result mappings,
+and inspect the `model_text` field in Python. Print only the derived facts or short excerpts
+needed for the next decision, never whole result mappings. Split cells only when the next
+operation depends on the current result. Use `agent.state.list()` or
 `agent.state.describe(name)` to inspect
 live variable metadata without exposing values. For `.ipynb` files, use `nb read` or
 `nb search` through `agent.shell.run`; never parse notebook JSON in Python. The notebook
 records code and selected outputs, while the append-only ledger records execution and
-nested capability outcomes. Do not use direct filesystem,
-process, or network APIs. A notebook is not proof that a side effect completed, and cells
+nested capability outcomes. `open()` and direct filesystem, process, or network APIs are
+blocked; use the corresponding `agent.*` capability. A notebook is not proof that a side effect completed, and cells
 that write or have unknown effects must never be replayed automatically.
 """.strip()
 

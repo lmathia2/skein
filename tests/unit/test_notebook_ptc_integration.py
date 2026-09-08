@@ -115,9 +115,10 @@ def test_factory_exposes_only_python_when_notebook_ptc_is_enabled(tmp_path: Path
     assert tool_names == {"python"}
     assert worker.include_contents == "default"
     assert "include_contents" in worker.model_fields_set
+    assert "Each `python` cell costs a model turn" in worker.static_instruction
+    assert "`open()`" in worker.static_instruction
     assert assembly.build_info.tool_names == ("python",)
     assert "never parse notebook JSON" in worker.static_instruction
-    assert "Batch related bounded operations in one cell" in worker.static_instruction
     resources = registry.resources(
         composition,
         RuntimeBindings(workspace=workspace, state_root=tmp_path / "state", task_id="task"),
