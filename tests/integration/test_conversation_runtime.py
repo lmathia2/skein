@@ -301,7 +301,9 @@ async def test_answer_after_write_is_withheld_and_forces_verification(tmp_path, 
     )
     assert (workspace / "hello.py").read_text() == "print('hello')\n"
     assert model._calls == 3
-    assert "Try to falsify the current implementation once" in model._requests[-1]
+    assert "Perform the single criterion-gap review" in model._requests[-1]
+    assert "Create hello.py: MISSING concrete implementation or test evidence" in model._requests[-1]
+    assert "request verification immediately" in model._requests[-1]
     assert len(calls) == 1
     assert calls[0]["request"]["mode"] == "coding"
     assert calls[0]["request"]["acceptance_criteria"] == ["Create hello.py"]

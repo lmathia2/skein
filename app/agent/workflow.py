@@ -172,6 +172,26 @@ def _ledger_patch(before: TaskLedger, after: TaskLedger) -> dict[str, Any]:
     }
 
 
+def _criterion_review_action(ledger: TaskLedger, step: AgentStep) -> str:
+    claimed = {claim.criterion: claim.evidence for claim in step.completion_claims}
+    rows = [
+        f"- {criterion}: " + (
+            "; ".join(claimed[criterion])
+            if claimed.get(criterion)
+            else "MISSING concrete implementation or test evidence"
+        )
+        for criterion in ledger.acceptance_criteria
+    ]
+    return (
+        "Perform the single criterion-gap review. Preserve the complete original requirements. "
+        "Try to falsify weak or missing rows with omitted, default, boundary, and interacting "
+        "inputs; fix confirmed defects and return updated completion_claims. Do not repeat broad "
+        "exploration. When every row has concrete implementation and test evidence and the "
+        "targeted checks pass, request verification immediately.\n"
+        + "\n".join(rows)
+    )
+
+
 def _with_workspace_observations(
     ledger: TaskLedger,
     step: AgentStep,
@@ -1325,11 +1345,7 @@ async def _orchestrate_owned(
                 "phase": "review",
                 "status": "active",
                 "counterexample_review_completed": True,
-                "next_action": (
-                    "Try to falsify the current implementation once before verification. "
-                    "Test omitted, default, boundary, and interacting inputs; fix confirmed "
-                    "defects, then request verification."
-                ),
+                "next_action": _criterion_review_action(ledger, step),
             })
             deps.event_store.append(
                 task_id,
