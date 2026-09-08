@@ -37,7 +37,9 @@ Compose work until new semantic judgment is required. Examples:
 pages = agent.parallel([
     {"operation": "fs.read", "arguments": {"path": path}} for path in known_paths
 ])
-[(p["data"]["path"], "needle" in p["data"]["text"]) for p in pages]
+good = [p for p in pages if p["status"] == "ok"]
+errors = [p["model_text"] for p in pages if p["status"] != "ok"]
+[(p["data"]["path"], "needle" in p["data"]["text"]) for p in good], errors
 
 changed = agent.fs.edit(path, old, new, expected_sha256=digest)
 check = agent.shell.run(targeted_check) if changed["status"] == "ok" else changed

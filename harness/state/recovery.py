@@ -58,7 +58,13 @@ def validate_recovery_evidence(
         operation = str(event.payload.get("operation_id", ""))
         if event.kind == EventKind.CAPABILITY_REQUESTED:
             open_capabilities.add(operation)
-        elif event.kind in {EventKind.CAPABILITY_COMPLETED, EventKind.CAPABILITY_BLOCKED}:
+        elif event.kind in {
+            EventKind.CAPABILITY_COMPLETED,
+            EventKind.CAPABILITY_BLOCKED,
+        } or (
+            event.kind == EventKind.CAPABILITY_FAILED
+            and event.payload.get("effect") != "unknown"
+        ):
             open_capabilities.discard(operation)
         elif event.kind == "execution.validation_requested":
             open_validations.add(operation)

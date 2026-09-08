@@ -66,6 +66,48 @@ def test_recovery_validates_prefix_and_post_checkpoint_own_writes(tmp_path: Path
         validate_recovery_evidence(checkpoint, events.read("task"), receipts.for_task("task"), **args)
 
 
+def test_failed_capability_is_a_terminal_recovery_event(tmp_path: Path) -> None:
+    checkpoint, events = _evidence(tmp_path)
+    events.append(
+        "task",
+        EventKind.CAPABILITY_REQUESTED,
+        {"operation_id": "read:1", "operation": "fs.read"},
+    )
+    events.append(
+        "task",
+        EventKind.CAPABILITY_FAILED,
+        {"operation_id": "read:1", "operation": "fs.read", "effect": "none"},
+    )
+
+    validate_recovery_evidence(
+        checkpoint,
+        events.read("task"),
+        [],
+        invocation_id="invocation",
+        session_id="session",
+        workspace_fingerprint="before",
+    )
+    events.append(
+        "task",
+        EventKind.CAPABILITY_REQUESTED,
+        {"operation_id": "write:1", "operation": "fs.write"},
+    )
+    events.append(
+        "task",
+        EventKind.CAPABILITY_FAILED,
+        {"operation_id": "write:1", "operation": "fs.write", "effect": "unknown"},
+    )
+    with pytest.raises(ValueError, match="reconciliation"):
+        validate_recovery_evidence(
+            checkpoint,
+            events.read("task"),
+            [],
+            invocation_id="invocation",
+            session_id="session",
+            workspace_fingerprint="before",
+        )
+
+
 def test_operation_identity_allows_intentional_repeat_but_not_unknown_retry(tmp_path: Path) -> None:
     tools = create_adk_tools(tmp_path, state_root=tmp_path / "state")
     args = dict(task_scope="task", invocation_id="invocation")

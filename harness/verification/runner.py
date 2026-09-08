@@ -238,6 +238,14 @@ def build_report(
     next_action: str | None = None
     if scope_violations:
         next_action = "Revert or justify changes outside the permitted scope"
+    elif new_failures:
+        failures = sorted(new_failures)
+        shown = ", ".join(failures[:8])
+        remainder = f" (+{len(failures) - 8} more)" if len(failures) > 8 else ""
+        next_action = (
+            "Fix only the reported failing tests, then rerun targeted verification: "
+            f"{shown}{remainder}"
+        )
     elif not strength_satisfied:
         next_action = f"Add and pass a trusted {required} verification command"
     elif diagnostics and not passed:

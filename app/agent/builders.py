@@ -354,13 +354,14 @@ def build_coding_worker(
 
         def _record_error(self, common: dict[str, Any], error: BaseException) -> None:
             operation_id = str(common["operation_id"])
+            effect = "none" if common["operation"] == "fs.read" else "unknown"
             active_event_store.append(
                 self.task_id,
                 EventKind.CAPABILITY_FAILED,
-                {**common, "status": "failed", "effect": "unknown", "error": type(error).__name__},
+                {**common, "status": "failed", "effect": effect, "error": type(error).__name__},
                 idempotency_key=f"capability:{operation_id}:failed",
             )
-            self.effects.append("unknown")
+            self.effects.append(effect)
 
         def _record_result(
             self, common: dict[str, Any], result: dict[str, Any]
@@ -373,7 +374,8 @@ def build_coding_worker(
                 kind = EventKind.CAPABILITY_COMPLETED
                 effect = "changed" if result.get("changed_paths") else "observed"
             else:
-                kind, effect = EventKind.CAPABILITY_FAILED, "unknown"
+                kind = EventKind.CAPABILITY_FAILED
+                effect = "none" if common["operation"] == "fs.read" else "unknown"
             refs = {
                 str(value)
                 for key in ("artifact_uri", "artifact_uris")
@@ -612,7 +614,7 @@ def build_coding_worker(
                 return "unknown"
             if "changed" in self.effects:
                 return "changed"
-            return "observed" if self.effects else "none"
+            return "observed" if "observed" in self.effects else "none"
 
     async def python(
         code: str,

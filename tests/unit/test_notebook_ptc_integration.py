@@ -152,6 +152,50 @@ async def test_parallel_rejects_effects_before_dispatch(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_failed_read_does_not_require_effect_reconciliation(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(tmp_path / "state" / "events")
+
+    def read(**_kwargs):
+        return {"status": "error", "model_text": "FileNotFoundError: missing"}
+
+    def unused(**_kwargs):
+        raise AssertionError("unexpected capability")
+
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(
+                workspace=tmp_path,
+                state_root=tmp_path / "state",
+                task_id="task",
+            ),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=read, bash=unused, edit=unused, write=unused),
+        ptc_config=config.notebook_ptc,
+        event_store=events,
+    )
+    assert worker.python is not None
+    try:
+        failed = await worker.python('agent.fs.read("missing")["data"]["text"]')
+        continued = await worker.python("40 + 2")
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert failed["status"] == "error"
+    assert failed["effect"] == "none"
+    assert continued["status"] == "ok"
+    assert continued["model_text"] == "42"
+    capability = next(
+        event for event in events.read("task")
+        if event.kind == EventKind.CAPABILITY_FAILED
+    )
+    assert capability.payload["effect"] == "none"
+
+@pytest.mark.asyncio
 async def test_conversation_notebook_restores_only_safe_cells_with_run_attribution(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)

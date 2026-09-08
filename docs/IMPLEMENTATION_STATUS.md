@@ -55,7 +55,10 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   search, and command data separately from model-rendered text; the four-tool surface
   strips that program-only data. Programs can dispatch up to four independently
   validated file reads through one broker batch with stable result/receipt ordering;
-  effectful and shell operations remain serial. A broker call is bounded by its cell
+  effectful and shell operations remain serial. Failed `fs.read` calls are terminal
+  known-no-effect events, so a bad path may discard the failed cell's kernel epoch and
+  continue without effect reconciliation; mutation-capable failures and genuine worker
+  timeouts remain fail-closed. A broker call is bounded by its cell
   deadline, and timeout discards the kernel and blocks further execution until its
   unknown effect is reconciled. Metadata-only traces record canonical ADK request
   regions, and the OpenRouter adapter records the exact serialized request byte count,
@@ -155,7 +158,10 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   autonomous retry.
 - Complete successful PTC checks reuse their separate stdout rather than rendered
   transcripts. Harbor workspace fingerprints reuse initial clean-file hashes and
-  rehash only initially/currently dirty or untracked paths. Pristine baselines keep
+  rehash only initially/currently dirty, untracked, or base-relative committed paths.
+  This keeps committed model changes visible to affected-test discovery and behavioral
+  verification. Failed verification packets name the bounded set of extracted failing
+  test identifiers for the existing focused repair iteration. Pristine baselines keep
   the independent pre-mutation boundary with a 60-second per-command cap; delaying
   them until failure remains unsafe until an equivalent isolated initial workspace
   is available.
