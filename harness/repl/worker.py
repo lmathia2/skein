@@ -12,6 +12,7 @@ import ast
 import builtins
 import io
 import multiprocessing
+import queue
 import threading
 import time
 import traceback
@@ -49,6 +50,8 @@ class ReplBroker(Protocol):
     def bash(self, command: str, timeout_seconds: int = 120) -> Any: ...
 
     def call(self, capability: str, arguments: dict[str, Any]) -> Any: ...
+
+    def parallel(self, operations: list[dict[str, Any]]) -> Any: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +208,7 @@ _AGENT_HELP = {
     "fs.edit": "agent.fs.edit(path, old_text, new_text, expected_sha256=None)",
     "shell.run": "agent.shell.run(command, timeout_seconds=120)",
     "mcp.call": "agent.mcp.call(capability, arguments)",
+    "parallel": "agent.parallel([{'operation': 'fs.read', 'arguments': {...}}, ...])",
     "state.list": "agent.state.list()",
     "state.describe": "agent.state.describe(name)",
 }
@@ -233,6 +237,7 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
     "fs.write": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
     "fs.edit": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
     "mcp.call": {"status": "capability-defined result mapping"},
+    "parallel": {"status": "list[result] in input order", "allowed": ["fs.read"]},
 }
 
 
@@ -318,6 +323,7 @@ def _agent_proxy(
 ) -> SimpleNamespace:
     return SimpleNamespace(
         help=_agent_help,
+        parallel=_RemoteOperation(connection, "parallel"),
         fs=SimpleNamespace(
             read=_RemoteOperation(connection, "fs.read"),
             write=_RemoteOperation(connection, "fs.write"),
@@ -498,6 +504,7 @@ class PersistentPythonWorker:
             "fs.edit": "edit",
             "shell.run": "bash",
             "mcp.call": "call",
+            "parallel": "parallel",
         }
         name = names.get(operation)
         if name is None:
@@ -551,27 +558,53 @@ class PersistentPythonWorker:
                         )
                     response = self._connection.recv()
                     if response.get("type") == "broker_call":
+                        replies: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=1)
+
+                        def invoke_broker(
+                            request: dict[str, Any] = response,
+                            output: queue.Queue[dict[str, Any]] = replies,
+                        ) -> None:
+                            try:
+                                operation = self._broker_operation(
+                                    broker, str(request.get("operation", ""))
+                                )
+                                result = operation(
+                                    *tuple(request.get("args", ())),
+                                    **dict(request.get("kwargs", {})),
+                                )
+                                output.put({
+                                    "type": "broker_result",
+                                    "id": request.get("id"),
+                                    "ok": True,
+                                    "result": result,
+                                })
+                            except BaseException as error:
+                                output.put({
+                                    "type": "broker_result",
+                                    "id": request.get("id"),
+                                    "ok": False,
+                                    "error": f"{type(error).__name__}: {error}",
+                                })
+
+                        threading.Thread(
+                            target=invoke_broker,
+                            daemon=True,
+                            name="agent-broker-call",
+                        ).start()
                         try:
-                            operation = self._broker_operation(
-                                broker, str(response.get("operation", ""))
+                            reply = replies.get(timeout=max(deadline - time.monotonic(), 0))
+                        except queue.Empty:
+                            self._discard()
+                            return PythonExecutionResult(
+                                status="timeout",
+                                error_type="TimeoutError",
+                                error_message=(
+                                    "Python execution timed out during a broker call; "
+                                    "worker state was discarded and reconciliation is required"
+                                ),
+                                duration_ms=int((time.monotonic() - started) * 1_000),
+                                effect_unknown=True,
                             )
-                            result = operation(
-                                *tuple(response.get("args", ())),
-                                **dict(response.get("kwargs", {})),
-                            )
-                            reply = {
-                                "type": "broker_result",
-                                "id": response.get("id"),
-                                "ok": True,
-                                "result": result,
-                            }
-                        except BaseException as error:
-                            reply = {
-                                "type": "broker_result",
-                                "id": response.get("id"),
-                                "ok": False,
-                                "error": f"{type(error).__name__}: {error}",
-                            }
                         self._connection.send(reply)
                         continue
                     if response.get("type") != "execution_result" or response.get("id") != request_id:

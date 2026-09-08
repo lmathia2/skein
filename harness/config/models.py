@@ -174,6 +174,7 @@ class NotebookPtcConfig(FrozenModel):
     max_output_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
     no_progress_cells_per_batch: int = Field(default=24, ge=1, le=256)
     max_cells_per_batch: int = Field(default=48, ge=1, le=256)
+    max_parallel_reads: int = Field(default=4, ge=1, le=16)
     batching_instruction: str = Field(
         default=(
             "Use the task phase in the current work packet to compose cells. During understand "

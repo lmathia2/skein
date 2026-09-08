@@ -85,7 +85,7 @@ and the implementation/evaluation rubric.
   and current Skein execution path; publish an actionable implementation plan.
 - [x] Add machine-readable capability results and actual provider-payload checks.
 - [x] Add executable phase-aware programming examples using the existing policy surface.
-- [ ] Add bounded brokered parallel reads and deadline/reconciliation checks.
+- [x] Add bounded brokered parallel reads and deadline/reconciliation checks.
 - [ ] Remove redundant verification/snapshot work without weakening evidence.
 - [ ] Freeze bounded context handoffs at explicit cache-stable epochs.
 - [ ] Validate the bundle on the same six DeepSWE tasks with Muse Spark 1.3 Contributor.

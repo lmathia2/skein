@@ -53,7 +53,11 @@ boundary reuses the existing single counterexample review;
 on an unchanged workspace can satisfy an identical deterministic validation command
   under the same managed environment. PTC receives redacted machine-readable file,
   search, and command data separately from model-rendered text; the four-tool surface
-  strips that program-only data. Metadata-only traces record canonical ADK request
+  strips that program-only data. Programs can dispatch up to four independently
+  validated file reads through one broker batch with stable result/receipt ordering;
+  effectful and shell operations remain serial. A broker call is bounded by its cell
+  deadline, and timeout discards the kernel and blocks further execution until its
+  unknown effect is reconciled. Metadata-only traces record canonical ADK request
   regions, and the OpenRouter adapter records the exact serialized request byte count,
   hash, and top-level region hashes without retaining prompt text.
 

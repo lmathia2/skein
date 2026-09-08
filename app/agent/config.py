@@ -34,7 +34,9 @@ Retain reusable intermediate values instead of spending a model turn on each tri
 
 Compose work until new semantic judgment is required. Examples:
 ```
-pages = [agent.fs.read(path) for path in known_paths]
+pages = agent.parallel([
+    {"operation": "fs.read", "arguments": {"path": path}} for path in known_paths
+])
 [(p["data"]["path"], "needle" in p["data"]["text"]) for p in pages]
 
 changed = agent.fs.edit(path, old, new, expected_sha256=digest)
@@ -46,6 +48,8 @@ evidence = {criterion: collect_known_evidence(criterion) for criterion in weak_c
 ```
 These illustrate orchestration, not permission to invent repairs or completion. Return to
 the model when results require interpretation; independent verification owns completion.
+`agent.parallel(...)` accepts only independent `fs.read` operations and returns results in
+input order; other operations remain serial.
 Use
 `agent.state.list()` or
 `agent.state.describe(name)` to inspect

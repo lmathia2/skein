@@ -64,6 +64,94 @@ async def test_cancelled_tool_drains_synchronous_effect_before_return(tmp_path: 
 
 
 @pytest.mark.asyncio
+async def test_parallel_reads_overlap_and_keep_ordered_receipts(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(tmp_path / "state" / "events")
+    barrier = threading.Barrier(2)
+
+    def read(*, path: str, **_kwargs):
+        barrier.wait(timeout=2)
+        return {"status": "ok", "model_text": path, "data": {"text": path}}
+
+    def unused(**_kwargs):
+        raise AssertionError("unexpected capability")
+
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=read, bash=unused, edit=unused, write=unused),
+        ptc_config=config.notebook_ptc,
+        event_store=events,
+    )
+    assert worker.python is not None
+    try:
+        result = await worker.python(
+            "agent.parallel(["
+            "{'operation': 'fs.read', 'arguments': {'path': 'a'}},"
+            "{'operation': 'fs.read', 'arguments': {'path': 'b'}}"
+            "])",
+            tool_context=SimpleNamespace(
+                state={"task_id": "task"}, invocation_id="inv", function_call_id="call"
+            ),
+        )
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert result["status"] == "ok"
+    assert "'text': 'a'" in result["model_text"]
+    assert result["model_text"].index("'text': 'a'") < result["model_text"].index("'text': 'b'")
+    capabilities = [
+        event for event in events.read("task") if event.kind.startswith("capability.")
+    ]
+    assert [event.kind for event in capabilities[:2]] == [
+        EventKind.CAPABILITY_REQUESTED,
+        EventKind.CAPABILITY_REQUESTED,
+    ]
+    assert [event.payload["operation_id"] for event in capabilities[:2]] == [
+        f"{result['attempt_id']}:1",
+        f"{result['attempt_id']}:2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_parallel_rejects_effects_before_dispatch(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    called = False
+
+    def effect(**_kwargs):
+        nonlocal called
+        called = True
+        return {"status": "ok"}
+
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=effect, bash=effect, edit=effect, write=effect),
+        ptc_config=config.notebook_ptc,
+    )
+    assert worker.python is not None
+    try:
+        result = await worker.python(
+            "agent.parallel([{'operation': 'fs.write', 'arguments': {'path': 'x'}}])"
+        )
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert result["status"] == "error"
+    assert called is False
+
+
+@pytest.mark.asyncio
 async def test_conversation_notebook_restores_only_safe_cells_with_run_attribution(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
@@ -116,7 +204,8 @@ def test_factory_exposes_only_python_when_notebook_ptc_is_enabled(tmp_path: Path
     assert tool_names == {"python"}
     assert worker.include_contents == "default"
     assert "include_contents" in worker.model_fields_set
-    assert "Capability calls return result mappings" in worker.static_instruction
+    assert "Capability calls\nreturn mappings" in worker.static_instruction
+    assert "agent.parallel" in worker.static_instruction
     assert "`open()`" in worker.static_instruction
     assert assembly.build_info.tool_names == ("python",)
     assert "never parse notebook JSON" in worker.static_instruction
@@ -306,7 +395,7 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert terminal.payload["capability_operations"] == ["fs.write", "fs.read"]
     assert kinds[-1] == EventKind.NOTEBOOK_SNAPSHOTTED
     assert '"tools":["python"]' in settings.static_prefix
-    assert "During verify, group only already-selected" in settings.static_instruction
+    assert "During verify, group already-selected" in settings.static_instruction
 
 
 @pytest.mark.asyncio

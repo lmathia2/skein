@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
 
@@ -148,6 +149,28 @@ def test_timeout_discards_worker_state_and_marks_effect_unknown() -> None:
     assert timed_out.effect_unknown is True
     assert after_restart.status == "error"
     assert after_restart.error_type == "NameError"
+
+
+def test_timeout_during_broker_call_returns_without_waiting_for_late_result() -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingBroker(_Broker):
+        def read(self, path: str, offset: int = 1, limit: int = 400) -> dict[str, Any]:
+            entered.set()
+            release.wait(timeout=5)
+            return {"status": "ok", "model_text": path}
+
+    started = time.monotonic()
+    with PersistentPythonWorker() as worker:
+        result = worker.execute('agent.fs.read("slow")', BlockingBroker(), 0.15)
+    elapsed = time.monotonic() - started
+    release.set()
+
+    assert entered.is_set()
+    assert result.status == "timeout"
+    assert result.effect_unknown is True
+    assert elapsed < 1
 
 
 def test_direct_effectful_imports_and_builtins_are_blocked() -> None:

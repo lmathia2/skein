@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -301,7 +302,7 @@ def build_coding_worker(
         def _blocked(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
             raise PermissionError("capabilities are disabled while restoring replay-safe cells")
 
-        read = write = edit = bash = call = _blocked
+        read = write = edit = bash = call = parallel = _blocked
 
     class _CellBroker:
         def __init__(
@@ -327,12 +328,7 @@ def build_coding_worker(
             self.effects: list[str] = []
             self.artifact_refs: set[str] = set()
 
-        def _call(
-            self,
-            operation: str,
-            arguments: dict[str, Any],
-            invoke: Callable[[], dict[str, Any]],
-        ) -> dict[str, Any]:
+        def _reserve(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
             self.call_index += 1
             self.operations.append(operation)
             operation_id = f"{self.attempt_id}:{self.call_index}"
@@ -354,17 +350,22 @@ def build_coding_worker(
                 common,
                 idempotency_key=f"capability:{operation_id}:requested",
             )
-            try:
-                result = invoke()
-            except Exception as error:
-                active_event_store.append(
-                    self.task_id,
-                    EventKind.CAPABILITY_FAILED,
-                    {**common, "status": "failed", "effect": "unknown", "error": type(error).__name__},
-                    idempotency_key=f"capability:{operation_id}:failed",
-                )
-                self.effects.append("unknown")
-                raise
+            return common
+
+        def _record_error(self, common: dict[str, Any], error: BaseException) -> None:
+            operation_id = str(common["operation_id"])
+            active_event_store.append(
+                self.task_id,
+                EventKind.CAPABILITY_FAILED,
+                {**common, "status": "failed", "effect": "unknown", "error": type(error).__name__},
+                idempotency_key=f"capability:{operation_id}:failed",
+            )
+            self.effects.append("unknown")
+
+        def _record_result(
+            self, common: dict[str, Any], result: dict[str, Any]
+        ) -> dict[str, Any]:
+            operation_id = str(common["operation_id"])
             status = str(result.get("status", "error"))
             if status == "blocked":
                 kind, effect = EventKind.CAPABILITY_BLOCKED, "none"
@@ -392,6 +393,61 @@ def build_coding_worker(
                 idempotency_key=f"capability:{operation_id}:terminal",
             )
             return result
+
+        def _call(
+            self,
+            operation: str,
+            arguments: dict[str, Any],
+            invoke: Callable[[], dict[str, Any]],
+        ) -> dict[str, Any]:
+            common = self._reserve(operation, arguments)
+            try:
+                result = invoke()
+            except Exception as error:
+                self._record_error(common, error)
+                raise
+            return self._record_result(common, result)
+
+        def parallel(self, operations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            if not isinstance(operations, list) or not operations:
+                raise ValueError("parallel operations must be a non-empty list")
+            if len(operations) > active_ptc_config.max_parallel_reads:
+                raise ValueError(
+                    f"parallel supports at most {active_ptc_config.max_parallel_reads} reads"
+                )
+            normalized: list[dict[str, Any]] = []
+            for item in operations:
+                if not isinstance(item, dict) or item.get("operation") != "fs.read":
+                    raise PermissionError("parallel currently permits only fs.read")
+                arguments = item.get("arguments", {})
+                if not isinstance(arguments, dict):
+                    raise TypeError("parallel operation arguments must be a mapping")
+                unexpected = set(arguments) - {"path", "offset", "limit"}
+                if unexpected or not isinstance(arguments.get("path"), str):
+                    raise ValueError("invalid fs.read arguments in parallel batch")
+                normalized.append(arguments)
+
+            def invoke(arguments: dict[str, Any]) -> dict[str, Any]:
+                return active_tools.read(
+                    path=arguments["path"],
+                    offset=arguments.get("offset", 1),
+                    limit=arguments.get("limit", read_default_lines),
+                )
+
+            reserved = [self._reserve("fs.read", arguments) for arguments in normalized]
+            with ThreadPoolExecutor(max_workers=len(normalized)) as executor:
+                futures = [executor.submit(invoke, arguments) for arguments in normalized]
+                results: list[dict[str, Any]] = []
+                for common, future in zip(reserved, futures, strict=True):
+                    try:
+                        results.append(self._record_result(common, future.result()))
+                    except Exception as error:
+                        self._record_error(common, error)
+                        results.append({
+                            "status": "error",
+                            "model_text": f"fs.read failed: {type(error).__name__}: {error}",
+                        })
+                return results
 
         def read(self, path: str, offset: int = 1, limit: int = read_default_lines) -> dict[str, Any]:
             return self._call(
@@ -633,6 +689,23 @@ def build_coding_worker(
             cell for cell in reduce_notebook(notebook_events(task_id), notebook_id).cells
             if isinstance(cell, NotebookCell) and cell.attempt_id == attempt_id
         ), None)
+        unresolved = next(
+            (
+                cell
+                for cell in reduce_notebook(notebook_events(task_id), notebook_id).cells
+                if isinstance(cell, NotebookCell) and cell.status == "effect_unknown"
+            ),
+            None,
+        )
+        if unresolved is not None and (
+            previous_attempt is None or unresolved.attempt_id != previous_attempt.attempt_id
+        ):
+            return {
+                "status": "blocked",
+                "reconciliation_required": True,
+                "cell_id": unresolved.cell_id,
+                "model_text": "A prior timed-out Python cell has an unknown effect; reconcile it before more execution.",
+            }
         if previous_attempt is not None:
             if previous_attempt.source != code:
                 return {"status": "blocked", "model_text": "Python operation identity reused with different source"}
