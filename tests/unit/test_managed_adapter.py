@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from harness.repo import SearchPage
-from harness.sandbox import SandboxRequest, SandboxResult
+from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT, SandboxRequest, SandboxResult
 from harness.tools.adk_adapter import create_adk_tools, discover_known_secrets
 
 
@@ -228,7 +228,11 @@ def test_approved_model_bash_uses_injected_command_sandbox(
     assert result["model_text"] == "sandbox output"
     assert result["artifact_uri"] == "file:///artifact.log"
     assert sandbox.requests == [
-        SandboxRequest(command="git status --short", timeout_seconds=17)
+        SandboxRequest(
+            command="git status --short",
+            timeout_seconds=17,
+            environment=MANAGED_COMMAND_ENVIRONMENT,
+        )
     ]
 
 

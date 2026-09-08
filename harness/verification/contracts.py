@@ -26,6 +26,18 @@ _SYNTAX_ONLY_PATTERNS = (
     re.compile(r"(?:^|\s)compileall(?:\s|$)"),
     re.compile(r"(?:^|\s)python\s+-m\s+json\.tool(?:\s|$)"),
 )
+_REUSABLE_COMMAND_PATTERN = re.compile(
+    r"(?:^|[\s;&|])(?:python\s+-m\s+)?(?:pytest|unittest|vitest|jest)(?:\s|$)"
+    r"|(?:^|[\s;&|])(?:go|cargo|npm|pnpm|yarn)\s+(?:test|check)(?:\s|$)"
+    r"|(?:^|[\s;&|])(?:mvn|gradle|gradlew)(?:\s+[^;&|]+)?\s+test(?:\s|$)",
+    re.IGNORECASE,
+)
+
+
+def is_reusable_validation_command(command: str) -> bool:
+    """Return whether a successful complete shell result can serve as validation."""
+
+    return _REUSABLE_COMMAND_PATTERN.search(command) is not None
 
 
 def infer_verification_strength(
@@ -106,4 +118,5 @@ __all__ = [
     "ValidationStatus",
     "VerificationStrength",
     "infer_verification_strength",
+    "is_reusable_validation_command",
 ]

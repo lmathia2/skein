@@ -10,7 +10,7 @@ from pathlib import Path
 
 from harness.approvals import ApprovalStore
 from harness.safety import ApprovalAction, ApprovalPolicy, CommandRisk, SecretRedactor
-from harness.sandbox import CommandSandbox, SandboxRequest
+from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT, CommandSandbox, SandboxRequest
 from harness.telemetry import MetricsStore, ToolUsageSample
 
 from .contracts import CommandResult, ValidationCommand
@@ -148,7 +148,7 @@ class ManagedValidationExecutor:
             SandboxRequest(
                 command=validation.command,
                 timeout_seconds=validation.timeout_seconds,
-                environment={"UV_OFFLINE": "1", "UV_NO_SYNC": "1"},
+                environment=MANAGED_COMMAND_ENVIRONMENT,
             )
         )
         result = CommandResult(

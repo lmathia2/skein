@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 SandboxStatus = Literal["ok", "error", "blocked", "timeout"]
+MANAGED_COMMAND_ENVIRONMENT = {"UV_OFFLINE": "1", "UV_NO_SYNC": "1"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,4 +50,10 @@ class CommandSandbox(Protocol):
     def execute(self, request: SandboxRequest) -> SandboxResult: ...
 
 
-__all__ = ["CommandSandbox", "SandboxRequest", "SandboxResult", "SandboxStatus"]
+__all__ = [
+    "MANAGED_COMMAND_ENVIRONMENT",
+    "CommandSandbox",
+    "SandboxRequest",
+    "SandboxResult",
+    "SandboxStatus",
+]

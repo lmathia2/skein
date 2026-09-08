@@ -23,6 +23,7 @@ from google.genai import types
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
 from harness.environment.async_call import run_managed_thread
+from harness.environment.runtime import LocalRepositoryRuntime
 from harness.models.agent_step import StructuredAgentStep
 from harness.notebook import (
     NotebookCell,
@@ -32,10 +33,12 @@ from harness.notebook import (
     reduce_notebook,
 )
 from harness.repl import PersistentPythonWorker
+from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT
 from harness.state import EventKind, EventStore, JsonlEventStore
 from harness.state.events import HarnessEvent
 from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
 from harness.tools.output import bound_output
+from harness.verification.contracts import is_reusable_validation_command
 
 from .config import HarnessSettings
 from .streaming import PublicReplies
@@ -110,6 +113,7 @@ def build_coding_worker(
     conversation_notebook_id: str | None = None,
     prior_notebook_events: tuple[HarnessEvent, ...] = (),
     notebook_root: Path | None = None,
+    workspace_fingerprint: Callable[[], str] | None = None,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -123,6 +127,9 @@ def build_coding_worker(
     read_default_lines = active_tool_config.read_default_lines
     bash_default_timeout = active_tool_config.bash_default_timeout_seconds
     capability_handlers = capabilities or {}
+    fingerprint_workspace = workspace_fingerprint or LocalRepositoryRuntime(
+        settings.workspace
+    ).fingerprint
 
     def _invoke_tool(operation: str, call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         """Keep expected and unexpected tool failures inside the tool protocol."""
@@ -382,6 +389,9 @@ def build_coding_worker(
             )
 
         def bash(self, command: str, timeout_seconds: int = bash_default_timeout) -> dict[str, Any]:
+            reusable = is_reusable_validation_command(command)
+            workspace_before = fingerprint_workspace() if reusable else None
+
             def invoke() -> dict[str, Any]:
                 result = active_tools.bash(
                     command=command,
@@ -410,11 +420,44 @@ def build_coding_worker(
                     }
                 return result
 
-            return self._call(
+            result = self._call(
                 "shell.run",
                 {"command": command, "timeout_seconds": timeout_seconds},
                 invoke,
             )
+            workspace_after = (
+                fingerprint_workspace() if reusable else None
+            )
+            if (
+                workspace_before is not None
+                and result.get("status") == "ok"
+                and result.get("exit_code") == 0
+                and not result.get("truncated")
+                and not result.get("omitted_bytes")
+                and workspace_before == workspace_after
+            ):
+                active_event_store.append(
+                    self.task_id,
+                    "execution.validation_observed",
+                    {
+                        "operation_id": f"{self.attempt_id}:{self.call_index}",
+                        "receipt_id": result.get("receipt_id"),
+                        "command": command,
+                        "command_sha256": hashlib.sha256(command.encode()).hexdigest(),
+                        "environment": dict(MANAGED_COMMAND_ENVIRONMENT),
+                        "workspace_before": workspace_before,
+                        "workspace_after": workspace_after,
+                        "result": {
+                            "status": "ok",
+                            "exit_code": result.get("exit_code"),
+                            "stdout": str(result.get("model_text", "")),
+                            "duration_ms": int(result.get("duration_ms", 0)),
+                            "artifact_uri": result.get("artifact_uri"),
+                        },
+                    },
+                    idempotency_key=f"validation-observed:{self.attempt_id}:{self.call_index}",
+                )
+            return result
 
         def edit(
             self,

@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from harness.approvals import ApprovalStore
 from harness.repo.discovery import BuildCommand, RepositoryManifest
 from harness.sandbox import SandboxRequest, SandboxResult
@@ -15,7 +17,23 @@ from harness.verification import (
     discover_validation_plan,
     run_validation_plan,
 )
+from harness.verification.contracts import is_reusable_validation_command
 from harness.verification.managed import _fingerprint
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("pytest -q", True),
+        ("timeout 90 npx vitest run", True),
+        ("go test ./...", True),
+        ("npm test -- --runInBand", True),
+        ("rg -n TODO src", False),
+        ("git diff --check", False),
+    ],
+)
+def test_reusable_validation_command_detection(command: str, expected: bool) -> None:
+    assert is_reusable_validation_command(command) is expected
 
 
 class _RecordingSandbox:

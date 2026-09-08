@@ -483,6 +483,7 @@ class SkeinHarnessFactory:
                 event_store=event_store,
                 approvals=approvals,
                 replies=replies,
+                workspace_fingerprint=execution.repository.fingerprint,
                 **notebook_options,
             )
         else:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +15,7 @@ from app.agent.workflow import _verify_task
 from harness.approvals import ApprovalStore
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import RuntimeBindings, load_harness_composition
-from harness.sandbox import SandboxResult
+from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT, SandboxResult
 from harness.state import JsonlEventStore
 from harness.tools.adk_adapter import create_adk_tools
 from harness.verification import (
@@ -188,6 +189,22 @@ async def test_verification_runs_targeted_test_once_per_workspace(
         event_store=JsonlEventStore(state / "events"),
         validation_executor=lambda task: execute,
     )
+    deps.event_store.append(
+        "task",
+        "execution.validation_observed",
+        {
+            "operation_id": "cell:1",
+            "receipt_id": "receipt",
+            "command": command,
+            "command_sha256": hashlib.sha256(command.encode()).hexdigest(),
+            "environment": dict(MANAGED_COMMAND_ENVIRONMENT),
+            "workspace_before": "unchanged-workspace",
+            "workspace_after": "unchanged-workspace",
+            "result": {
+                "status": "ok", "exit_code": 0, "stdout": "1 passed", "duration_ms": 10,
+            },
+        },
+    )
     ctx = SimpleNamespace(
         get_invocation_context=lambda: SimpleNamespace(invocation_id="verify")
     )
@@ -214,10 +231,10 @@ async def test_verification_runs_targeted_test_once_per_workspace(
         )
 
     assert all(result["report"]["passed"] for result in results)
-    assert calls == [command, "git diff --check"]
+    assert calls == ["git diff --check"]
     completed = [
         event
         for event in deps.event_store.read("task")
         if event.kind == "execution.validation_completed"
     ]
-    assert [event.payload["cached"] for event in completed] == [False, False, True, True]
+    assert [event.payload["cached"] for event in completed] == [True, False, True, True]

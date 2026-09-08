@@ -5,6 +5,7 @@ import hashlib
 import json
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -296,15 +297,62 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert kinds.count(EventKind.NOTEBOOK_CELL_ADDED) == 3
     assert EventKind.CAPABILITY_REQUESTED in kinds
     assert EventKind.CAPABILITY_COMPLETED in kinds
-    terminal = [
+    terminal = next(
         event for event in events.read("task-1")
-        if event.kind == EventKind.REPL_CELL_COMPLETED and event.payload["cell_id"] == second["cell_id"]
-    ][0]
+        if event.kind == EventKind.REPL_CELL_COMPLETED
+        and event.payload["cell_id"] == second["cell_id"]
+    )
     assert terminal.payload["capability_count"] == 2
     assert terminal.payload["capability_operations"] == ["fs.write", "fs.read"]
     assert kinds[-1] == EventKind.NOTEBOOK_SNAPSHOTTED
     assert '"tools":["python"]' in settings.static_prefix
     assert "During verify, group only already-selected" in settings.static_instruction
+
+
+@pytest.mark.asyncio
+async def test_successful_complete_ptc_shell_result_becomes_validation_evidence(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(tmp_path / "state" / "events")
+
+    def command(**_kwargs):
+        return {
+            "status": "ok", "model_text": "1 passed", "exit_code": 0,
+            "duration_ms": 12, "truncated": False, "omitted_bytes": 0,
+        }
+
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=command, bash=command, edit=command, write=command),
+        ptc_config=config.notebook_ptc,
+        event_store=events,
+        workspace_fingerprint=lambda: "stable",
+    )
+    assert worker.python is not None
+    try:
+        result = await worker.python(
+            'agent.shell.run("pytest -q")',
+            tool_context=SimpleNamespace(
+                state={"task_id": "task", "workspace_fingerprint": "stable"},
+                invocation_id="invocation",
+                function_call_id="python-call",
+            ),
+        )
+    finally:
+        assert worker.close is not None
+        worker.close()
+    assert result["status"] == "ok"
+    observed = [
+        event for event in events.read("task")
+        if event.kind == "execution.validation_observed"
+    ]
+    assert len(observed) == 1
+    assert observed[0].payload["command"] == "pytest -q"
+    assert observed[0].payload["workspace_before"] == "stable"
 
 
 @pytest.mark.asyncio

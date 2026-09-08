@@ -38,6 +38,7 @@ from harness.orchestration import (
     task_id_for,
 )
 from harness.orchestration.runtime import can_answer_directly
+from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT
 from harness.state import (
     CheckpointStore,
     EventKind,
@@ -488,10 +489,16 @@ async def _verify_task(
             (
                 event
                 for event in reversed(events)
-                if event.kind == "execution.validation_completed"
+                if event.kind in {
+                    "execution.validation_completed", "execution.validation_observed"
+                }
                 and event.payload.get("command_sha256") == command_sha256
                 and event.payload.get("workspace_after") == workspace_before
                 and event.payload.get("result", {}).get("status") in {"ok", "error"}
+                and (
+                    event.kind == "execution.validation_completed"
+                    or event.payload.get("environment") == dict(MANAGED_COMMAND_ENVIRONMENT)
+                )
             ),
             None,
         )
@@ -499,11 +506,22 @@ async def _verify_task(
             "operation_id": operation_id, "command": command.command,
             "command_sha256": command_sha256, "workspace_before": workspace_before,
         }, idempotency_key=f"validation:{operation_id}:requested")
-        result = (
-            CommandResult.model_validate(cached.payload["result"])
-            if cached is not None
-            else await run_managed_thread(executor, command)
-        )
+        if cached is None:
+            result = await run_managed_thread(executor, command)
+        elif cached.kind == "execution.validation_observed":
+            observed = cached.payload["result"]
+            result = CommandResult(
+                category=command.category,
+                command=command.command,
+                source="complete PTC shell receipt",
+                status="ok",
+                exit_code=observed.get("exit_code"),
+                stdout=str(observed.get("stdout", "")),
+                duration_ms=int(observed.get("duration_ms", 0)),
+                artifact_uri=observed.get("artifact_uri"),
+            )
+        else:
+            result = CommandResult.model_validate(cached.payload["result"])
         deps.event_store.append(ledger.task_id, "execution.validation_completed", {
             "operation_id": operation_id, "result": result.model_dump(mode="json"),
             "workspace_after": _workspace_fingerprint(deps, ledger.task_id),

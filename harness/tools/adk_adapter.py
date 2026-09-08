@@ -22,6 +22,7 @@ from harness.models import ToolEnvelope
 from harness.repo import FffSearchService, SearchBackend, SearchError, SearchPage
 from harness.safety import ApprovalAction, ApprovalPolicy, SecretRedactor
 from harness.sandbox import (
+    MANAGED_COMMAND_ENVIRONMENT,
     CommandSandbox,
     DockerSandbox,
     LocalSandbox,
@@ -604,6 +605,7 @@ class _ManagedTools:
                 SandboxRequest(
                     command=command,
                     timeout_seconds=timeout_seconds,
+                    environment=MANAGED_COMMAND_ENVIRONMENT,
                 )
             ).to_tool_result())
 
