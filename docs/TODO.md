@@ -81,6 +81,17 @@ and the implementation/evaluation rubric.
 
 ## PTC execution refinement
 
+- [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
+  `execute_code` without changing either current implementation's tool declaration.
+- [ ] Separate PTC serialization (`notebook` or ledger-only `jsonl`) from runtime-state
+  recovery (`none`, `replay_safe`, or bounded `snapshot`) and reject invalid combinations.
+- [ ] Replace bundled memory implementation selection with exact code-owned
+  `(program name, version)` configuration and receipt identity.
+- [ ] Add the pinned Prime REPL runtime and bounded snapshot policy as optional
+  implementations without importing Prime's daemon, TUI, or session authority.
+- [ ] Run the deterministic composition matrix and matched live comparison before
+  changing the four-tool default.
+
 - [x] Make Skein notebook PTC and vendored ADK Code Mode selectable ADK tools,
   and independently select optional trace-native or Pi-derived memory for
   matched ablations.

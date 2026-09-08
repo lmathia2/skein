@@ -1,8 +1,8 @@
-# Trace-native harness and notebook PTC
+# Trace-native harness and composable PTC
 
-> Status: accepted architecture; canonical memory and notebook PTC remain opt-in
+> Status: accepted architecture; composable PTC and canonical memory remain opt-in
 >
-> Updated: 2026-09-07
+> Updated: 2026-09-08
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -10,15 +10,25 @@ Code-level requirements and test mappings are in the
 ## Decisions
 
 1. One append-only canonical ledger is the historical source of truth.
-2. The target model-facing interface is one persistent `python` tool; the current
+2. The target model-facing interface is one `execute_code` tool; the current
    default remains `read`, `bash`, `edit`, and `write` until the PTC ablation passes.
-3. Python composes capabilities through the same host-owned broker. It does not gain
-   filesystem, shell, network, approval, or completion authority.
-4. The notebook is a rebuildable session document. It is not the event ledger and it
-   is not the live Python heap.
-5. Every attempted operation is evidence, including failure, timeout, cancellation,
+3. PTC execution, durable serialization, runtime-state recovery, and memory programs
+   are independent configuration axes with code-owned registries. A model-facing tool
+   name or document format must not select the other axes implicitly.
+4. Brokered PTC composes capabilities through the same host-owned effect broker. A
+   runtime with native OS access is a distinct, explicit trust profile and cannot claim
+   broker enforcement for those effects.
+5. JSONL means the existing canonical ledger without another writer. A notebook is an
+   optional rebuildable projection of the same lifecycle events. Neither representation
+   is the live Python heap.
+6. Runtime-state recovery is explicit: `none`, conservative event replay, or bounded
+   runtime snapshots. A serializer never decides which recovery policy applies.
+7. Every attempted operation is evidence, including failure, timeout, cancellation,
    blocking, and an unknown external effect.
-6. Deterministic code owns policy, budgets, recovery, verification, and completion.
+8. Memory is selected by exact program name and version over authorized evidence.
+   Configuration may select registered programs and bounded parameters, never import
+   paths or arbitrary executable source.
+9. Deterministic code owns policy, budgets, recovery, verification, and completion.
 
 ## Architecture
 
@@ -30,9 +40,14 @@ ADK Runner and Skein workflow
        |
        +---- default worker: read | bash | edit | write
        |
-       `---- PTC worker: python
+       `---- PTC tool: execute_code
                          |
-                         v
+                  PTC session coordinator
+                    |       |       |
+                 runtime  state   serializer
+                    |       |       |
+                    +-------+-------+
+                            |
                   guarded capability broker
                    |       |       |
                  files    shell    MCP
@@ -42,14 +57,115 @@ ADK Runner and Skein workflow
                            v
                  canonical event ledger
                     |       |       |
-                 reducers  views  notebook
+                 reducers  views  optional notebook
 ```
 
 ADK supplies the runner, session service, streaming, provider integration, caching,
 and resumability. Skein supplies the coding loop, tool policy, state reduction,
 evidence capture, context construction, and independent verification.
 
-## One trace, three representations
+## Configuration model
+
+The current `NotebookPtcConfig.implementation` field is a transitional bundle. The
+target shape names each independent decision:
+
+```yaml
+ptc:
+  enabled: true
+  execution:
+    implementation: skein_repl       # skein_repl | adk_code_mode | prime_repl
+    default_timeout_seconds: 120
+    max_timeout_seconds: 600
+    max_output_bytes: 16000
+    capability_access: brokered       # brokered | native
+  persistence:
+    serialization: notebook           # notebook | jsonl
+    state: replay_safe                 # none | replay_safe | snapshot
+    continuity: run                    # run | conversation
+  batching:
+    no_progress_cells: 24
+    max_cells: 48
+    max_parallel_reads: 4
+
+memory:
+  enabled: true
+  ledger: jsonl                        # jsonl | duckdb
+  programs:
+    - name: task.progress
+      version: "1"
+      mode: active                     # shadow | active
+    - name: task.memory
+      version: "1"
+      mode: active
+      parameters:
+        retrieval: lexical
+```
+
+This is a closed composition, not dependency injection from YAML. Each key resolves
+through a code-owned registry to a typed implementation. Configuration validation
+rejects an unknown key/version, unknown parameter, missing optional dependency, or
+unsupported combination before the ADK app is assembled.
+
+The initial compatibility mapping is deterministic:
+
+| Legacy PTC value | Execution | Serialization | State | Continuity |
+| --- | --- | --- | --- | --- |
+| `skein_notebook` | `skein_repl` | `notebook` | `replay_safe` | existing value |
+| `adk_code_mode` | `adk_code_mode` | `jsonl` | `none` | `run` |
+
+Legacy input may be normalized at the configuration boundary for one migration
+window. The normalized configuration, not the legacy spelling, contributes to the
+behavior hash. New profiles use only the decomposed shape.
+
+### Supported combination rules
+
+- `adk_code_mode` is turn-scoped and initially supports `state: none` and
+  `continuity: run` only.
+- `replay_safe` requires a persistent runtime and canonical cell lifecycle events.
+- `snapshot` requires a runtime that implements bounded snapshot/restore and records
+  snapshot manifests. It does not make opaque heap bytes historical evidence.
+- `serialization: notebook` requires a registered deterministic notebook projector.
+- `serialization: jsonl` adds no serializer or duplicate file: the canonical ledger
+  already is the durable representation.
+- `capability_access: native` is allowed only by an explicit trusted execution profile.
+  Its direct Python effects are not described as brokered, idempotent, or recoverable.
+- Conversation continuity requires server-owned conversation/workspace identity and a
+  state policy that supports cross-run restore.
+
+## Component contracts
+
+The smallest useful split is one coordinator and three narrow implementation
+contracts. These are behavioral interfaces; exact Python names may change during
+implementation.
+
+```python
+class PtcRuntime(Protocol):
+    async def execute(self, request: CellRequest) -> CellResult: ...
+    async def reset(self) -> RuntimeEpoch: ...
+    async def close(self) -> None: ...
+
+class PtcStatePolicy(Protocol):
+    async def restore(self, runtime, history) -> RestoreResult: ...
+    async def after_cell(self, runtime, result) -> StateReceipt: ...
+    async def close(self, runtime) -> StateReceipt: ...
+
+class PtcSerializer(Protocol):
+    def prepare(self, events, destination) -> SerializationResult: ...
+    def materialize(self, events, destination) -> SerializationResult: ...
+```
+
+`CellRequest` contains stable task, invocation, tool-call, cell, attempt, work-batch,
+and runtime-epoch identities; exact code; deadline; and a capability broker reference.
+`CellResult` contains a terminal status, bounded stdout/stderr/value/display data,
+runtime epoch, state metadata, effect classification, duration, and artifact references.
+It never declares task completion.
+
+`PtcSession` owns ordering and is the only caller used by `execute_code`. Runtimes do
+not append ledger events or materialize documents. State policies do not authorize
+effects. Serializers do not execute or restore code. This prevents a new runtime or
+document format from becoming a second authority path.
+
+## One trace, four representations
 
 This simulated trace follows the implemented event shapes. The agent submits:
 
@@ -77,8 +193,9 @@ Those events serve different representations:
 | --- | --- | --- |
 | Canonical ledger | What was observed or attempted? | Historical authority |
 | Task state reducer | What is the current phase, goal, and blocker set? | Deterministic control projection |
-| Notebook | What code, selected output, and narrative form the session workbench? | Rebuildable document |
-| CPython heap | Which values are live in this kernel epoch? | Disposable runtime state |
+| PTC serialization | What durable code/output document was selected? | Ledger-only JSONL or rebuildable notebook |
+| Runtime-state artifact | Which opaque values may a compatible runtime restore? | Bounded recovery aid, never historical authority |
+| Live runtime heap | Which values are live in this runtime epoch? | Disposable runtime state |
 
 JSONL and DuckDB implement the same canonical event contract. Existing per-task
 JSONL and SQLite stores remain operational compatibility stores during migration.
@@ -86,33 +203,74 @@ When canonical memory is enabled, `LedgerBackedEventStore` writes both and can p
 byte-equal task-event reconstruction from the canonical ledger. They must not evolve
 into competing sources of truth.
 
-## Write-ahead PTC protocol
+## Execution protocol
 
-For each Python cell, the harness:
+For each `execute_code` call, `PtcSession` performs this sequence:
 
-1. assigns stable cell, attempt, and kernel-epoch identities;
-2. persists and materializes the submitted cell before execution;
-3. routes nested effects through the normal broker and records intent first;
-4. records bounded success, failure, timeout, or unknown effect;
-5. materializes selected output and artifact references afterward.
+1. Resolve and validate the configured runtime, state policy, serializer, and memory
+   program versions before model execution.
+2. Derive stable cell and attempt identities from the ADK invocation and function-call
+   identity; read the current runtime epoch.
+3. Reconcile an earlier attempt with the same identity. Return its completed receipt
+   without re-executing, or block when its outcome/effect remains unknown.
+4. Ask the state policy to restore the new runtime epoch from its declared evidence or
+   snapshot manifest. Persist a bounded restore receipt.
+5. Append `ptc.cell_submitted` with the exact source hash and identities before running
+   code. Invoke `serializer.prepare`; notebook mode materializes that started cell and
+   JSONL mode confirms the ledger watermark. Preparation failure appends a blocked
+   terminal event and prevents execution.
+6. Execute through the runtime under the configured cell deadline. Every brokered
+   nested operation separately records authorization, intent, and terminal receipt.
+7. Classify the terminal result as completed, failed, timed out, cancelled, blocked, or
+   effect-unknown. Persist it before publishing model-visible output.
+8. Invoke `state.after_cell`. Conservative replay may discard a dirty epoch; snapshot
+   policy may publish a bounded snapshot manifest; `none` does nothing.
+9. Invoke the selected serializer. Notebook mode atomically rebuilds at the resulting
+   ledger watermark; JSONL mode returns the canonical stream identity without writing.
+10. Return one bounded `execute_code` result. The outer deterministic workflow retains
+    sole authority over verification and completion.
 
-A failed cell discards the dirty kernel epoch. Restart restores only completed,
-self-contained data-construction cells classified as safe. Imports, definitions,
-calls, dependent expressions, and broker effects are not silently replayed.
+The terminal event is authoritative even if post-execution state persistence or document
+projection subsequently fails. Such a failure appends its own failure event and blocks
+or degrades recovery according to policy; it must not rewrite the execution outcome.
+
+Existing histories are not rewritten. During the migration, reducers accept the current
+`notebook.cell_added` plus `repl.cell_submitted` pair and the normalized
+`ptc.cell_submitted` event. New writers emit only the normalized lifecycle vocabulary
+after replay-equality tests prove identical reduced state. A schema/program version in
+the receipt identifies which vocabulary was reduced.
+
+### State policies
+
+`none` makes no continuity claim. A runtime may remain warm during its natural lifetime,
+but restart begins with an empty namespace.
+
+`replay_safe` preserves current Skein behavior. A failed cell discards the dirty runtime
+epoch. Restart executes only completed, self-contained data-construction cells classified
+as safe. Imports, definitions, calls, dependent expressions, and broker effects are not
+silently replayed.
+
+`snapshot` preserves Prime-style heap continuity. The runtime serializes names
+independently under total and per-value byte caps, writes payload and manifest atomically,
+and reports skipped values. Restore is valid only for the same owner, workspace,
+runtime implementation/version, and compatible Python environment. Snapshot bytes are
+an opaque recovery artifact: they do not prove how a value was produced, whether an
+external effect completed, or that the current environment is semantically equivalent.
+Unknown effects still block retry or completion.
 
 ## Notebook contract
 
 The `.ipynb` is continuously regenerated from events during execution:
 
 ```text
-model calls python(code)
+model calls execute_code(code)
         |
         v
 choose notebook ID + cell/attempt/kernel IDs
         |
 restore prior replay-safe cells if this is a new kernel
         |
-append notebook.cell_added + repl.cell_submitted
+append ptc.cell_submitted
         |
 reduce events ----------> atomically materialize .ipynb before execution
         |
@@ -158,7 +316,7 @@ agent.shell.run("nb read path/to/notebook.ipynb --no-output")
 agent.shell.run("nb search path/to/notebook.ipynb PATTERN")
 ```
 
-The worker instruction explicitly tells the model to use `nb read`/`nb search`
+When notebook serialization is selected, the worker instruction tells the model to use `nb read`/`nb search`
 through the guarded shell capability and never parse notebook JSON directly. This
 keeps one interoperability path for humans and agents. `nb execute` is deliberately
 excluded: executing a document would bypass the cell identity, write-ahead event,
@@ -205,9 +363,71 @@ Together these allow a later session to open the workbench, retrieve exact histo
 evidence, and reconstruct only safe computational state without replaying the entire
 conversation or trusting stale notebook output.
 
+## Versioned memory selection
+
+Memory configuration selects exact programs independently of PTC execution,
+serialization, and state recovery. The program contract and evidence semantics remain
+defined in [Context, versioned memory programs, and long sessions](context-and-memory.md).
+
+At assembly, the registry resolves every `(name, version)` and validates its typed
+parameters, evidence sources, temporal policy, and budgets. At execution, the request
+adds authorized task scope, ledger watermark, and clock boundary. The receipt records
+program, execution, and result identities plus evidence addresses. Only configured
+`active` programs may contribute model-visible context; `shadow` programs execute and
+record receipts without changing the prompt.
+
+The `pi` mechanism remains a context-compaction strategy over ADK session history. It
+must not be registered as a trace-native memory program because it does not satisfy the
+same deterministic evidence contract. Context compaction and memory-program selection
+remain separate configuration axes.
+
+## Implementation and migration plan
+
+Each step is independently testable and lands in its own commit:
+
+1. **Extract runtime:** adapt `PersistentPythonWorker` and vendored ADK Code Mode to a
+   shared `PtcRuntime`; keep generated tool declarations and behavior hashes unchanged.
+2. **Extract coordinator:** move `execute_code` lifecycle logic from
+   `build_coding_worker` into `PtcSession`; prove existing notebook PTC event bytes,
+   receipts, outputs, and failure behavior remain equal.
+3. **Extract serializer and state policy:** adapt the current notebook reducer and safe
+   replay logic; add ledger-only JSONL and `none` implementations without another store.
+4. **Normalize configuration:** introduce the decomposed schema and compatibility
+   translation; update standard profiles and reject invalid combinations at load time.
+5. **Register memory programs:** replace implementation-wide selection with exact
+   code-owned `(name, version)` resolution while retaining current program hashes and
+   result bytes.
+6. **Add Prime runtime and snapshots:** vendor the minimum MIT-licensed REPL source at a
+   pinned upstream commit, implement its host protocol adapter, and keep native OS access
+   in a separate explicit trust profile.
+7. **Run the matrix:** compare supported runtime/serializer/state combinations with the
+   same model, tasks, budgets, broker, and verifier before changing any default.
+
+Required deterministic matrix:
+
+| Runtime | Serialization | State | Required assertion |
+| --- | --- | --- | --- |
+| `skein_repl` | `notebook` | `replay_safe` | Current behavior remains byte-equivalent |
+| `skein_repl` | `jsonl` | `replay_safe` | No notebook file or duplicate JSONL writer |
+| `adk_code_mode` | `jsonl` | `none` | Turn-scoped execution remains brokered |
+| `prime_repl` | `jsonl` | `snapshot` | Serializable names restore within bounds |
+| `prime_repl` | `notebook` | `snapshot` | Document choice does not change execution result |
+
+For identical brokered programs, changing only serialization must preserve runtime
+result, operation identities, authorization, receipts, workspace result, and
+verification outcome. Changing only memory programs must not change tool declarations,
+execution authorization, or effect semantics. The live comparison reports pass rate,
+cost per pass, tokens, cache reads, model/tool/verification time, cell and retry counts,
+duplicate or unknown effects, snapshot bytes/failures, and terminal reason.
+
 ## Implemented boundary
 
 - Four tools are the default profile.
+- `execute_code` is the shared model-facing name for the current Skein notebook and
+  vendored ADK Code Mode implementations.
+- Runtime, serialization, and state policy are not yet independently composed; the
+  current `NotebookPtcConfig.implementation` remains the compatibility bundle until the
+  migration above lands.
 - Notebook PTC is implemented and disabled by default.
 - PTC currently supports the trusted local adapter; this source guard is not a
   production security sandbox.
@@ -222,6 +442,11 @@ conversation or trusting stale notebook output.
 
 - A notebook as the audit log: document order and output presence do not prove
   historical order or effect completion.
-- Pickling the heap: unsafe, environment-dependent, and unable to reconcile effects.
+- Treating a heap snapshot as history or effect evidence: opaque serialization is only
+  an optional bounded recovery aid and cannot reconcile effects.
+- Making document format select runtime or recovery: `.ipynb` versus ledger-only JSONL
+  is a projection choice, not an execution policy.
+- Loading implementations or program source from YAML: configuration selects only
+  typed, code-owned registry entries.
 - A second unguarded Python tool stack: two authority paths make replay unreliable.
 - Model-declared completion: a claim is evidence for the verifier, not a state change.

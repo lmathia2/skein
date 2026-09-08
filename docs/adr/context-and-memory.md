@@ -125,6 +125,47 @@ Three identities must remain separate:
 - **Result identity:** canonical returned bytes and provenance. Runtime duration is
   telemetry, not part of deterministic content identity.
 
+### Configuration and registry
+
+Memory programs are selected independently of the PTC runtime, PTC serialization,
+runtime-state policy, ledger backend, and context-compaction strategy:
+
+```yaml
+memory:
+  enabled: true
+  ledger: jsonl
+  programs:
+    - name: task.progress
+      version: "1"
+      mode: active
+      parameters: {}
+    - name: failures.by_kind
+      version: "1"
+      mode: shadow
+      parameters:
+        statuses: [failed, timeout, blocked]
+```
+
+The loader resolves each exact `(name, version)` through a finite code-owned registry.
+Each registry entry declares its parameter model, allowed event/artifact sources,
+temporal semantics, default and maximum budgets, exposure policy, and implementation
+hash. YAML cannot provide an import path, callable, SQL body, or Python source.
+
+Assembly fails before model execution when a program or version is unavailable, its
+parameters are invalid, its ledger capability is missing, or requested budgets exceed
+the registered ceiling. Duplicate `(name, version)` selections are invalid. Registry
+iteration and execution order are canonical by configured list position followed by
+the program's own deterministic result ordering.
+
+At runtime, `shadow` executes against the same frozen evidence boundary and records a
+receipt but contributes no prompt bytes. `active` may contribute its bounded result at
+its declared prompt region. Promotion changes configuration and therefore the behavior
+hash; it never occurs implicitly because a shadow result looked useful.
+
+The existing `pi` option is a context-compaction strategy over ADK session history, not
+a versioned program over canonical ledger evidence. It remains separately configurable
+and cannot be selected in `memory.programs`.
+
 ## Types of memory
 
 | Need | Implemented representation |

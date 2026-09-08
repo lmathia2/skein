@@ -9,7 +9,7 @@
 This document specifies what Skein implements and maps each contract to source and
 tests. The ADRs explain why:
 
-- [Trace-native harness and notebook PTC](adr/trace-native-harness.md)
+- [Trace-native harness and composable PTC](adr/trace-native-harness.md)
 - [Context, versioned memory programs, and long sessions](adr/context-and-memory.md)
 - [Execution, recovery, and verified completion](adr/execution-and-recovery.md)
 
@@ -161,7 +161,7 @@ invocation identity, receipts, redaction, output bounds, timeout/cancellation, a
 artifact externalization.
 
 The default model sees `read`, `bash`, `edit`, and `write`. Reserved search and memory
-commands MAY route within `bash`. PTC sees only `python`; its `agent.fs.*`,
+commands MAY route within `bash`. PTC sees only `execute_code`; its `agent.fs.*`,
 `agent.shell.run`, state metadata, and registered MCP operations use the same broker.
 
 Unknown capabilities MUST fail closed. Network, dependency installation, destructive
@@ -475,4 +475,3 @@ automatic program evolution or global consolidation, an always-on embedder, gene
 view-result caching, unrestricted heap restore, effectful notebook replay, workspace
 restore from checkpoints, exactly-once external effects, or superiority of an opt-in
 treatment before its controlled live ablation passes.
-
