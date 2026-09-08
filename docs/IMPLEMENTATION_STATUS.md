@@ -244,8 +244,11 @@ ownership, experimental ADK APIs, and the still-complex server run controller.
 The default CPython heap/notebook remains run-scoped; the opt-in conversation mode
 restores only approved replay-safe data across owned runs. The live heap remains
 disposable. Wire-level provider-request capture remains empirical work; canonical ADK
-request regions are now measured on every call. The live six-task PTC ablation reduced model calls but increased cost and lost
-two official rewards, so it did not pass the default-promotion gate.
+request regions are now measured on every call. The 2026-09-08 recovery/verification
+rerun passed 2/6 tasks with Muse Spark 1.3 Contributor. It recovered Koota from an
+ordinary failed read and preserved all existing tests except Wazero's two regressions,
+but did not close Kombu, Testem, or Textual's hidden behavior gaps. It therefore did
+not pass the default-promotion gate.
 Notebook-native PTC supports trusted local workspaces. Its source guard
 blocks direct imports, file/process/network primitives, dunder traversal, and common
 introspection bypasses, but it is not a security sandbox. Production or adversarial
