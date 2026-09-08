@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -149,12 +150,14 @@ def test_compatibility_reader_repairs_and_serves_byte_equal_ledger_events(
     )
     store = LedgerBackedEventStore(operational, ledger)
 
-    actual = store.read("task")
+    with patch.object(operational, "read", wraps=operational.read) as read:
+        actual = store.read("task")
+        assert store.read("task", after_sequence=1) == actual[1:]
 
     assert [event.model_dump_json() for event in actual] == [
         event.model_dump_json() for event in expected
     ]
-    assert store.read("task", after_sequence=1) == actual[1:]
+    assert read.call_count == 1
 
 
 def test_source_namespaces_prevent_cross_store_idempotency_collisions(tmp_path: Path) -> None:

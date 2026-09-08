@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from harness.state.event_store import EventStore
@@ -18,14 +19,23 @@ class LedgerBackedEventStore:
         self.operational = operational
         self.ledger = ledger
         self.repair = repair
+        self._lock = threading.RLock()
+        self._repaired_tasks: set[str] = set()
 
     def read(self, task_id: str, *, after_sequence: int = 0) -> list[HarnessEvent]:
         # Read-repair makes existing state safe to open before the one-time backfill CLI
-        # is run. Imports are idempotent, so this is cheap after the first read.
-        if self.repair:
-            for event in self.operational.read(task_id):
-                import_harness_event(self.ledger, event)
-        events = [event for event in self.ledger.read(task_id) if event.source == "harness_event"]
+        # is run. Appends dual-write after the first repair, so rescanning an append-only
+        # stream on every notebook projection only adds quadratic work.
+        with self._lock:
+            if self.repair and task_id not in self._repaired_tasks:
+                for event in self.operational.read(task_id):
+                    import_harness_event(self.ledger, event)
+                self._repaired_tasks.add(task_id)
+            events = [
+                event
+                for event in self.ledger.read(task_id)
+                if event.source == "harness_event"
+            ]
         return [
             HarnessEvent(
                 event_id=event.source_id,
@@ -52,8 +62,9 @@ class LedgerBackedEventStore:
         *,
         idempotency_key: str | None = None,
     ) -> HarnessEvent:
-        event = self.operational.append(
-            task_id, kind, payload, idempotency_key=idempotency_key
-        )
-        import_harness_event(self.ledger, event)
-        return event
+        with self._lock:
+            event = self.operational.append(
+                task_id, kind, payload, idempotency_key=idempotency_key
+            )
+            import_harness_event(self.ledger, event)
+            return event
