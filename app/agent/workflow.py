@@ -612,7 +612,10 @@ async def _ensure_validation_baseline(
         )
         result = enforce_test_count(
             command,
-            await run_managed_thread(executor, command),
+            await run_managed_thread(
+                executor,
+                command.model_copy(update={"timeout_seconds": min(command.timeout_seconds, 60)}),
+            ),
         ).model_copy(
             update={
                 "required": command.required,

@@ -141,6 +141,11 @@ def test_harbor_runtime_keeps_files_commands_and_repository_in_task_environment(
         )
         assert mutation.changed
         assert await asyncio.to_thread(repository.changed_paths, None) == ["app.py"]
+        (workspace / "app.py").write_text("value = 1\n", encoding="utf-8")
+        assert await asyncio.to_thread(repository.changed_paths, None) == []
+        (workspace / "new.py").write_text("new = True\n", encoding="utf-8")
+        assert await asyncio.to_thread(repository.changed_paths, None) == ["new.py"]
+        (workspace / "new.py").unlink()
         manifest = await asyncio.to_thread(repository.manifest)
         assert manifest.languages == ["python"]
 

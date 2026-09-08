@@ -203,6 +203,13 @@ receipts. Extend and tighten that path rather than adding another cache.
 `app/agent/workflow.py:_ensure_validation_baseline` still runs tests before
 coding; replace unconditional baseline execution with an on-demand comparison.
 
+Implementation note (2026-09-08): receipt reuse, dirty-path fingerprinting, and
+the shorter baseline timeout are safe and implemented. The unconditional baseline
+is deliberately retained. Running it after a failure in the already-mutated
+authoritative workspace is not a baseline, and neither the local nor Harbor runtime
+currently exposes an isolated initial workspace with equivalent dependencies. Do
+not remove the pre-mutation check until that execution primitive exists.
+
 - Preserve the initial workspace identity before edits, including initial dirty
   files. Run modified-workspace checks first; obtain the matching isolated
   initial-workspace baseline only for failures that require comparison. Never

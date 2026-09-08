@@ -153,6 +153,12 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   targeted tests remain verifier-owned; unchanged validation results are reused from
   trace evidence, and two identical failures on an unchanged workspace stop
   autonomous retry.
+- Complete successful PTC checks reuse their separate stdout rather than rendered
+  transcripts. Harbor workspace fingerprints reuse initial clean-file hashes and
+  rehash only initially/currently dirty or untracked paths. Pristine baselines keep
+  the independent pre-mutation boundary with a 60-second per-command cap; delaying
+  them until failure remains unsafe until an equivalent isolated initial workspace
+  is available.
 - Local task events, SQLite checkpoints/steering/metrics/run registry,
   SQLite or in-memory ADK sessions, and local or in-memory artifacts.
 - WebSocket/AG-UI transport, replay, steering, cancellation, and Pi-toolkit terminal.

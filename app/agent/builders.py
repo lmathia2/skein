@@ -519,7 +519,11 @@ def build_coding_worker(
                         "result": {
                             "status": "ok",
                             "exit_code": result.get("exit_code"),
-                            "stdout": str(result.get("model_text", "")),
+                            "stdout": str(
+                                (result.get("data") or {}).get(
+                                    "stdout", result.get("model_text", "")
+                                )
+                            ),
                             "duration_ms": int(result.get("duration_ms", 0)),
                             "artifact_uri": result.get("artifact_uri"),
                         },

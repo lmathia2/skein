@@ -290,7 +290,8 @@ class HarborRepositoryRuntime(RepositoryRuntime):
         self._bridge = bridge
         self._files = files
         self.root = files.root
-        self._initial = self._snapshot()
+        self._initial = self._full_snapshot()
+        self._initial_candidates = self._candidate_paths()
 
     def _exec(self, command: str) -> str:
         result = self._bridge.call(
@@ -300,12 +301,38 @@ class HarborRepositoryRuntime(RepositoryRuntime):
             return ""
         return result.stdout or ""
 
-    def _snapshot(self) -> dict[str, str]:
+    def _full_snapshot(self) -> dict[str, str]:
         output = self._exec(
             "git ls-files --cached --others --exclude-standard -z "
             "| xargs -0 -r sha256sum --"
         )
         snapshot: dict[str, str] = {}
+        for line in output.splitlines():
+            digest, separator, raw_path = line.partition("  ")
+            path = raw_path.removeprefix("./")
+            if separator and len(digest) == 64 and path:
+                snapshot[path] = digest
+        return snapshot
+
+    def _candidate_paths(self) -> set[str]:
+        output = self._exec(
+            "git diff --name-only --no-renames -z HEAD; "
+            "git ls-files --others --exclude-standard -z"
+        )
+        return {path for path in output.split("\0") if path}
+
+    def _snapshot(self) -> dict[str, str]:
+        candidates = self._initial_candidates | self._candidate_paths()
+        if not candidates:
+            return dict(self._initial)
+        snapshot = {
+            path: digest for path, digest in self._initial.items() if path not in candidates
+        }
+        quoted = " ".join(shlex.quote(path) for path in sorted(candidates))
+        output = self._exec(
+            f"for path in {quoted}; do "
+            'if [ -f "$path" ]; then sha256sum -- "$path"; fi; done'
+        )
         for line in output.splitlines():
             digest, separator, raw_path = line.partition("  ")
             path = raw_path.removeprefix("./")
