@@ -411,6 +411,28 @@ def test_baseline_failure_proves_no_regression_but_not_requested_behavior(
     assert with_target.achieved_strength == "behavioral"
 
 
+def test_failed_verification_recommends_exact_failure_identifiers(tmp_path: Path) -> None:
+    command = ValidationCommand(
+        category="test",
+        command="pytest -q",
+        source="repository test configuration",
+    )
+    report, _ = run_validation_plan(
+        tmp_path,
+        ValidationPlan(changed_paths=["solver.py"], commands=[command]),
+        acceptance_criteria=["Solver works"],
+        executor=lambda _: CommandResult(
+            category="test",
+            command="pytest -q",
+            exit_code=1,
+            stderr="FAILED tests/test_solver.py::test_boundary - AssertionError",
+        ),
+    )
+
+    assert report.new_failures == ["tests/test_solver.py::test_boundary"]
+    assert "tests/test_solver.py::test_boundary" in (report.recommended_next_action or "")
+
+
 def test_environmental_evidence_does_not_require_model_completion_prose(
     tmp_path: Path,
 ) -> None:

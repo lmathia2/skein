@@ -119,6 +119,8 @@ def test_harbor_runtime_keeps_files_commands_and_repository_in_task_environment(
             bridge,
             files,
         )
+        base_revision = (await asyncio.to_thread(repository.manifest)).base_revision
+        assert base_revision is not None
         sandbox = HarborCommandSandbox(
             environment,  # type: ignore[arg-type]
             bridge,
@@ -148,6 +150,12 @@ def test_harbor_runtime_keeps_files_commands_and_repository_in_task_environment(
         (workspace / "new.py").unlink()
         manifest = await asyncio.to_thread(repository.manifest)
         assert manifest.languages == ["python"]
+
+        (workspace / "app.py").write_text("value = 2\n", encoding="utf-8")
+        subprocess.run(("git", "add", "app.py"), cwd=workspace, check=True)
+        subprocess.run(("git", "commit", "-qm", "model change"), cwd=workspace, check=True)
+        assert await asyncio.to_thread(repository.changed_paths, base_revision) == ["app.py"]
+        assert (await asyncio.to_thread(repository.manifest)).dirty
 
         result = await asyncio.to_thread(
             sandbox.execute,

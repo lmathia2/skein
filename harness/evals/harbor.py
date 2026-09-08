@@ -291,6 +291,7 @@ class HarborRepositoryRuntime(RepositoryRuntime):
         self._files = files
         self.root = files.root
         self._initial = self._full_snapshot()
+        self._base_revision = self._exec("git rev-parse HEAD").strip() or None
         self._initial_candidates = self._candidate_paths()
 
     def _exec(self, command: str) -> str:
@@ -314,15 +315,16 @@ class HarborRepositoryRuntime(RepositoryRuntime):
                 snapshot[path] = digest
         return snapshot
 
-    def _candidate_paths(self) -> set[str]:
+    def _candidate_paths(self, base_revision: str | None = None) -> set[str]:
+        revision = base_revision or self._base_revision or "HEAD"
         output = self._exec(
-            "git diff --name-only --no-renames -z HEAD; "
+            f"git diff --name-only --no-renames -z {shlex.quote(revision)} --; "
             "git ls-files --others --exclude-standard -z"
         )
         return {path for path in output.split("\0") if path}
 
-    def _snapshot(self) -> dict[str, str]:
-        candidates = self._initial_candidates | self._candidate_paths()
+    def _snapshot(self, base_revision: str | None = None) -> dict[str, str]:
+        candidates = self._initial_candidates | self._candidate_paths(base_revision)
         if not candidates:
             return dict(self._initial)
         snapshot = {
@@ -350,14 +352,13 @@ class HarborRepositoryRuntime(RepositoryRuntime):
             root=self.root,
             files=current,
             read_text=read_text,
-            base_revision=self._exec("git rev-parse HEAD").strip() or None,
+            base_revision=self._base_revision,
             branch=self._exec("git branch --show-current").strip() or None,
             dirty=current != self._initial,
         )
 
     def changed_paths(self, base_revision: str | None) -> list[str]:
-        del base_revision
-        current = self._snapshot()
+        current = self._snapshot(base_revision)
         return sorted(
             path
             for path in self._initial.keys() | current.keys()

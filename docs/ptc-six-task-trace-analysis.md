@@ -499,3 +499,32 @@ writes are not the growth source. Commit `60cdced` subsequently makes every forc
 boundary a review phase and adds the generic temporal negative-history check that
 the Koota review missed; it has deterministic coverage but was not re-run live to
 avoid turning a two-task screen into another costly ablation.
+
+## 9. Recovery and verification rerun
+
+Commit `de1e7f4` ran the same six tasks with failed reads classified as terminal
+known-no-effect events, committed Harbor changes measured against the task base,
+and exact failing-test identifiers included in focused repair packets. Artifacts:
+`/Users/mathiasl/skein-eval-results/skein-muse-spark-1.3-contributor-deepswe-remaining-6-ptc-quality-v9-20260908`.
+
+| Task | Reward | New tests | Existing tests | Calls | Cost | Agent wall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Kombu | 0 | 68/76 | 1412/1412 | 63 | $0.0295 | 449 s |
+| Koota | 1 | 51/51 | 172/172 | 114 | $0.0608 | 1,260 s |
+| Ofetch | 1 | 47/47 | 13/13 | 38 | $0.0156 | 414 s |
+| Testem | 0 | 85/90 | 489/489 | 81 | $0.0469 | 1,195 s |
+| Textual | 0 | 22/23 | 57/57 | 45 | $0.0224 | 573 s |
+| Wazero | 0 | 78/78 | 0/2 | 42 | $0.0167 | 566 s |
+
+The scored six tasks used 383 model calls, 30.53M input tokens (0.81M uncached),
+258k output tokens, $0.1919, and 4,456 seconds of agent wall time. Koota proves the
+read recovery fix: three failed cells were discarded without blocking and the task
+passed every official test. Committed Wazero paths were correctly detected and
+static-only completion was rejected, but no host-owned Go behavioral command was
+discovered. Testem later hit a genuine in-flight shell timeout, which correctly
+remained effect-unknown. Textual still demonstrates that passing repository tests is
+not criterion-complete evidence for a hidden edge case.
+
+An accidentally started duplicate Koota job was interrupted after 68 model calls
+and $0.0336; it is excluded from the six-task totals and remains in the artifact
+directory as an incomplete, auditable attempt.
