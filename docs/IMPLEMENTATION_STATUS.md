@@ -41,6 +41,15 @@ restore; definitions, imports, dependent computations, and capabilities are not
 silently replayed. Notebook metadata records source-task watermarks and attribution.
 Passing deterministic contracts is not a live quality or promotion claim.
 
+The standard notebook-PTC profiles now enable deterministic `handoff_tail` context
+windows. Public ADK history is captured incrementally, and each context epoch keeps
+the latest complete tool interaction. PTC cell composition uses a cache-stable,
+optimizer-visible phase policy; cell terminal events record capability counts and
+operation classes. Complete successful build/test cells on an unchanged workspace
+can satisfy an identical deterministic validation command under the same managed
+environment. The existing criterion review now enumerates missing evidence and
+directs the worker to verification as soon as its criterion gaps close.
+
 ## Retained and verified
 
 - The project identity is Skein: the Python distribution and primary CLI are `skein`,

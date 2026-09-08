@@ -92,21 +92,17 @@ ms at 255-647 events. The notebook reducer, canonical encoding, atomic write,
 and fsync were not the bottleneck; making them asynchronous would retain the
 bad algorithm and weaken durability. One-time read repair is the root fix.
 
-There is no existing flag that directly reduces inner PTC model calls.
-`context.window_management` bounds reconstructed outer work packets; it does
-not compact the ADK tool-call history accumulated inside one worker invocation.
-PTC call reduction comes from composing already-known capability operations in
-one Python cell. Stronger prompt pressure reduced Wazero from 40 calls to 26 and
-32 in two repeats, but both repeats lost the same two regression tests and
-scored zero. That wording was backed off in `48e2e3b`; only exact result-shape
-guidance and the explicit `open()` prohibition remain.
+There is no flag that directly reduces PTC model calls. `context.window_management`
+does bound the ADK tool-call history accumulated inside a worker invocation, while
+call reduction comes from composing already-known capability operations in one
+Python cell. Two stronger generic batching prompts reduced Wazero from 40 calls to
+26 and 32, but their old integration-test packages failed to build and the tests did
+not run. Those zero scores do not establish that batching caused a regression.
 
-The next isolated treatment is PTC-only bounded inner history: retain recent
-exact Python call/response pairs, replace older selected output bodies with a
-deterministic ledger/notebook reference, and measure quality before enabling it.
-Do not enable the broad `context-ptc.yaml` bundle as a shortcut because it
-changes retrieval, notes, reconstruction, and windows together and cannot
-attribute a result.
+The standard PTC profiles now enable only the existing bounded inner-history
+window: recent exact Python call/response pairs follow a deterministic ledger
+handoff. History capture appends only the new suffix and verifies that its captured
+prefix is unchanged. Retrieval and working notes remain disabled.
 
 | Check | Result |
 | --- | --- |
