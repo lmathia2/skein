@@ -219,6 +219,32 @@ def test_factory_exposes_only_python_when_notebook_ptc_is_enabled(tmp_path: Path
     assembly.close()
 
 
+def test_factory_exposes_vendored_adk_code_mode_as_execute_code(tmp_path: Path) -> None:
+    registry = default_harness_registry()
+    payload = load_harness_composition(config_models=registry.config_models()).model_dump(
+        mode="python"
+    )
+    payload["harness"]["config"]["notebook_ptc"].update(
+        enabled=True,
+        implementation="adk_code_mode",
+        adk_code_mode_image="example.invalid/adk-code-mode@sha256:fixture",
+    )
+    composition = parse_harness_composition(payload, config_models=registry.config_models())
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    assembly = registry.build(
+        composition,
+        RuntimeBindings(workspace=workspace, state_root=tmp_path / "state", task_id="task"),
+    )
+
+    worker = cast(LlmAgent, assembly.agents["coding_worker"])
+    assert {tool.name for tool in worker.tools} == {"execute_code"}
+    assert assembly.build_info.tool_names == ("execute_code",)
+    assert "turn-scoped Docker sandbox" in worker.static_instruction
+    assert "durable notebook cell" not in worker.static_instruction
+
+
 def test_default_factory_keeps_main_four_tool_path_without_canonical_memory(
     tmp_path: Path,
 ) -> None:
@@ -244,6 +270,29 @@ def test_default_factory_keeps_main_four_tool_path_without_canonical_memory(
         assert not (state / "ledger.jsonl").exists()
     finally:
         assert assembly.close is None
+
+
+def test_pi_memory_keeps_simple_adk_history_without_a_second_ledger(tmp_path: Path) -> None:
+    registry = default_harness_registry()
+    payload = load_harness_composition(config_models=registry.config_models()).model_dump(
+        mode="python"
+    )
+    payload["harness"]["config"]["memory"].update(enabled=True, implementation="pi")
+    composition = parse_harness_composition(payload, config_models=registry.config_models())
+    workspace, state = tmp_path / "workspace", tmp_path / "state"
+    workspace.mkdir()
+
+    assembly = registry.build(
+        composition,
+        RuntimeBindings(workspace=workspace, state_root=state, task_id="task"),
+    )
+
+    assert assembly.build_info.tool_names == ("read", "bash", "edit", "write")
+    assert assembly.app.events_compaction_config is not None
+    assert assembly.app.events_compaction_config.token_threshold == 183_616
+    assert "## Critical Context" in assembly.app.events_compaction_config.summarizer._prompt_template
+    assert not (state / "ledger.jsonl").exists()
+    assert not (state / "ledger.duckdb").exists()
 
 
 @pytest.mark.asyncio

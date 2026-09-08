@@ -124,6 +124,10 @@ def build_coding_worker(
     active_tool_config = tool_config or ToolSurfaceConfig()
     active_generation_config = generation_config or GenerationConfig()
     active_ptc_config = ptc_config or NotebookPtcConfig()
+    native_ptc_enabled = (
+        active_ptc_config.enabled
+        and active_ptc_config.implementation == "skein_notebook"
+    )
     active_event_store = event_store or JsonlEventStore(settings.state_root / "events")
 
     read_default_lines = active_tool_config.read_default_lines
@@ -284,9 +288,29 @@ def build_coding_worker(
             ),
         ))
 
+    code_mode_tool: Any | None = None
+    if active_ptc_config.enabled and active_ptc_config.implementation == "adk_code_mode":
+        try:
+            from harness.adk.code_mode import ExecuteCodeTool, UnsafeLocalDockerBackend
+        except ModuleNotFoundError as error:
+            raise RuntimeError(
+                "adk-code-mode needs the optional 'ptc-adk-code-mode' dependencies"
+            ) from error
+        assert active_ptc_config.adk_code_mode_image is not None
+        code_mode_tool = ExecuteCodeTool(
+            tools=[read, bash, edit, write],
+            backend=UnsafeLocalDockerBackend(image=active_ptc_config.adk_code_mode_image),
+            include_artifact_tools=False,
+            save_tool_results_as_artifacts=False,
+            append_code_mode_metadata_to_system_instruction=False,
+            max_output_chars=active_ptc_config.max_output_bytes,
+            timeout_seconds=active_ptc_config.default_timeout_seconds,
+            per_tool_timeout_seconds=active_ptc_config.default_timeout_seconds,
+        )
+
     python_worker = (
         PersistentPythonWorker(max_output_bytes=active_ptc_config.max_output_bytes)
-        if active_ptc_config.enabled
+        if native_ptc_enabled
         else None
     )
     restored_kernel_epoch: str | None = None
@@ -911,7 +935,11 @@ def build_coding_worker(
             python_worker.close()
 
     model_tools: list[Any] = (
-        [python] if active_ptc_config.enabled else [read, bash, edit, write]
+        [python]
+        if native_ptc_enabled
+        else [code_mode_tool]
+        if code_mode_tool is not None
+        else [read, bash, edit, write]
     )
     generation = active_generation_config.model_dump(exclude_none=True)
     stable_request_prefix: bytes | None = None
@@ -936,7 +964,7 @@ def build_coding_worker(
             stable_request_prefix = current
         elif current != stable_request_prefix:
             raise RuntimeError("The coding worker's cache-stable request prefix changed")
-        if active_ptc_config.enabled and callback_context is not None:
+        if native_ptc_enabled and callback_context is not None:
             state = callback_context.state
             task_id = str(state.get("task_id") or settings.task_id_override or "unscoped")
             work_batch_id = str(state.get("ptc_work_batch_id", ""))
@@ -1002,12 +1030,18 @@ def build_coding_worker(
             await replies.before_model(callback_context, llm_request)
         return None
 
+    async def release_code_mode(callback_context: CallbackContext) -> None:
+        assert code_mode_tool is not None
+        await code_mode_tool.release_invocation(callback_context.invocation_id)
+
     agent = Agent(
         name="coding_worker",
         model=model,
         description=(
-            "Executes notebook-native PTC in one persistent CPython tool."
-            if active_ptc_config.enabled
+            "Executes Skein notebook PTC in one persistent CPython tool."
+            if native_ptc_enabled
+            else "Executes vendored ADK Code Mode in one sandboxed Python tool."
+            if code_mode_tool is not None
             else "Owns one complete coding run with four composable tools."
         ),
         static_instruction=settings.static_instruction,
@@ -1024,6 +1058,7 @@ def build_coding_worker(
         ),
         before_model_callback=before_model,
         after_model_callback=replies.after_model if replies is not None else None,
+        after_agent_callback=release_code_mode if code_mode_tool is not None else None,
     )
     return CodingWorkerBundle(
         agent=agent,
@@ -1031,7 +1066,7 @@ def build_coding_worker(
         bash=bash,
         edit=edit,
         write=write,
-        python=python if active_ptc_config.enabled else None,
+        python=python if native_ptc_enabled else None,
         close=close if python_worker is not None else None,
     )
 

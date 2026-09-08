@@ -67,6 +67,7 @@ harness:
 
     notebook_ptc:
       enabled: true  # Replace four top-level tools with one persistent python tool.
+      implementation: skein_notebook  # Compared independently with adk_code_mode.
       default_timeout_seconds: 120  # Default cell execution timeout.
       max_timeout_seconds: 600
       max_output_bytes: 16000  # Inline cell output; oversized MIME becomes artifacts.
@@ -75,6 +76,7 @@ harness:
 
     memory:
       enabled: true  # Shadow-capture the canonical trace alongside operational stores.
+      implementation: trace_native  # Versioned programs over canonical evidence.
       ledger: jsonl  # Dependency-free append-only canonical backend.
       retrieval: lexical  # Live Lance prompt retrieval remains disabled.
 

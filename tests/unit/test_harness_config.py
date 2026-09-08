@@ -55,10 +55,12 @@ def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:
     assert config.workflow.progress.block_after_no_progress == 4
     assert config.agents["coding_worker"].generation.temperature is None
     assert config.notebook_ptc.enabled is False
+    assert config.notebook_ptc.implementation == "skein_notebook"
     assert config.notebook_ptc.default_timeout_seconds == 120
     assert config.notebook_ptc.max_timeout_seconds == 600
     assert config.notebook_ptc.max_output_bytes == 16_000
     assert config.memory.enabled is False
+    assert config.memory.implementation == "trace_native"
     assert config.memory.ledger == "jsonl"
     assert config.memory.retrieval == "lexical"
     assert "tui" not in type(composition.server).model_fields
@@ -135,6 +137,30 @@ def test_task_input_budget_cannot_be_smaller_than_one_work_packet() -> None:
     }
 
     with pytest.raises(ValidationError, match="max_task_input_tokens"):
+        parse_harness_composition(payload)
+
+
+def test_adk_code_mode_rejects_conversation_continuity() -> None:
+    payload = _composition_payload()
+    payload["harness"]["config"]["notebook_ptc"] = {
+        "enabled": True,
+        "implementation": "adk_code_mode",
+        "continuity": "conversation",
+    }
+
+    with pytest.raises(ValidationError, match="run-scoped continuity only"):
+        parse_harness_composition(payload)
+
+
+def test_pi_memory_rejects_trace_native_programs() -> None:
+    payload = _composition_payload()
+    payload["harness"]["config"]["memory"] = {
+        "enabled": True,
+        "implementation": "pi",
+        "context_programs": {"mode": "active"},
+    }
+
+    with pytest.raises(ValidationError, match="simple ADK transcript/compaction"):
         parse_harness_composition(payload)
 
 

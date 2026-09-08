@@ -168,6 +168,8 @@ class ToolSurfaceConfig(FrozenModel):
 
 class NotebookPtcConfig(FrozenModel):
     enabled: bool = False
+    implementation: Literal["skein_notebook", "adk_code_mode"] = "skein_notebook"
+    adk_code_mode_image: str | None = Field(default=None, min_length=1, max_length=512)
     continuity: Literal["run", "conversation"] = "run"
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
     max_timeout_seconds: int = Field(default=600, ge=1, le=3_600)
@@ -195,6 +197,10 @@ class NotebookPtcConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_timeouts(self) -> NotebookPtcConfig:
+        if self.implementation == "adk_code_mode" and self.continuity != "run":
+            raise ValueError("adk-code-mode supports run-scoped continuity only")
+        if self.enabled and self.implementation == "adk_code_mode" and not self.adk_code_mode_image:
+            raise ValueError("adk-code-mode requires an explicit sandbox image tag or digest")
         if self.continuity == "conversation" and not self.enabled:
             raise ValueError("conversation continuity requires notebook PTC")
         if self.default_timeout_seconds > self.max_timeout_seconds:
@@ -220,6 +226,9 @@ class ContextProgramConfig(FrozenModel):
 
 class MemoryConfig(FrozenModel):
     enabled: bool = False
+    implementation: Literal["trace_native", "pi"] = "trace_native"
+    pi_context_window_tokens: int = Field(default=200_000, ge=8_000, le=1_000_000_000)
+    pi_reserve_tokens: int = Field(default=16_384, ge=1_024, le=256_000)
     prior_runs: bool = False
     ledger: Literal["jsonl", "duckdb"] = "jsonl"
     retrieval: Literal["lexical", "lance"] = "lexical"
@@ -228,6 +237,16 @@ class MemoryConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_backends(self) -> MemoryConfig:
+        if self.pi_reserve_tokens >= self.pi_context_window_tokens:
+            raise ValueError("Pi compaction reserve must be smaller than the context window")
+        if self.implementation == "pi" and (
+            self.context_programs.mode != "off"
+            or self.prior_runs
+            or self.working_notes
+            or self.ledger != "jsonl"
+            or self.retrieval != "lexical"
+        ):
+            raise ValueError("Pi memory is the simple ADK transcript/compaction strategy")
         if self.context_programs.mode != "off" and not self.enabled:
             raise ValueError("context programs require canonical memory")
         if self.prior_runs and self.context_programs.mode != "active":
@@ -356,15 +375,24 @@ class SkeinConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_references(self) -> SkeinConfig:
-        if self.context.window_management and not self.memory.enabled:
-            raise ValueError("bounded context windows require canonical memory")
+        if self.context.window_management and not (
+            self.memory.enabled and self.memory.implementation == "trace_native"
+        ):
+            raise ValueError("bounded context windows require trace-native memory")
         if self.context.reconstruction == "fresh" and not (
             self.context.window_management
             and self.memory.context_programs.mode == "active" and self.memory.working_notes
         ):
             raise ValueError("fresh reconstruction requires bounded windows, active retrieval and working notes")
-        if self.adk.recovery == "safe_auto" and not self.memory.enabled:
-            raise ValueError("safe-auto recovery requires canonical memory")
+        if (
+            self.notebook_ptc.continuity == "conversation"
+            and self.memory.implementation != "trace_native"
+        ):
+            raise ValueError("conversation notebook continuity requires trace-native memory")
+        if self.adk.recovery == "safe_auto" and not (
+            self.memory.enabled and self.memory.implementation == "trace_native"
+        ):
+            raise ValueError("safe-auto recovery requires trace-native memory")
         for name, agent in self.agents.items():
             if agent.model not in self.models:
                 raise ValueError(f"agent {name!r} references unknown model {agent.model!r}")

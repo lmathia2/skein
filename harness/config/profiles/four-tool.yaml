@@ -67,12 +67,14 @@ harness:
 
     notebook_ptc:
       enabled: false  # This profile exposes read/bash/edit/write, not python.
+      implementation: skein_notebook
       default_timeout_seconds: 120
       max_timeout_seconds: 600
       max_output_bytes: 16000
 
     memory:
       enabled: false  # Preserve the main JSONL/SQLite operational-store path.
+      implementation: trace_native
       ledger: jsonl  # Inactive backend must remain the dependency-free default.
       retrieval: lexical  # Lance is not a live prompt reader.
 

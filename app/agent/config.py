@@ -61,6 +61,15 @@ blocked; use the corresponding `agent.*` capability. A notebook is not proof tha
 that write or have unknown effects must never be replayed automatically.
 """.strip()
 
+ADK_CODE_MODE_INSTRUCTION = """
+ADK Code Mode is enabled. Your only model-visible tool is `execute_code(code)`.
+Code runs in a turn-scoped Docker sandbox; list `/tools/` and read the generated
+docstrings to discover the brokered `read`, `bash`, `edit`, and `write` functions.
+Use those functions for workspace effects and print only compact facts needed for
+the next decision. Python globals persist only within the current ADK invocation.
+The host broker still owns policy, approvals, receipts, redaction, and verification.
+""".strip()
+
 
 @dataclass(frozen=True, slots=True)
 class HarnessSettings:
@@ -189,13 +198,17 @@ def settings_from_composition(
 
     tool_names = ("read", "bash", "edit", "write")
     if config.notebook_ptc.enabled:
-        instruction += (
-            "\n\n"
-            + NOTEBOOK_PTC_INSTRUCTION
-            + "\n\nPhase-aware cell composition:\n"
-            + config.notebook_ptc.batching_instruction.strip()
-        )
-        tool_names = ("python",)
+        if config.notebook_ptc.implementation == "skein_notebook":
+            instruction += (
+                "\n\n"
+                + NOTEBOOK_PTC_INSTRUCTION
+                + "\n\nPhase-aware cell composition:\n"
+                + config.notebook_ptc.batching_instruction.strip()
+            )
+            tool_names = ("python",)
+        else:
+            instruction += "\n\n" + ADK_CODE_MODE_INSTRUCTION
+            tool_names = ("execute_code",)
 
     coding_model = config.models[worker_config.model].name
     skill_roots: list[Path] = []

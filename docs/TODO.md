@@ -81,6 +81,10 @@ and the implementation/evaluation rubric.
 
 ## PTC execution refinement
 
+- [x] Make Skein notebook PTC and vendored ADK Code Mode selectable ADK tools,
+  and independently select optional trace-native or Pi-derived memory for
+  matched ablations.
+
 - [x] Reconcile the PTC proposal with the Anthropic sources, reference runtimes,
   and current Skein execution path; publish an actionable implementation plan.
 - [x] Add machine-readable capability results and actual provider-payload checks.

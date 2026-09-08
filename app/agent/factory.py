@@ -12,12 +12,13 @@ from pathlib import Path
 from typing import Any
 
 from google.adk.agents.context_cache_config import ContextCacheConfig
-from google.adk.apps.app import App, ResumabilityConfig
+from google.adk.apps.app import App, EventsCompactionConfig, ResumabilityConfig
 from google.adk.plugins.base_plugin import BasePlugin
 from pydantic import BaseModel
 
 from harness.adk import SteeringPlugin
 from harness.adk.context import ContextWindowPlugin, MemoryShadowPlugin
+from harness.adk.pi_compaction import pi_event_summarizer
 from harness.agent import (
     AdkHarnessAssembly,
     AgentSnapshot,
@@ -239,7 +240,11 @@ class SkeinHarnessFactory:
         if not isinstance(config, SkeinConfig):
             raise TypeError("skein_v1 requires SkeinConfig")
         settings = settings_from_composition(composition, bindings)
-        tool_names = ("python",) if config.notebook_ptc.enabled else FOUR_CODING_TOOLS
+        tool_names = (
+            (("python",) if config.notebook_ptc.implementation == "skein_notebook" else ("execute_code",))
+            if config.notebook_ptc.enabled
+            else FOUR_CODING_TOOLS
+        )
         items = [ResourceItem(kind="tool", name=name) for name in tool_names]
         items.append(ResourceItem(kind="prompt", name="coding-worker"))
         warnings = []
@@ -333,7 +338,7 @@ class SkeinHarnessFactory:
         )
         canonical_ledger: LedgerStore | None = (
             open_ledger(settings.state_root, config.memory.ledger)
-            if config.memory.enabled
+            if config.memory.enabled and config.memory.implementation == "trace_native"
             else None
         )
         tools = create_adk_tools(
@@ -662,6 +667,18 @@ class SkeinHarnessFactory:
                 cache_intervals=config.adk.context_cache.cache_intervals,
             ),
             resumability_config=ResumabilityConfig(is_resumable=config.adk.resumable),
+            events_compaction_config=(
+                EventsCompactionConfig(
+                    summarizer=pi_event_summarizer(coding_model),
+                    token_threshold=(
+                        config.memory.pi_context_window_tokens
+                        - config.memory.pi_reserve_tokens
+                    ),
+                    event_retention_size=config.context.recent_event_limit,
+                )
+                if config.memory.enabled and config.memory.implementation == "pi"
+                else None
+            ),
         )
         agents = {"coding_worker": worker.agent}
         return AdkHarnessAssembly(
@@ -673,7 +690,11 @@ class SkeinHarnessFactory:
                 model_providers={
                     name: model.provider for name, model in sorted(config.models.items())
                 },
-                tool_names=("python",) if config.notebook_ptc.enabled else FOUR_CODING_TOOLS,
+                tool_names=(
+                    (("python",) if config.notebook_ptc.implementation == "skein_notebook" else ("execute_code",))
+                    if config.notebook_ptc.enabled
+                    else FOUR_CODING_TOOLS
+                ),
                 max_iterations=config.workflow.max_iterations,
             ),
             agents=agents,

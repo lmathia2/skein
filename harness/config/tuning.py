@@ -179,6 +179,14 @@ def tuning_spec(composition: HarnessComposition) -> TuningSpec:
         experimental=True,
     )
     add(
+        "notebook_ptc.implementation",
+        config.notebook_ptc.implementation,
+        "categorical",
+        "PTC worker implementation used by matched ablations",
+        choices=("skein_notebook", "adk_code_mode"),
+        experimental=True,
+    )
+    add(
         "notebook_ptc.batching_instruction",
         config.notebook_ptc.batching_instruction,
         "text",
@@ -201,6 +209,32 @@ def tuning_spec(composition: HarnessComposition) -> TuningSpec:
         "Absolute cells before a host review boundary",
         minimum=1,
         maximum=256,
+        experimental=True,
+    )
+    add(
+        "memory.implementation",
+        config.memory.implementation,
+        "categorical",
+        "Optional trace-native programs or simple Pi-style ADK history",
+        choices=("trace_native", "pi"),
+        experimental=True,
+    )
+    add(
+        "memory.pi_context_window_tokens",
+        config.memory.pi_context_window_tokens,
+        "integer",
+        "Context window used by Pi's reserve-based compaction trigger",
+        minimum=8_000,
+        maximum=1_000_000_000,
+        experimental=True,
+    )
+    add(
+        "memory.pi_reserve_tokens",
+        config.memory.pi_reserve_tokens,
+        "integer",
+        "Pi tokens reserved for the summary prompt and output",
+        minimum=1_024,
+        maximum=256_000,
         experimental=True,
     )
 
