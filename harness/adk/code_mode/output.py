@@ -96,4 +96,3 @@ def _head_tail(text: str, limit: int) -> str:
 
 
 __all__ = ["STDERR_PREFIX", "STDOUT_PREFIX", "TruncationResult", "truncate"]
-

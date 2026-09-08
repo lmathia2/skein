@@ -185,4 +185,3 @@ __all__ = [
     "ToolResultArtifactTool",
     "wrap_tool_result_as_artifact",
 ]
-

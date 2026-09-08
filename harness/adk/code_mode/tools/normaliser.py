@@ -67,4 +67,3 @@ async def resolve(
 
 
 __all__ = ["ResolvedTool", "ToolInput", "resolve"]
-

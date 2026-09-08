@@ -127,4 +127,3 @@ def call(name: str, args: dict[str, Any], timeout: float | None = None) -> Any:
 
 
 __all__ = ["RpcClient", "ToolError", "call", "get", "install"]
-

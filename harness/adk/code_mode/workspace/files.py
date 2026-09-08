@@ -38,4 +38,3 @@ def walk_workspace(root: str) -> list[str]:
 
 
 __all__ = ["hash_file", "walk_workspace"]
-

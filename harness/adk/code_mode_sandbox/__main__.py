@@ -5,4 +5,3 @@ from harness.adk.code_mode_sandbox._entry import main
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

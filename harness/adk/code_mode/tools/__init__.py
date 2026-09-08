@@ -2,4 +2,3 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 """Tool normalisation, stub generation, and host-side dispatch."""
-

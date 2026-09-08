@@ -33,4 +33,3 @@ __all__ = [
     "__version__",
     "wrap_tool_result_as_artifact",
 ]
-

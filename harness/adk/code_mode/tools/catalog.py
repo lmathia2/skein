@@ -85,4 +85,3 @@ __all__ = [
     "Detail",
     "render_catalog",
 ]
-

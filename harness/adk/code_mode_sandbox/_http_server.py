@@ -326,4 +326,3 @@ def _create_tar(source_dir: str) -> bytes:
                 arcname = os.path.relpath(abs_path, source_dir)
                 tf.add(abs_path, arcname=arcname)
     return buf.getvalue()
-
