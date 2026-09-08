@@ -12,6 +12,8 @@ def test_standalone_design_notebooks_execute_with_stdlib() -> None:
         "01_ptc_messages_and_repl_state.ipynb",
         "02_cache_aware_compaction.ipynb",
         "03_trace_memory_programs.ipynb",
+        "04_pluggable_ptc_tools.ipynb",
+        "05_optional_memory_strategies.ipynb",
     ]
 
     for path in paths:

@@ -13,6 +13,12 @@ DuckDB, LanceDB, or running harness is required.
 3. [`03_trace_memory_programs.ipynb`](03_trace_memory_programs.ipynb) uses an in-memory
    SQLite ledger to demonstrate versioned, cached factual, episodic, semantic, progress,
    and prompt-assembly programs.
+4. [`04_pluggable_ptc_tools.ipynb`](04_pluggable_ptc_tools.ipynb) compares the
+   `skein_notebook`/`python` and `adk_code_mode`/`execute_code` state contracts while
+   showing that both use the same host effect broker.
+5. [`05_optional_memory_strategies.ipynb`](05_optional_memory_strategies.ipynb)
+   compares disabled memory, trace-native versioned programs, and Pi-derived structured
+   compaction with a recent raw tail.
 
 Run them in any notebook UI, or verify every code cell without notebook dependencies:
 

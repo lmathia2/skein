@@ -84,6 +84,8 @@ and the implementation/evaluation rubric.
 - [x] Make Skein notebook PTC and vendored ADK Code Mode selectable ADK tools,
   and independently select optional trace-native or Pi-derived memory for
   matched ablations.
+- [x] Add executable notebooks demonstrating both PTC tools and all optional
+  memory strategies without requiring credentials or a running sandbox.
 
 - [x] Reconcile the PTC proposal with the Anthropic sources, reference runtimes,
   and current Skein execution path; publish an actionable implementation plan.
