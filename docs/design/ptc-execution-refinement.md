@@ -57,11 +57,24 @@ not comparative performance evidence.
 | [Open-PTC](https://github.com/daly2211/open-ptc/tree/2f2ef0ce4087d338a2cd1646c8ef18cc3f57b1de) | Explicit input/output contracts and selected console output; brokered execution resumption | Replacing Skein's persistent worker with its per-execution Deno subprocess or copying its chain-budget behavior |
 | [pi-ptc](https://github.com/cegersdoerfer/pi-ptc/tree/b567c8902d751fcc6edac9ffcfda527375d1c539) | Correlated RPC responses, pending futures, asynchronous host dispatch | Assuming async syntax alone gives cancellation, effect ordering, or replay safety |
 | [llmvm](https://github.com/9600dev/llmvm/tree/2939932cb03e17df5c7ca66d3b874c465e24e8a0) | Persistent execution locals and separation of program execution from reasoning | Its short-code-block prompting and nested LLM extraction/map-reduce as a latency policy |
+| [UTCP Code Mode](https://github.com/universal-tool-calling-protocol/code-mode/tree/e5fdc319bfae1ceec57e7bce37048337635ffb51) | Generated input/output interfaces, namespaced tools, explicit returned value versus diagnostic logs, isolate memory limits, and tests for hung calls | Its fresh isolate per chain, loading every tool interface, blocking tool bridge, or abandonment as a substitute for cancellation/reconciliation |
 
 Reviewed seams: Prime's `docs/rlm.md`, `docs/compaction.md`, and RLM prompt;
 Open-PTC's sandbox executor, REPL tool builder, and orchestrator; pi-ptc's Python
 RPC runtime, host RPC handler, and executor; llmvm's continuation controller and
-Python execution prompt. Local repositories live under `/Users/mathiasl/src`.
+Python execution prompt; UTCP Code Mode's TypeScript/Python runtimes, generated
+interfaces, bridge lifecycle, and timeout/resource tests. Local repositories live
+under `/Users/mathiasl/src`.
+
+UTCP Code Mode does not change the architecture decision. Its TypeScript runtime
+creates and disposes an isolate for every tool chain, while Skein deliberately
+retains a notebook kernel. Its generated functions call `applySyncPromise`, which
+blocks the isolate thread until each host call settles; wrapping those calls in
+`Promise.all` therefore does not create the read fan-out proposed below. On chain
+timeout it races host calls against chain completion so the isolate thread can be
+released, but the underlying host promise can still settle later. That is a useful
+resource-leak defense, not an effect-cancellation guarantee. The Python variant
+also documents that a timed-out worker thread cannot be forcibly stopped.
 
 ## Implementation sequence and acceptance checks
 
@@ -83,6 +96,10 @@ that property while making the data useful to programs.
   content/range, structured search matches/cursors, and separate stdout/stderr.
   Render the four-tool view from the same underlying result. Do not create a
   second implementation of authorization, redaction, or file mutation.
+- Keep the program's selected returned value separate from diagnostic logs and
+  the host-generated operation summary. This adopts UTCP Code Mode's clean
+  result/log distinction without replacing Skein's existing last-expression and
+  MIME handling.
 - Expose explicit completeness, truncation, original-content hash, and artifact
   or continuation references. Preserve exact text/newlines. Large data stays
   bounded and artifact-backed; add a brokered bounded retrieval path where the
@@ -113,6 +130,12 @@ Change `NOTEBOOK_PTC_INSTRUCTION`, `agent.help()`, and the existing
 actual return types, not just function signatures. Version/hash the stable
 examples using existing behavior configuration so their strategy can later be
 optimized without introducing a new optimizer now.
+
+Generate compact, machine-readable argument/result contracts from Skein's typed
+models and expose them through targeted `agent.help(name)` lookup. Do not inject
+all interfaces into every request: Skein has four compact built-ins, and registered
+MCP capabilities should be discovered or inspected only when selected. Cache the
+generated contract by the existing behavior hash, not as mutable notebook state.
 
 Provide three short, executable examples:
 
@@ -159,9 +182,14 @@ if staggered execution is actually needed; it is not a prerequisite for PTC.
 - Fix the existing timeout seam: `PersistentPythonWorker.execute` calls the host
   broker inline, so it cannot enforce its cell deadline while that call blocks.
   Propagate remaining deadlines into execution adapters. Cancelling an await or
-  a future is not proof a subprocess stopped. Reconcile uncertain effects and
-  prevent subsequent mutations until safe; do not report rollback of files when
-  only the Python heap was discarded.
+  a future is not proof a subprocess stopped. Race every broker wait against cell
+  termination so a hung call cannot strand the worker, but quarantine late
+  settlement and record the operation as unknown until the executor proves it
+  stopped or reconciliation observes the outcome. Prevent subsequent mutations
+  until safe; do not report rollback of files when only the Python heap was
+  discarded. This is intentionally stronger than UTCP Code Mode's abandonment
+  warning, because Skein brokers workspace effects rather than arbitrary read-only
+  APIs.
 
 Checks: barrier-based overlap/cap tests, stable result order, denied batch with
 zero execution, unique receipts, partial failure, expiry during a broker call,
