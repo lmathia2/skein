@@ -296,8 +296,15 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert kinds.count(EventKind.NOTEBOOK_CELL_ADDED) == 3
     assert EventKind.CAPABILITY_REQUESTED in kinds
     assert EventKind.CAPABILITY_COMPLETED in kinds
+    terminal = [
+        event for event in events.read("task-1")
+        if event.kind == EventKind.REPL_CELL_COMPLETED and event.payload["cell_id"] == second["cell_id"]
+    ][0]
+    assert terminal.payload["capability_count"] == 2
+    assert terminal.payload["capability_operations"] == ["fs.write", "fs.read"]
     assert kinds[-1] == EventKind.NOTEBOOK_SNAPSHOTTED
     assert '"tools":["python"]' in settings.static_prefix
+    assert "During verify, group only already-selected" in settings.static_instruction
 
 
 @pytest.mark.asyncio

@@ -306,6 +306,7 @@ def test_tuning_export_is_deterministic_and_excludes_authority_surfaces(capsys) 
     assert "harness.config.agents.coding_worker.instruction" in paths
     assert "harness.config.workflow.progress.replan_after_no_progress" in paths
     assert "harness.config.context.work_packet_tokens" in paths
+    assert "harness.config.notebook_ptc.batching_instruction" in paths
     assert not any("safety" in path or "sandbox" in path for path in paths)
     assert payload["primary_objective"] == {
         "metric": "outcome_passed",

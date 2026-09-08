@@ -172,6 +172,20 @@ class NotebookPtcConfig(FrozenModel):
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
     max_timeout_seconds: int = Field(default=600, ge=1, le=3_600)
     max_output_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
+    batching_instruction: str = Field(
+        default=(
+            "Use the task phase in the current work packet to compose cells. During understand "
+            "and plan, put independent bounded reads and searches with already-known inputs in "
+            "one cell, then filter and print a compact summary. During implement, group independent "
+            "reads that support one selected change, but execute an edit separately and inspect its "
+            "result before any decision-dependent edit. During review, collect evidence for "
+            "independent weak acceptance criteria together and stop exploring when every criterion "
+            "has evidence or a concrete blocker. During verify, group only already-selected, "
+            "non-mutating formatter, type, and targeted-test commands; preserve every exit status."
+        ),
+        min_length=1,
+        max_length=8_000,
+    )
 
     @model_validator(mode="after")
     def validate_timeouts(self) -> NotebookPtcConfig:

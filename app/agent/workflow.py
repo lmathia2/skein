@@ -1155,6 +1155,7 @@ async def _orchestrate_owned(
             steering_owner=owner,
             steering_packet_message_ids=tuple(message.message_id for message in leased),
         )
+        ctx.state["task_phase"] = ledger.phase.value
 
         async def allow_reply(step: AgentStep, active_request: TaskRequest = request) -> bool:
             eligible = can_answer_directly(

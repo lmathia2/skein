@@ -305,6 +305,7 @@ def build_coding_worker(
             self.attempt_id = attempt_id
             self.event_loop = event_loop
             self.call_index = 0
+            self.operations: list[str] = []
             self.effects: list[str] = []
             self.artifact_refs: set[str] = set()
 
@@ -315,6 +316,7 @@ def build_coding_worker(
             invoke: Callable[[], dict[str, Any]],
         ) -> dict[str, Any]:
             self.call_index += 1
+            self.operations.append(operation)
             operation_id = f"{self.attempt_id}:{self.call_index}"
             arguments_hash = hashlib.sha256(
                 json.dumps(arguments, sort_keys=True, default=str).encode()
@@ -590,6 +592,7 @@ def build_coding_worker(
             "attempt_id": attempt_id,
             "kernel_epoch": kernel_epoch,
             "replay_policy": replay_policy,
+            "phase": str(tool_context.state.get("task_phase", "")) if tool_context else "",
         }
         active_event_store.append(
             task_id,
@@ -653,6 +656,8 @@ def build_coding_worker(
             "stdout": result.stdout,
             "stderr": result.stderr,
             "artifact_refs": sorted(broker.artifact_refs),
+            "capability_count": broker.call_index,
+            "capability_operations": list(broker.operations),
             "state": {
                 "count": result.state_count,
                 "delta": list(result.state_delta),

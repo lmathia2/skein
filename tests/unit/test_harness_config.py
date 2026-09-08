@@ -304,6 +304,18 @@ def test_notebook_ptc_configuration_changes_behavior_hash() -> None:
     assert parse_harness_composition(payload).behavior_sha256 != disabled.behavior_sha256
 
 
+def test_notebook_ptc_batching_instruction_changes_behavior_hash() -> None:
+    payload = _composition_payload()
+    baseline = parse_harness_composition(payload)
+    payload["harness"]["config"]["notebook_ptc"] = {
+        "enabled": True,
+        "batching_instruction": "Batch independent reads only.",
+    }
+
+    configured = parse_harness_composition(payload)
+    assert configured.behavior_sha256 != baseline.behavior_sha256
+
+
 def test_lance_retrieval_requires_duckdb() -> None:
     payload = _composition_payload()
     payload["harness"]["config"]["memory"] = {

@@ -28,8 +28,7 @@ only what is useful. `agent` is prebound; do not import or introspect it. Core s
 `agent.fs.edit(path, old_text, new_text, expected_sha256=None)`, and
 `agent.shell.run(command, timeout_seconds=120)`. `agent.help()` lists all exact signatures.
 Capability calls return result mappings; inspect their `model_text` field in Python and
-print only the facts or short excerpts needed for the next decision. Batch related bounded
-operations in one cell when their next steps are already known, and retain reusable
+print only the facts or short excerpts needed for the next decision. Retain reusable
 intermediate values instead of spending a model turn on each trivial capability call. Use
 `agent.state.list()` or
 `agent.state.describe(name)` to inspect
@@ -169,7 +168,12 @@ def settings_from_composition(
 
     tool_names = ("read", "bash", "edit", "write")
     if config.notebook_ptc.enabled:
-        instruction += "\n\n" + NOTEBOOK_PTC_INSTRUCTION
+        instruction += (
+            "\n\n"
+            + NOTEBOOK_PTC_INSTRUCTION
+            + "\n\nPhase-aware cell composition:\n"
+            + config.notebook_ptc.batching_instruction.strip()
+        )
         tool_names = ("python",)
 
     coding_model = config.models[worker_config.model].name

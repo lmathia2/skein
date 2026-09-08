@@ -178,6 +178,13 @@ def tuning_spec(composition: HarnessComposition) -> TuningSpec:
         "Use notebook-native PTC instead of the four-tool worker",
         experimental=True,
     )
+    add(
+        "notebook_ptc.batching_instruction",
+        config.notebook_ptc.batching_instruction,
+        "text",
+        "Cache-stable phase-aware PTC cell-composition policy",
+        experimental=True,
+    )
 
     context = config.context
     context_parameters = (
