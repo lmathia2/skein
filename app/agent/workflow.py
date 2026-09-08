@@ -1194,8 +1194,8 @@ async def _orchestrate_owned(
             steering_packet_message_ids=tuple(message.message_id for message in leased),
         )
         ctx.state["task_phase"] = ledger.phase.value
-        ctx.state["ptc_work_batch_id"] = str(ledger.iteration + 1)
-        ctx.state["ptc_work_batch_yield"] = None
+        work_batch_id = str(ledger.iteration + 1)
+        ctx.state["ptc_work_batch_id"] = work_batch_id
 
         async def allow_reply(step: AgentStep, active_request: TaskRequest = request) -> bool:
             eligible = can_answer_directly(
@@ -1238,7 +1238,15 @@ async def _orchestrate_owned(
         if reply_stream is not None:
             step = reply_stream.finish(step)
 
-        batch_yield = ctx.state.get("ptc_work_batch_yield")
+        batch_yield = next(
+            (
+                event.payload
+                for event in reversed(deps.event_store.read(task_id))
+                if event.kind == EventKind.WORK_BATCH_YIELDED
+                and str(event.payload.get("work_batch_id", "")) == work_batch_id
+            ),
+            None,
+        )
         if isinstance(batch_yield, dict) and step.status == "blocked":
             step = step.model_copy(
                 update={

@@ -483,8 +483,9 @@ async def test_ptc_worker_yields_before_an_extra_model_call_after_read_only_chur
 
     assert response is not None
     assert response.custom_metadata == {"skein_work_batch_yield": True}
-    assert context.state["ptc_work_batch_yield"]["reason"] == "no_workspace_change"
-    assert [event.kind for event in events.read("task-1")].count(
+    recorded = events.read("task-1")
+    assert recorded[-1].payload["reason"] == "no_workspace_change"
+    assert [event.kind for event in recorded].count(
         EventKind.WORK_BATCH_YIELDED
     ) == 1
     if worker.close is not None:

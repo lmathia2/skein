@@ -896,7 +896,6 @@ def build_coding_worker(
                         payload,
                         idempotency_key=f"work-batch-yield:{work_batch_id}",
                     )
-                    state["ptc_work_batch_yield"] = payload
                     structured = {
                         "status": "blocked",
                         "message": "",
