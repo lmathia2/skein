@@ -209,16 +209,50 @@ _AGENT_HELP = {
     "state.describe": "agent.state.describe(name)",
 }
 
+_AGENT_RESULTS: dict[str, dict[str, object]] = {
+    "fs.read": {
+        "status": "ok|error|blocked",
+        "data": {
+            "path": "str",
+            "text": "str (exact redacted selected range)",
+            "offset": "int",
+            "returned_lines": "int",
+            "total_lines": "int",
+            "complete": "bool",
+            "next_offset": "int|null",
+            "sha256": "str (original content identity)",
+        },
+    },
+    "shell.run": {
+        "status": "ok|error|blocked|timeout",
+        "exit_code": "int|null",
+        "data": {"stdout": "str", "stderr": "str"},
+        "truncated": "bool",
+        "artifact_uri": "str|null",
+    },
+    "fs.write": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
+    "fs.edit": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
+    "mcp.call": {"status": "capability-defined result mapping"},
+}
 
-def _agent_help(prefix: str | None = None) -> dict[str, str]:
+
+def _agent_help(
+    prefix: str | None = None, *, details: bool = False
+) -> dict[str, str] | dict[str, dict[str, object]]:
     """Return bounded, deterministic capability signatures."""
 
     if prefix is not None and not isinstance(prefix, str):
         raise TypeError("help prefix must be a string or None")
-    return {
+    selected = {
         name: signature
         for name, signature in _AGENT_HELP.items()
         if prefix is None or name.startswith(prefix)
+    }
+    if not details:
+        return selected
+    return {
+        name: {"signature": signature, "result": _AGENT_RESULTS.get(name, {})}
+        for name, signature in selected.items()
     }
 
 

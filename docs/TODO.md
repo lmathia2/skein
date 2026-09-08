@@ -84,7 +84,7 @@ and the implementation/evaluation rubric.
 - [x] Reconcile the PTC proposal with the Anthropic sources, reference runtimes,
   and current Skein execution path; publish an actionable implementation plan.
 - [x] Add machine-readable capability results and actual provider-payload checks.
-- [ ] Add executable phase-aware programming examples using the existing policy surface.
+- [x] Add executable phase-aware programming examples using the existing policy surface.
 - [ ] Add bounded brokered parallel reads and deadline/reconciliation checks.
 - [ ] Remove redundant verification/snapshot work without weakening evidence.
 - [ ] Freeze bounded context handoffs at explicit cache-stable epochs.

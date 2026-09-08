@@ -26,10 +26,27 @@ only what is useful. `agent` is prebound; do not import or introspect it. Core s
 `agent.fs.read(path, offset=1, limit=400)` (limit must be 1-400),
 `agent.fs.write(path, content, expected_sha256=None, expected_absent=False)`,
 `agent.fs.edit(path, old_text, new_text, expected_sha256=None)`, and
-`agent.shell.run(command, timeout_seconds=120)`. `agent.help()` lists all exact signatures.
-Capability calls return result mappings; inspect their `model_text` field in Python and
-print only the facts or short excerpts needed for the next decision. Retain reusable
-intermediate values instead of spending a model turn on each trivial capability call. Use
+`agent.shell.run(command, timeout_seconds=120)`. `agent.help()` lists all exact signatures;
+`agent.help(name, details=True)` returns one targeted result contract. Capability calls
+return mappings. Process the machine-readable `data` field in Python and expose only facts
+or short excerpts needed for the next decision; `model_text` is a bounded human rendering.
+Retain reusable intermediate values instead of spending a model turn on each trivial call.
+
+Compose work until new semantic judgment is required. Examples:
+```
+pages = [agent.fs.read(path) for path in known_paths]
+[(p["data"]["path"], "needle" in p["data"]["text"]) for p in pages]
+
+changed = agent.fs.edit(path, old, new, expected_sha256=digest)
+check = agent.shell.run(targeted_check) if changed["status"] == "ok" else changed
+{"change": changed["status"], "check": check.get("exit_code"), "error": check.get("data", {}).get("stderr", "")[-2000:]}
+
+evidence = {criterion: collect_known_evidence(criterion) for criterion in weak_criteria}
+{criterion: rows for criterion, rows in evidence.items() if not rows}
+```
+These illustrate orchestration, not permission to invent repairs or completion. Return to
+the model when results require interpretation; independent verification owns completion.
+Use
 `agent.state.list()` or
 `agent.state.describe(name)` to inspect
 live variable metadata without exposing values. For `.ipynb` files, use `nb read` or
