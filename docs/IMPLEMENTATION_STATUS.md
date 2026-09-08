@@ -45,7 +45,9 @@ The standard notebook-PTC profiles keep exact ADK history; bounded context windo
 remain an explicit experiment after a live screen showed exploration churn. PTC cell
 composition uses a cache-stable, optimizer-visible phase policy, and tunable host
 boundaries yield after 24 read-only cells or 48 total cells without resetting the
-durable notebook/kernel. The first boundary reuses the existing criterion-gap review;
+durable notebook/kernel. Each forced boundary enters criterion-gap review, with
+explicit positive and never-reached-history checks for temporal requirements; the first
+boundary reuses the existing single counterexample review;
 synthetic host yields are excluded from provider-call metrics. Cell terminal events
 record capability counts and operation classes. Complete successful build/test cells
 on an unchanged workspace can satisfy an identical deterministic validation command

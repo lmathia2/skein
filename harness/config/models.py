@@ -181,8 +181,9 @@ class NotebookPtcConfig(FrozenModel):
             "one cell, then filter and print a compact summary. During implement, group independent "
             "reads that support one selected change, but execute an edit separately and inspect its "
             "result before any decision-dependent edit. During review, collect evidence for "
-            "independent weak acceptance criteria together and stop exploring when every criterion "
-            "has evidence or a concrete blocker. During verify, group only already-selected, "
+            "independent weak acceptance criteria together; test both sides of state transitions, "
+            "including histories where a prerequisite never occurred, and stop exploring when every "
+            "criterion has evidence or a concrete blocker. During verify, group only already-selected, "
             "non-mutating formatter, type, and targeted-test commands; preserve every exit status."
         ),
         min_length=1,

@@ -186,9 +186,11 @@ def _criterion_review_action(ledger: TaskLedger, step: AgentStep) -> str:
     return (
         "Perform the single criterion-gap review. Preserve the complete original requirements. "
         "Try to falsify weak or missing rows with omitted, default, boundary, and interacting "
-        "inputs; fix confirmed defects and return updated completion_claims. Do not repeat broad "
-        "exploration. When every row has concrete implementation and test evidence and the "
-        "targeted checks pass, request verification immediately.\n"
+        "inputs. For stateful or transition requirements, test both the requested transition and "
+        "histories where its prerequisite was never reached. Fix confirmed defects and return "
+        "updated completion_claims. Do not repeat broad exploration. When every row has concrete "
+        "implementation and test evidence and the targeted checks pass, request verification "
+        "immediately.\n"
         + "\n".join(rows)
     )
 
@@ -1351,12 +1353,12 @@ async def _orchestrate_owned(
             previous = ledger
             first_review = not ledger.counterexample_review_completed
             update: dict[str, Any] = {
-                "phase": "review" if first_review else "implement",
+                "phase": "review",
                 "status": "active",
                 "next_action": (
                     _criterion_review_action(ledger, step)
                     if first_review
-                    else "Continue from the durable notebook with the smallest remaining action."
+                    else "Re-audit remaining criterion gaps, then verify or take the smallest fix."
                 ),
             }
             if first_review:
