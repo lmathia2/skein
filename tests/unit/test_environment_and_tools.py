@@ -37,6 +37,16 @@ def test_read_is_line_numbered_and_bounded(tmp_path: Path) -> None:
     assert "2 | two" in result.model_text
     assert "3 | three" in result.model_text
     assert "more available" in result.model_text
+    assert result.data == {
+        "path": "src/example.py",
+        "text": "two\nthree\n",
+        "offset": 2,
+        "returned_lines": 2,
+        "total_lines": 4,
+        "complete": False,
+        "next_offset": 4,
+        "sha256": result.content_hashes["src/example.py"],
+    }
 
 
 def test_edit_requires_a_unique_preimage_and_is_idempotent(tmp_path: Path) -> None:

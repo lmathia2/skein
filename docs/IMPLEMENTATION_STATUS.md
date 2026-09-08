@@ -48,11 +48,14 @@ boundaries yield after 24 read-only cells or 48 total cells without resetting th
 durable notebook/kernel. Each forced boundary enters criterion-gap review, with
 explicit positive and never-reached-history checks for temporal requirements; the first
 boundary reuses the existing single counterexample review;
-synthetic host yields are excluded from provider-call metrics. Cell terminal events
-record capability counts and operation classes. Complete successful build/test cells
+  synthetic host yields are excluded from provider-call metrics. Cell terminal events
+  record capability counts and operation classes. Complete successful build/test cells
 on an unchanged workspace can satisfy an identical deterministic validation command
-under the same managed environment. Metadata-only traces also record canonical ADK
-request region byte counts and hashes without retaining prompt text.
+  under the same managed environment. PTC receives redacted machine-readable file,
+  search, and command data separately from model-rendered text; the four-tool surface
+  strips that program-only data. Metadata-only traces record canonical ADK request
+  regions, and the OpenRouter adapter records the exact serialized request byte count,
+  hash, and top-level region hashes without retaining prompt text.
 
 ## Retained and verified
 

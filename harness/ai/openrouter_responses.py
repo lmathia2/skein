@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
@@ -19,6 +21,24 @@ from .codex_responses import _iter_sse, _ResponseAccumulator, build_codex_reques
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 _AsyncClientFactory = Callable[[], httpx.AsyncClient]
+
+
+def _request_profile(body: dict[str, Any]) -> dict[str, Any]:
+    encoded = httpx.Request("POST", "https://local.invalid", json=body).content
+    regions: dict[str, dict[str, int | str]] = {}
+    for name, value in sorted(body.items()):
+        part = json.dumps(
+            value, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        ).encode()
+        regions[name] = {
+            "bytes": len(part),
+            "sha256": hashlib.sha256(part).hexdigest(),
+        }
+    return {
+        "bytes": len(encoded),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "regions": regions,
+    }
 
 
 def build_openrouter_request_body(
@@ -152,6 +172,7 @@ class OpenRouterResponsesLlm(BaseLlm):
             model=self.model,
             reasoning_effort=self.reasoning_effort,
         )
+        request_profile = _request_profile(body)
         accumulator = _ResponseAccumulator()
         async for event in self._stream_events(body):
             part = accumulator.consume(event)
@@ -163,7 +184,12 @@ class OpenRouterResponsesLlm(BaseLlm):
                 )
         if not accumulator.completed:
             raise RuntimeError("OpenRouter stream ended before response.completed")
-        yield accumulator.final_response(self.model)
+        final = accumulator.final_response(self.model)
+        final.custom_metadata = {
+            **(final.custom_metadata or {}),
+            "provider_request_profile": request_profile,
+        }
+        yield final
 
 
 __all__ = [

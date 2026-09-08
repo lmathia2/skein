@@ -176,6 +176,11 @@ def build_coding_worker(
             task_scope, _ = _runtime_identity(tool_context)
             tool_context.state["verification_required_task"] = task_scope
 
+    def _model_result(result: dict[str, Any]) -> dict[str, Any]:
+        """Keep program-only ingress out of direct model tool responses."""
+
+        return {key: value for key, value in result.items() if key != "data"}
+
     async def read(
         path: str,
         offset: int = 1,
@@ -187,11 +192,11 @@ def build_coding_worker(
         if replies is not None:
             replies.guard_tool(tool_context)
         del tool_context
-        return await run_managed_thread(
+        return _model_result(await run_managed_thread(
             _invoke_tool,
             "read",
             lambda: active_tools.read(path=path, offset=offset, limit=limit),
-        )
+        ))
 
     async def bash(
         command: str,
@@ -218,10 +223,11 @@ def build_coding_worker(
         if approvals is not None and result.get("approval_required") is True:
             decision = await approvals.wait(str(result["approval_request_id"]), task_scope or "")
             if decision.status == "approved":
-                return await run_managed_thread(invoke)
-            return {**result, "approval_required": False,
+                return _model_result(await run_managed_thread(invoke))
+            return _model_result({**result, "approval_required": False,
                     "model_text": f"Command not executed: approval {decision.status}."}
-        return result
+            )
+        return _model_result(result)
 
     async def edit(
         path: str,
@@ -236,7 +242,7 @@ def build_coding_worker(
         if replies is not None:
             replies.guard_tool(tool_context)
         _require_verification(tool_context)
-        return await run_managed_thread(
+        return _model_result(await run_managed_thread(
             _invoke_tool,
             "edit",
             lambda: active_tools.edit(
@@ -248,7 +254,7 @@ def build_coding_worker(
                 invocation_id=invocation_id,
                 operation_id=getattr(tool_context, "function_call_id", None),
             ),
-        )
+        ))
 
     async def write(
         path: str,
@@ -263,7 +269,7 @@ def build_coding_worker(
         if replies is not None:
             replies.guard_tool(tool_context)
         _require_verification(tool_context)
-        return await run_managed_thread(
+        return _model_result(await run_managed_thread(
             _invoke_tool,
             "write",
             lambda: active_tools.write(
@@ -275,7 +281,7 @@ def build_coding_worker(
                 invocation_id=invocation_id,
                 operation_id=getattr(tool_context, "function_call_id", None),
             ),
-        )
+        ))
 
     python_worker = (
         PersistentPythonWorker(max_output_bytes=active_ptc_config.max_output_bytes)

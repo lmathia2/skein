@@ -41,6 +41,7 @@ class SandboxResult:
             "truncated": self.truncated,
             "omitted_bytes": self.omitted_bytes,
             "artifact_uri": self.artifact_uri,
+            "data": {"stdout": self.stdout, "stderr": self.stderr},
         }
 
 

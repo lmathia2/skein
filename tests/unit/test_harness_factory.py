@@ -531,6 +531,28 @@ def test_worker_uses_native_structured_output_without_adding_a_model_tool(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_direct_tools_hide_program_only_data(tmp_path: Path) -> None:
+    settings = settings_from_composition(
+        load_harness_composition(),
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
+    )
+
+    def read(**_: Any) -> dict[str, Any]:
+        return {"status": "ok", "model_text": "rendered", "data": {"text": "raw"}}
+
+    def unused(**_: Any) -> dict[str, Any]:
+        return {"status": "error", "model_text": "unused"}
+
+    worker = build_coding_worker(
+        settings,
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=read, bash=unused, edit=unused, write=unused),
+    )
+
+    assert await worker.read("README.md") == {"status": "ok", "model_text": "rendered"}
+
+
+@pytest.mark.asyncio
 async def test_model_tools_do_not_block_the_server_event_loop(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

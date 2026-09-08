@@ -449,6 +449,14 @@ class _ManagedTools:
             "omitted_bytes": bounded.omitted_bytes,
             "artifact_uri": artifact_uri,
             "next_cursor": page.cursor,
+            "data": {
+                "text": safe_text,
+                "next_cursor": page.cursor,
+                "complete": page.cursor is None and not page.incomplete,
+                "returned_matches": page.returned_matches,
+                "collected_matches": page.collected_matches,
+                "matched_files": page.matched_files,
+            },
             "ui_details": {
                 "virtual_operation": f"search.{page.operation}",
                 "backend": "fff-search/0.10.5",

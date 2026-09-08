@@ -472,6 +472,8 @@ class HarnessMetricsPlugin(BasePlugin):
         counts = usage_counts(llm_response)
         pricing = self.pricing.get(model, ModelPricing())
         exact_cost = reported_cost(llm_response)
+        profile = metadata.get("provider_request_profile", {}) if isinstance(metadata, Mapping) else {}
+        regions = profile.get("regions", {}) if isinstance(profile, Mapping) else {}
         self.store.record_model_usage(
             ModelUsageSample(
                 task_id=task_id,
@@ -487,6 +489,17 @@ class HarnessMetricsPlugin(BasePlugin):
                 reasoning_tokens=counts["reasoning_tokens"],
                 cost_usd=(exact_cost if exact_cost is not None else estimate_cost(counts, pricing)),
                 latency_ms=max(int((time.monotonic() - started) * 1_000), 0),
+                provider_request_bytes=_integer(profile.get("bytes", 0)),
+                provider_request_sha256=(
+                    str(profile["sha256"])
+                    if isinstance(profile, Mapping) and profile.get("sha256")
+                    else None
+                ),
+                provider_request_regions_json=json.dumps(
+                    regions if isinstance(regions, Mapping) else {},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
             )
         )
         return None

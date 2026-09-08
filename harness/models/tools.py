@@ -40,6 +40,7 @@ class ToolEnvelope(StrictModel):
     changed_paths: list[str] = Field(default_factory=list)
     content_hashes: dict[str, str] = Field(default_factory=dict)
     command_class: CommandClass | None = None
+    data: dict[str, object] = Field(default_factory=dict)
 
 
 class CommandResult(StrictModel):

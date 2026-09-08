@@ -140,7 +140,12 @@ async def test_openrouter_streams_tools_usage_cost_and_routing_metadata() -> Non
         "routing_region": "iad",
         "routing_attempt": 1,
         "provider_name": "Meta",
+        "provider_request_profile": final.custom_metadata["provider_request_profile"],
     }
+    profile = final.custom_metadata["provider_request_profile"]
+    assert profile["bytes"] == len(json.dumps(captured["body"], separators=(",", ":")).encode())
+    assert len(profile["sha256"]) == 64
+    assert set(profile["regions"]) >= {"input", "model", "tools"}
     assert captured["url"] == "https://openrouter.ai/api/v1/responses"
     assert captured["headers"]["authorization"] == "Bearer openrouter-test-key"
     assert captured["headers"]["x-openrouter-metadata"] == "enabled"

@@ -92,11 +92,22 @@ def test_managed_adapter_blocks_unapproved_network_and_redacts(
     read_result = tools.read("secret.txt")
     assert "super-secret-api-key-value" not in read_result["model_text"]
     assert "<redacted>" in read_result["model_text"]
+    assert read_result["data"]["text"] == "token=<redacted>\n"
 
     blocked = tools.bash("curl https://example.com")
     assert blocked["status"] == "blocked"
     assert blocked["approval_required"] is True
     assert blocked["risk"] == "network_access"
+
+
+def test_shell_keeps_program_data_separate_from_rendered_output(tmp_path: Path) -> None:
+    sandbox = _RecordingSandbox(tmp_path)
+    tools = create_adk_tools(tmp_path, state_root=tmp_path / "state", sandbox=sandbox)
+
+    result = tools.bash("git status --short")
+
+    assert result["model_text"] == "sandbox output"
+    assert result["data"] == {"stdout": "sandbox output", "stderr": ""}
 
 
 def test_exact_write_replay_uses_receipt_without_repeating_side_effect(

@@ -33,6 +33,9 @@ class ModelUsageSample(BaseModel):
     reasoning_tokens: int = Field(default=0, ge=0)
     cost_usd: float = Field(default=0.0, ge=0)
     latency_ms: int = Field(default=0, ge=0)
+    provider_request_bytes: int = Field(default=0, ge=0)
+    provider_request_sha256: str | None = None
+    provider_request_regions_json: str = "{}"
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     @property
@@ -113,6 +116,9 @@ class MetricsStore:
                     reasoning_tokens INTEGER NOT NULL,
                     cost_usd REAL NOT NULL,
                     latency_ms INTEGER NOT NULL,
+                    provider_request_bytes INTEGER NOT NULL DEFAULT 0,
+                    provider_request_sha256 TEXT,
+                    provider_request_regions_json TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS ix_model_usage_task
@@ -151,17 +157,36 @@ class MetricsStore:
                 );
                 """
             )
+            columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(model_usage)")
+            }
+            for statement in (
+                "ALTER TABLE model_usage ADD COLUMN provider_request_bytes INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE model_usage ADD COLUMN provider_request_sha256 TEXT",
+                "ALTER TABLE model_usage ADD COLUMN provider_request_regions_json TEXT NOT NULL DEFAULT '{}'",
+            ):
+                name = statement.split()[5]
+                if name not in columns:
+                    connection.execute(statement)
 
     def record_model_usage(self, sample: ModelUsageSample) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT OR IGNORE INTO model_usage VALUES (
+                INSERT OR IGNORE INTO model_usage (
+                    sample_id, task_id, invocation_id, model,
+                    static_prefix_hash, static_prefix_tokens,
+                    dynamic_suffix_tokens, input_tokens, output_tokens,
+                    cache_read_tokens, cache_write_tokens, reasoning_tokens,
+                    cost_usd, latency_ms, provider_request_bytes,
+                    provider_request_sha256, provider_request_regions_json, created_at
+                ) VALUES (
                     :sample_id, :task_id, :invocation_id, :model,
                     :static_prefix_hash, :static_prefix_tokens,
                     :dynamic_suffix_tokens, :input_tokens, :output_tokens,
                     :cache_read_tokens, :cache_write_tokens, :reasoning_tokens,
-                    :cost_usd, :latency_ms, :created_at
+                    :cost_usd, :latency_ms, :provider_request_bytes,
+                    :provider_request_sha256, :provider_request_regions_json, :created_at
                 )
                 """,
                 sample.model_dump(mode="python"),
@@ -227,6 +252,7 @@ class MetricsStore:
                     COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
                     COALESCE(SUM(cost_usd), 0.0) AS cost_usd,
                     COALESCE(SUM(latency_ms), 0) AS model_latency_ms,
+                    COALESCE(SUM(provider_request_bytes), 0) AS provider_request_bytes,
                     COALESCE(MAX(input_tokens), 0) AS peak_context_tokens,
                     COUNT(*) AS model_calls,
                     COUNT(DISTINCT static_prefix_hash) AS prefix_versions

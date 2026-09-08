@@ -33,11 +33,12 @@ def execute_read(
         if b"\x00" in content[:8_192]:
             raise ValueError(f"Binary file cannot be read as text: {path}")
         text = content.decode("utf-8")
-        lines = text.splitlines()
+        lines = text.splitlines(keepends=True)
         start = min(offset - 1, len(lines))
         selected = lines[start : start + limit]
         rendered = "\n".join(
-            f"{start + index + 1:>6} | {line}" for index, line in enumerate(selected)
+            f"{start + index + 1:>6} | {line.rstrip(chr(10) + chr(13))}"
+            for index, line in enumerate(selected)
         )
         bounded = bound_output(rendered, max_chars=32_000, max_lines=400)
         digest = hashlib.sha256(content).hexdigest()
@@ -58,6 +59,18 @@ def execute_read(
             omitted_bytes=bounded.omitted_bytes,
             content_hashes={relative: digest},
             ui_details={"path": relative, "total_lines": len(lines)},
+            data={
+                "path": relative,
+                "text": "".join(selected),
+                "offset": start + 1,
+                "returned_lines": len(selected),
+                "total_lines": len(lines),
+                "complete": start == 0 and len(selected) == len(lines),
+                "next_offset": start + len(selected) + 1
+                if start + len(selected) < len(lines)
+                else None,
+                "sha256": digest,
+            },
         )
         return envelope
     except Exception as exc:
