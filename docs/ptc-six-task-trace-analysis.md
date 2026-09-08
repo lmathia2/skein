@@ -470,3 +470,32 @@ generic batching pressure.
    observed exploration loop.
 
 Further trace/notebook storage optimization is not on the critical path.
+
+## 8. Focused work-batch screen (v9)
+
+Commit `55ec40d` screened Koota and Ofetch with the same Contributor model,
+provider defaults, one attempt, and zero retries. A preceding v8 attempt exposed
+and fixed an ADK state-propagation error: the workflow now identifies synthetic
+batch yields from the authoritative event stream. V9 proved two 48-cell Koota
+boundaries resume through the same durable notebook without becoming blockers or
+counting synthetic responses as provider calls.
+
+| Task | v7 reward/calls/input/cost/wall | v9 reward/calls/input/cost/wall |
+| --- | --- | --- |
+| Koota | 1 / 221 / 38.85M / $0.157 / 2,253 s | 0 / 104 / 13.06M / $0.074 / 925 s |
+| Ofetch | 1 / 49 / 2.45M / $0.018 / 476 s | 1 / 59 / 3.58M / $0.027 / 852 s |
+
+Koota recovered about 53% of calls, 66% of input tokens, 53% of cost, and 59%
+of wall time, but failed one of 51 new tests: `Removed` incorrectly matched an
+entity that had never held all aspect constituents. All 172 existing tests passed
+and the partial score was 0.9955. Ofetch reached a verified harness completion
+instead of v7's false-negative block, but used ten more calls and had a much slower
+provider sample. The two-task quality gate therefore did not promote this treatment.
+
+Metadata-only traces captured hashed canonical ADK request regions without prompt
+text. The final Koota request was 712,610 bytes, including 699,636 bytes of retained
+history; Ofetch was 358,552 and 340,792 bytes respectively. This confirms trace
+writes are not the growth source. Commit `60cdced` subsequently makes every forced
+boundary a review phase and adds the generic temporal negative-history check that
+the Koota review missed; it has deterministic coverage but was not re-run live to
+avoid turning a two-task screen into another costly ablation.
