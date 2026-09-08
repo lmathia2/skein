@@ -91,9 +91,11 @@ class ContextWindowPlugin(BasePlugin):
         self.handoff = handoff
         self.redactor = SecretRedactor(known_secrets=known_secrets)
         self.require_notes = require_notes
+        self._captured_history: dict[tuple[str, str], tuple[str, ...]] = {}
 
     def _capture(self, task_id: str, invocation: str, raw: list[types.Content]) -> None:
         retrieval_calls: set[str] = set()
+        records: list[tuple[str, dict[str, Any]]] = []
         for index, content in enumerate(raw):
             public = []
             for part in content.parts or ():
@@ -119,10 +121,33 @@ class ContextWindowPlugin(BasePlugin):
             payload = self.redactor.redact({"role": content.role, "parts": public})
             digest = hashlib.sha256(canonical_json(payload).encode()).hexdigest()
             identity = hashlib.sha256(f"{task_id}:{invocation}:{index}:{digest}".encode()).hexdigest()
+            records.append((identity, payload))
+
+        key = (task_id, invocation)
+        identities = tuple(identity for identity, _ in records)
+        captured = self._captured_history.get(key)
+        if captured is None:
+            existing = {
+                event.source_id
+                for event in self.ledger.read(task_id, kinds=("context.history",))
+                if event.source == "context"
+            }
+            captured_count = 0
+            while captured_count < len(identities) and identities[captured_count] in existing:
+                captured_count += 1
+            if any(identity in existing for identity in identities[captured_count + 1:]):
+                raise ValueError("captured context history is not a contiguous prefix")
+        else:
+            if identities[:len(captured)] != captured:
+                raise ValueError("retained context history changed before its captured boundary")
+            captured_count = len(captured)
+
+        for identity, payload in records[captured_count:]:
             self.ledger.append(
                 task_id=task_id, source="context", source_id=identity,
                 kind="context.history", payload=payload,
             )
+        self._captured_history[key] = identities
 
     async def before_model_callback(
         self, *, callback_context: Any, llm_request: LlmRequest,

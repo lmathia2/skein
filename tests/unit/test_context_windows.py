@@ -94,3 +94,40 @@ def test_only_complete_tool_interactions_can_be_cut():
         _complete_cuts([call])
     with pytest.raises(ValueError, match="unmatched"):
         _complete_cuts([result])
+
+
+def test_history_capture_only_reads_and_appends_the_new_tail(tmp_path, monkeypatch):
+    plugin, _, _, canonical = setup(tmp_path)
+    reads = 0
+    appends = 0
+    original_read = canonical.read
+    original_append = canonical.append
+
+    def read(*args, **kwargs):
+        nonlocal reads
+        reads += 1
+        return original_read(*args, **kwargs)
+
+    def append(*args, **kwargs):
+        nonlocal appends
+        appends += 1
+        return original_append(*args, **kwargs)
+
+    monkeypatch.setattr(canonical, "read", read)
+    monkeypatch.setattr(canonical, "append", append)
+    history = [text("first"), text("second")]
+    plugin._capture("task", "invocation", history)
+    plugin._capture("task", "invocation", history)
+    history.append(text("third"))
+    plugin._capture("task", "invocation", history)
+
+    assert reads == 1
+    assert appends == 3
+
+
+def test_history_capture_rejects_changed_captured_prefix(tmp_path):
+    plugin, _, _, _ = setup(tmp_path)
+    plugin._capture("task", "invocation", [text("first")])
+
+    with pytest.raises(ValueError, match="changed before"):
+        plugin._capture("task", "invocation", [text("changed")])
