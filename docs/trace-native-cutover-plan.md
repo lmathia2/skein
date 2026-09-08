@@ -99,10 +99,11 @@ Python cell. Two stronger generic batching prompts reduced Wazero from 40 calls 
 26 and 32, but their old integration-test packages failed to build and the tests did
 not run. Those zero scores do not establish that batching caused a regression.
 
-The standard PTC profiles now enable only the existing bounded inner-history
-window: recent exact Python call/response pairs follow a deterministic ledger
-handoff. History capture appends only the new suffix and verifies that its captured
-prefix is unchanged. Retrieval and working notes remain disabled.
+The standard PTC profiles retain exact inner history. A live Kombu screen with the
+bounded window enabled reached 106 calls and 28 compactions without making an edit,
+so that setting remains confined to the context experiment profiles. History
+capture still appends only the new suffix and verifies that its captured prefix is
+unchanged. Retrieval and working notes remain disabled.
 
 | Check | Result |
 | --- | --- |

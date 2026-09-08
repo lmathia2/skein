@@ -78,7 +78,7 @@ harness:
       retrieval: lexical  # Lance remains a disposable, non-live projection.
 
     context:
-      window_management: true  # Bound retained inner ADK history with a replayable epoch.
+      window_management: false  # Keep exact PTC history; bounded windows caused exploration churn.
       reconstruction: handoff_tail  # Keep recent exact interactions after the deterministic handoff.
       work_packet_tokens: 20000  # Total dynamic suffix budget per model call.
       max_task_input_tokens: 200000  # Cumulative task input budget.

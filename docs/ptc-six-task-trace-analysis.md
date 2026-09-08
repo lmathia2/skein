@@ -294,9 +294,15 @@ Gate: reported region totals reconcile with provider input within a documented
 tokenizer tolerance, and enabling measurement does not change provider request
 bytes or deterministic tests.
 
-### P1: enable only the existing deterministic history window for PTC
+### P1: keep deterministic history windows experimental for PTC
 
-Start with the existing PTC+JSONL profile and change only:
+Do not enable this in the standard PTC profiles yet. A live Kombu screen on
+2026-09-07 reached 106 model calls, 28 compactions, and no edit while batching
+2.05 capabilities per completed cell. The matching unwindowed configuration had
+completed useful work, so the screen failed on call count and progress before a
+quality comparison was warranted.
+
+Retain the opt-in context experiment for later tuning:
 
 ```yaml
 memory:
@@ -314,11 +320,10 @@ index, or new tool. It keeps the latest complete Python call/response interactio
 publishes an explicit context epoch, and replaces older history with the deterministic
 ledger handoff. Do not enable the broad `context-ptc.yaml` bundle.
 
-Screen Ofetch and Textual first because they show the clearest unnecessary history
-growth. Continue to the six-task run only if input falls at least 30%, the latest
-tool result remains exact, and neither task loses old tests. Stop or widen the recent
-tail if Ofetch loses its pass. The six-task target is at most 25M input and 64k peak
-context with no loss of the PTC v4 Ofetch/Wazero passes.
+If revisited, first widen the recent exact tail and screen Kombu, Ofetch, and Textual.
+Continue only if input falls at least 30%, call count does not rise, the latest tool
+result remains exact, and no task loses old tests. The six-task target remains at
+most 25M input and 64k peak context with no loss of the PTC v4 passes.
 
 ### P2: turn the existing counterexample iteration into a criterion-gap audit
 
