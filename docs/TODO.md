@@ -105,9 +105,10 @@ and the implementation/evaluation rubric.
   - [x] Clear the production `app`/`harness` Pyright baseline; executable tests remain
     covered by pytest rather than static analysis of their deliberately dynamic fakes.
   - [ ] Run the matched provider comparison; keep four tools as the default until that
-    gate passes. The 2026-09-09 preflight correctly refused to run: Codex and
-    OpenRouter credentials were absent, and the subscription/model/revision contract
-    remains unfrozen. The pinned ADK image and its reset-isolation integration passed.
+    gate passes. Prior live PTC artifacts confirm OpenRouter execution with
+    `meta/muse-spark-1.3-contributor`; the 2026-09-09 task process did not inherit its
+    intentionally unpersisted `OPENROUTER_API_KEY`. The matched model/revision contract
+    also remains unfrozen. The pinned ADK image and its reset-isolation integration passed.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
