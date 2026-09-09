@@ -47,9 +47,7 @@ def _request() -> LlmRequest:
             types.Content(role="user", parts=[types.Part.from_text(text="Inspect README.md")]),
             types.Content(
                 role="model",
-                parts=[
-                    types.Part.from_function_call(name="read", args={"path": "README.md"})
-                ],
+                parts=[types.Part.from_function_call(name="read", args={"path": "README.md"})],
             ),
             types.Content(
                 role="user",
@@ -91,9 +89,7 @@ def test_request_compiler_preserves_tools_history_and_stable_cache_prefix() -> N
     assert isinstance(request.config.tools[0], types.Tool)
     assert request.config.tools[0].function_declarations is not None
     request.config.tools[0].function_declarations[0].description = "Read one file"
-    changed_prefix = build_codex_request_body(
-        request, model="gpt-test", reasoning_effort="low"
-    )
+    changed_prefix = build_codex_request_body(request, model="gpt-test", reasoning_effort="low")
 
     assert first == second
     assert first["store"] is False
@@ -172,6 +168,10 @@ async def test_codex_llm_streams_text_tool_call_final_response_and_usage() -> No
     assert final.usage_metadata is not None
     assert final.usage_metadata.cached_content_token_count == 4
     assert final.interaction_id == "response-1"
+    assert final.custom_metadata is not None
+    profile = final.custom_metadata["provider_request_profile"]
+    assert profile["bytes"] == len(json.dumps(captured["body"], separators=(",", ":")).encode())
+    assert set(profile["regions"]) >= {"input", "instructions", "model", "tools"}
     assert captured["headers"]["authorization"] == "Bearer header.payload.signature"
     assert captured["headers"]["chatgpt-account-id"] == "account-123"
     assert "OPENAI_API_KEY" not in captured["headers"]

@@ -73,7 +73,7 @@ does not satisfy the live empirical gates; default behavior remains unchanged.
   server run ID, with process/server restart and concurrent-run rejection tests.
 - [x] Add the metadata-only REPL state catalog and last committed kernel epoch to the
   compaction handoff without moving them into the cache-stable prefix.
-- [ ] Capture actual serialized provider requests and prove long-session context grows
+- [x] Capture actual serialized provider requests and prove long-session context grows
   with selected egress rather than nested result bytes or the live heap.
 
 See `docs/design/trace-native-repl-agent.md` for tenets, contracts, phased gates,

@@ -31,6 +31,26 @@ def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def provider_request_profile(body: dict[str, Any]) -> dict[str, Any]:
+    """Hash the exact JSON bytes httpx sends, with per-field byte attribution."""
+
+    encoded = httpx.Request("POST", "https://local.invalid", json=body).content
+    regions: dict[str, dict[str, int | str]] = {}
+    for name, value in sorted(body.items()):
+        part = json.dumps(
+            value, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        ).encode()
+        regions[name] = {
+            "bytes": len(part),
+            "sha256": hashlib.sha256(part).hexdigest(),
+        }
+    return {
+        "bytes": len(encoded),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "regions": regions,
+    }
+
+
 def _system_instruction(request: LlmRequest) -> str:
     instruction = request.config.system_instruction
     if isinstance(instruction, str):
@@ -174,9 +194,7 @@ def build_codex_request_body(
         "stream": True,
         "instructions": instruction,
         "input": [
-            item
-            for content in request.contents
-            for item in _content_to_response_input(content)
+            item for content in request.contents for item in _content_to_response_input(content)
         ],
         "include": ["reasoning.encrypted_content"],
         "parallel_tool_calls": True,
@@ -440,9 +458,7 @@ class CodexResponsesLlm(BaseLlm):
             return f"{base}/responses"
         return f"{base}/codex/responses"
 
-    async def _stream_events(
-        self, body: dict[str, Any]
-    ) -> AsyncGenerator[dict[str, Any], None]:
+    async def _stream_events(self, body: dict[str, Any]) -> AsyncGenerator[dict[str, Any], None]:
         forced_refresh = False
         for attempt in range(self.retry_attempts):
             credential = await asyncio.to_thread(
@@ -497,6 +513,7 @@ class CodexResponsesLlm(BaseLlm):
             model=self.model,
             reasoning_effort=self.reasoning_effort,
         )
+        request_profile = provider_request_profile(body)
         accumulator = _ResponseAccumulator()
         async for event in self._stream_events(body):
             part = accumulator.consume(event)
@@ -508,11 +525,17 @@ class CodexResponsesLlm(BaseLlm):
                 )
         if not accumulator.completed:
             raise RuntimeError("Codex stream ended before response.completed")
-        yield accumulator.final_response(self.model)
+        final = accumulator.final_response(self.model)
+        final.custom_metadata = {
+            **(final.custom_metadata or {}),
+            "provider_request_profile": request_profile,
+        }
+        yield final
 
 
 __all__ = [
     "DEFAULT_CODEX_BASE_URL",
     "CodexResponsesLlm",
     "build_codex_request_body",
+    "provider_request_profile",
 ]

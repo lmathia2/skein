@@ -11,12 +11,15 @@ from typing import Any, cast
 import pytest
 from google.adk.agents import LlmAgent
 from google.adk.models import BaseLlm
+from google.adk.models.llm_request import LlmRequest
+from google.genai import types
 
 from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.factory import default_harness_registry
 from app.agent.ptc import PtcSession, select_ptc_session
 from harness.agent import SteeringCommand
+from harness.ai.codex_responses import build_codex_request_body, provider_request_profile
 from harness.config import (
     NotebookPtcConfig,
     RuntimeBindings,
@@ -81,12 +84,15 @@ def test_disabled_ptc_dispatch_is_identity_and_builds_nothing() -> None:
         called.append("built")
         return PtcSession(tool=object(), description="unused")
 
-    assert select_ptc_session(
-        NotebookPtcConfig(),
-        skein_notebook=build,
-        adk_code_mode=build,
-        prime_repl=build,
-    ) is None
+    assert (
+        select_ptc_session(
+            NotebookPtcConfig(),
+            skein_notebook=build,
+            adk_code_mode=build,
+            prime_repl=build,
+        )
+        is None
+    )
     assert called == []
 
 
@@ -97,9 +103,7 @@ async def test_notebook_ptc_rejects_a_different_task_scope(tmp_path: Path) -> No
     worker = build_coding_worker(
         settings_from_composition(
             composition,
-            RuntimeBindings(
-                workspace=tmp_path, state_root=tmp_path / "state", task_id="owned"
-            ),
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="owned"),
         ),
         cast(BaseLlm, "test-model"),
         ptc_config=config.notebook_ptc,
@@ -130,8 +134,12 @@ async def test_cancelled_tool_drains_synchronous_effect_before_return(tmp_path: 
         return {"status": "ok"}
 
     worker = build_coding_worker(
-        settings_from_composition(composition, RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
-        cast(BaseLlm, "test-model"), tools=AdkCodingTools(read=effect, bash=effect, edit=effect, write=effect),
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=effect, bash=effect, edit=effect, write=effect),
     )
     pending = asyncio.create_task(worker.bash("bounded command"))
     assert await asyncio.to_thread(entered.wait, 5)
@@ -186,9 +194,7 @@ async def test_parallel_reads_overlap_and_keep_ordered_receipts(tmp_path: Path) 
     assert result["status"] == "ok"
     assert "'text': 'a'" in result["model_text"]
     assert result["model_text"].index("'text': 'a'") < result["model_text"].index("'text': 'b'")
-    capabilities = [
-        event for event in events.read("task") if event.kind.startswith("capability.")
-    ]
+    capabilities = [event for event in events.read("task") if event.kind.startswith("capability.")]
     assert [event.kind for event in capabilities[:2]] == [
         EventKind.CAPABILITY_REQUESTED,
         EventKind.CAPABILITY_REQUESTED,
@@ -271,13 +277,15 @@ async def test_failed_read_does_not_require_effect_reconciliation(tmp_path: Path
     assert continued["status"] == "ok"
     assert continued["model_text"] == "42"
     capability = next(
-        event for event in events.read("task")
-        if event.kind == EventKind.CAPABILITY_FAILED
+        event for event in events.read("task") if event.kind == EventKind.CAPABILITY_FAILED
     )
     assert capability.payload["effect"] == "none"
 
+
 @pytest.mark.asyncio
-async def test_conversation_notebook_restores_only_safe_cells_with_run_attribution(tmp_path: Path) -> None:
+async def test_conversation_notebook_restores_only_safe_cells_with_run_attribution(
+    tmp_path: Path,
+) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
     workspace = tmp_path / "workspace"
@@ -287,9 +295,14 @@ async def test_conversation_notebook_restores_only_safe_cells_with_run_attributi
         state = tmp_path / task_id
         events = JsonlEventStore(state / "events")
         worker = build_coding_worker(
-            settings_from_composition(composition, RuntimeBindings(workspace=workspace, state_root=state, task_id=task_id)),
-            cast(BaseLlm, "test-model"), ptc_config=config.notebook_ptc, event_store=events,
-            conversation_notebook_id="conversation", prior_notebook_events=prior,
+            settings_from_composition(
+                composition, RuntimeBindings(workspace=workspace, state_root=state, task_id=task_id)
+            ),
+            cast(BaseLlm, "test-model"),
+            ptc_config=config.notebook_ptc,
+            event_store=events,
+            conversation_notebook_id="conversation",
+            prior_notebook_events=prior,
             notebook_root=tmp_path / "conversation",
         )
         assert worker.execute_code is not None and worker.close is not None
@@ -323,9 +336,7 @@ def test_factory_exposes_only_execute_code_when_notebook_ptc_is_enabled(tmp_path
     )
 
     worker = cast(LlmAgent, assembly.agents["coding_worker"])
-    tool_names = {
-        getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.tools
-    }
+    tool_names = {getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.tools}
     assert tool_names == {"execute_code"}
     assert worker.include_contents == "default"
     assert "include_contents" in worker.model_fields_set
@@ -386,10 +397,7 @@ def test_default_factory_keeps_main_four_tool_path_without_canonical_memory(
     )
     try:
         worker = cast(LlmAgent, assembly.agents["coding_worker"])
-        tool_names = {
-            getattr(tool, "name", getattr(tool, "__name__", ""))
-            for tool in worker.tools
-        }
+        tool_names = {getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.tools}
         assert tool_names == {"read", "bash", "edit", "write"}
         assert worker.include_contents == "none"
         assert "include_contents" in worker.model_fields_set
@@ -417,7 +425,9 @@ def test_pi_memory_keeps_simple_adk_history_without_a_second_ledger(tmp_path: Pa
     assert assembly.build_info.tool_names == ("read", "bash", "edit", "write")
     assert assembly.app.events_compaction_config is not None
     assert assembly.app.events_compaction_config.token_threshold == 183_616
-    assert "## Critical Context" in assembly.app.events_compaction_config.summarizer._prompt_template
+    assert (
+        "## Critical Context" in assembly.app.events_compaction_config.summarizer._prompt_template
+    )
     assert not (state / "ledger.jsonl").exists()
     assert not (state / "ledger.duckdb").exists()
 
@@ -507,6 +517,8 @@ def test_factory_rejects_unwired_live_lance_retrieval(tmp_path: Path) -> None:
                 task_id="task",
             ),
         )
+
+
 @pytest.mark.asyncio
 async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effects(
     tmp_path: Path,
@@ -563,7 +575,8 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert EventKind.CAPABILITY_REQUESTED in kinds
     assert EventKind.CAPABILITY_COMPLETED in kinds
     terminal = next(
-        event for event in events.read("task-1")
+        event
+        for event in events.read("task-1")
         if event.kind == EventKind.REPL_CELL_COMPLETED
         and event.payload["cell_id"] == second["attempt_id"]
     )
@@ -576,15 +589,21 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
 
 
 @pytest.mark.asyncio
-async def test_successful_complete_ptc_shell_result_becomes_validation_evidence(tmp_path: Path) -> None:
+async def test_successful_complete_ptc_shell_result_becomes_validation_evidence(
+    tmp_path: Path,
+) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
     events = JsonlEventStore(tmp_path / "state" / "events")
 
     def command(**_kwargs):
         return {
-            "status": "ok", "model_text": "1 passed", "exit_code": 0,
-            "duration_ms": 12, "truncated": False, "omitted_bytes": 0,
+            "status": "ok",
+            "model_text": "1 passed",
+            "exit_code": 0,
+            "duration_ms": 12,
+            "truncated": False,
+            "omitted_bytes": 0,
         }
 
     worker = build_coding_worker(
@@ -613,8 +632,7 @@ async def test_successful_complete_ptc_shell_result_becomes_validation_evidence(
         worker.close()
     assert result["status"] == "ok"
     observed = [
-        event for event in events.read("task")
-        if event.kind == "execution.validation_observed"
+        event for event in events.read("task") if event.kind == "execution.validation_observed"
     ]
     assert len(observed) == 1
     assert observed[0].payload["command"] == "pytest -q"
@@ -640,9 +658,7 @@ async def test_worker_close_snapshots_complete_notebook_once(tmp_path: Path) -> 
     worker = build_coding_worker(
         settings,
         cast(BaseLlm, "test-model"),
-        tools=create_adk_tools(
-            workspace, state_root=state_root, task_scope="task-snapshot"
-        ),
+        tools=create_adk_tools(workspace, state_root=state_root, task_scope="task-snapshot"),
         ptc_config=config.notebook_ptc,
         event_store=events,
     )
@@ -666,7 +682,8 @@ async def test_worker_close_snapshots_complete_notebook_once(tmp_path: Path) -> 
     payload = snapshots[0].payload
     assert payload["source_watermark"] == message.sequence
     terminal = next(
-        event for event in events.read("task-snapshot")
+        event
+        for event in events.read("task-snapshot")
         if event.kind == EventKind.REPL_CELL_COMPLETED
         and event.payload["cell_id"] == result["attempt_id"]
     )
@@ -701,7 +718,9 @@ async def test_python_routes_registered_mcp_capability_and_blocks_unknown(
         tools=create_adk_tools(workspace, state_root=state_root, task_scope="task-mcp"),
         tool_config=config.tools,
         ptc_config=config.notebook_ptc,
-        capabilities={"issues.search": lambda arguments: {"status": "ok", "items": [arguments["q"]]}},
+        capabilities={
+            "issues.search": lambda arguments: {"status": "ok", "items": [arguments["q"]]}
+        },
     )
     assert worker.execute_code is not None
     result = await worker.execute_code("agent.mcp.call('issues.search', {'q': 'timeout'})")
@@ -754,6 +773,69 @@ async def test_nested_result_remains_in_python_state_until_explicitly_selected(
 
 
 @pytest.mark.asyncio
+async def test_provider_payload_growth_tracks_selected_egress_not_ptc_heap(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    settings = settings_from_composition(
+        composition,
+        RuntimeBindings(workspace=workspace, state_root=state_root, task_id="task-egress"),
+    )
+    marker = "raw-nested-record-that-must-stay-in-the-heap"
+    worker = build_coding_worker(
+        settings,
+        cast(BaseLlm, "test-model"),
+        tools=create_adk_tools(workspace, state_root=state_root, task_scope="task-egress"),
+        ptc_config=config.notebook_ptc,
+        capabilities={"bulk.read": lambda _arguments: {"items": [marker] * 2_000}},
+    )
+    assert worker.execute_code is not None
+    try:
+        selected = await worker.execute_code(
+            "records = agent.mcp.call('bulk.read', {})['items']\nlen(records)"
+        )
+        assert (await worker.execute_code("len(records)"))["model_text"] == "2000"
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    contents: list[types.Content] = []
+    profiles: list[dict[str, Any]] = []
+    for index in range(24):
+        call_id = f"cell-{index}"
+        call = types.Part.from_function_call(name="execute_code", args={"code": "len(records)"})
+        assert call.function_call is not None
+        call.function_call.id = call_id
+        result = types.Part.from_function_response(name="execute_code", response=selected)
+        assert result.function_response is not None
+        result.function_response.id = call_id
+        contents.extend(
+            [
+                types.Content(role="model", parts=[call]),
+                types.Content(role="user", parts=[result]),
+            ]
+        )
+        body = build_codex_request_body(
+            LlmRequest(contents=list(contents)), model="test-model", reasoning_effort=None
+        )
+        profiles.append(provider_request_profile(body))
+
+    encoded = json.dumps(body, separators=(",", ":"))
+    assert marker not in encoded
+    assert profiles[-1]["regions"]["input"]["bytes"] < len(marker) * 2_000
+    growth = [
+        profiles[index + 1]["bytes"] - profiles[index]["bytes"]
+        for index in range(len(profiles) - 1)
+    ]
+    assert max(growth) - min(growth) <= 2  # call-id width changes at cell-10
+    assert max(growth) < 500
+
+
+@pytest.mark.asyncio
 async def test_restart_replays_only_self_contained_data_cells(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -803,6 +885,7 @@ async def test_restart_replays_only_self_contained_data_cells(tmp_path: Path) ->
     assert restored["model_text"] == "{'value': 7}"
     assert missing["status"] == "error"
     assert "NameError" in missing["model_text"]
+
 
 @pytest.mark.asyncio
 async def test_failed_cell_rolls_back_partial_namespace_mutation(tmp_path: Path) -> None:

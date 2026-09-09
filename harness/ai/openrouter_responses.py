@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
@@ -16,29 +14,16 @@ from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 from pydantic import PrivateAttr
 
-from .codex_responses import _iter_sse, _ResponseAccumulator, build_codex_request_body
+from .codex_responses import (
+    _iter_sse,
+    _ResponseAccumulator,
+    build_codex_request_body,
+    provider_request_profile,
+)
 
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 _AsyncClientFactory = Callable[[], httpx.AsyncClient]
-
-
-def _request_profile(body: dict[str, Any]) -> dict[str, Any]:
-    encoded = httpx.Request("POST", "https://local.invalid", json=body).content
-    regions: dict[str, dict[str, int | str]] = {}
-    for name, value in sorted(body.items()):
-        part = json.dumps(
-            value, ensure_ascii=False, allow_nan=False, separators=(",", ":")
-        ).encode()
-        regions[name] = {
-            "bytes": len(part),
-            "sha256": hashlib.sha256(part).hexdigest(),
-        }
-    return {
-        "bytes": len(encoded),
-        "sha256": hashlib.sha256(encoded).hexdigest(),
-        "regions": regions,
-    }
 
 
 def build_openrouter_request_body(
@@ -113,9 +98,7 @@ class OpenRouterResponsesLlm(BaseLlm):
             "content-type": "application/json",
         }
 
-    async def _stream_events(
-        self, body: dict[str, Any]
-    ) -> AsyncGenerator[dict[str, Any], None]:
+    async def _stream_events(self, body: dict[str, Any]) -> AsyncGenerator[dict[str, Any], None]:
         for attempt in range(self.retry_attempts):
             async with self._client_factory() as client:
                 try:
@@ -128,16 +111,12 @@ class OpenRouterResponsesLlm(BaseLlm):
                         if not response.is_success:
                             raw = (await response.aread()).decode("utf-8", errors="replace")
                             in_flight_budget_exhausted = (
-                                response.status_code == 402
-                                and "in_flight_budget_exhausted" in raw
+                                response.status_code == 402 and "in_flight_budget_exhausted" in raw
                             )
                             if (
-                                (
-                                    response.status_code in self.retry_statuses
-                                    or in_flight_budget_exhausted
-                                )
-                                and attempt + 1 < self.retry_attempts
-                            ):
+                                response.status_code in self.retry_statuses
+                                or in_flight_budget_exhausted
+                            ) and attempt + 1 < self.retry_attempts:
                                 delay = response.headers.get("Retry-After")
                                 await asyncio.sleep(
                                     float(delay)
@@ -172,7 +151,7 @@ class OpenRouterResponsesLlm(BaseLlm):
             model=self.model,
             reasoning_effort=self.reasoning_effort,
         )
-        request_profile = _request_profile(body)
+        request_profile = provider_request_profile(body)
         accumulator = _ResponseAccumulator()
         async for event in self._stream_events(body):
             part = accumulator.consume(event)
