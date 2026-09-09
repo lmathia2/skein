@@ -15,7 +15,7 @@ the standard restrictive approval policy.
 - Skein: the Git revision recorded by the job
 - Harbor 0.22.0 (`uv.lock` and the `eval` extra, used for the frozen task cache)
 - Pier 0.3.1 for DeepSWE v1.1
-- concurrency: 1
+- default concurrency: 1; explicitly bounded campaign concurrency up to 8
 - retries: 0 for ordinary agent failures
 - task state: a fresh `agent/skein-state` directory per Harbor trial
 
@@ -41,6 +41,7 @@ artifacts, stdout/stderr, run metadata, and SHA-256 file inventory:
 python scripts/run_harbor_eval.py --suite smoke --plan
 python scripts/run_harbor_eval.py --suite smoke --task-id modernize-scientific-stack
 python scripts/run_harbor_eval.py --suite smoke
+python scripts/run_harbor_eval.py --suite smoke --concurrency 3 --max-task-input-tokens 200000
 python scripts/run_harbor_eval.py --suite broader
 python scripts/run_harbor_eval.py --suite full
 ```
@@ -58,6 +59,15 @@ The cache changes startup cost only. A new host or Docker backend must pass an
 official oracle task with the prebuilt path before scored runs; the Wazero
 oracle gate passed with reward `1`, full F2P/P2P, and no exception on the local
 Rosetta-backed Docker environment.
+
+`--concurrency N` runs up to N isolated tasks at once. Every task still uses a fresh
+Pier job, task workspace, Skein state root, and `--n-concurrent 1`; only ledger appends
+are serialized. Use a separate jobs directory for each candidate. Concurrency is part
+of the frozen run metadata, so changing it requires a new jobs directory.
+
+The Harbor runner rejects Prime PTC before job creation. Prime's trusted native process
+cannot mutate Harbor's authoritative container workspace through the current brokered
+adapter; a dedicated native workspace adapter is required for a valid comparison.
 
 Rerun the same command after an interruption. Completed task keys are skipped,
 an incomplete Pier job is resumed with `pier job resume`, and a finished

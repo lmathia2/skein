@@ -44,7 +44,7 @@ skein eval-next --matrix phase4-matrix.json --results phase4-results.jsonl
 ```
 
 The returned `argv` is an argument array, not shell text. It runs exactly one
-task at concurrency 1, uses the immutable Harbor task digest, and passes no
+task at Pier concurrency 1, uses the immutable Harbor task digest, and passes no
 credential into the task container. On a subscription interruption, record the
 interruption and stop until the documented reset.
 

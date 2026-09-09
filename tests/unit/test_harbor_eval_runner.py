@@ -47,6 +47,7 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
         "reasoning": "max",
         "config": "harness/config/profiles/four-tool.yaml",
         "max_output_tokens": 16_384,
+        "max_task_input_tokens": 200_000,
         "api_key_env": "OPENROUTER_API_KEY",
     })()
 
@@ -63,7 +64,7 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
     ]
     assert "harness.evals.harbor:SkeinPierAgent" in command
     assert command[command.index("--model") + 1] == "openai/gpt-5.5"
-    assert "max_task_input_tokens=1000000000" in command
+    assert "max_task_input_tokens=200000" in command
     assert "--no-delete" in command
     assert str(ROOT) in runner.pier_environment({})["PYTHONPATH"].split(":")
 
@@ -76,6 +77,7 @@ def test_provider_defaults_omit_reasoning_and_output_limit(tmp_path: Path) -> No
         "reasoning": None,
         "config": "harness/config/profiles/four-tool.yaml",
         "max_output_tokens": None,
+        "max_task_input_tokens": 200_000,
         "api_key_env": "OPENROUTER_API_KEY",
     })()
 
@@ -83,6 +85,50 @@ def test_provider_defaults_omit_reasoning_and_output_limit(tmp_path: Path) -> No
 
     assert not any("reasoning=" in value for value in command)
     assert not any("max_output_tokens=" in value for value in command)
+
+
+def test_plan_accepts_bounded_campaign_concurrency() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--suite",
+            "smoke",
+            "--plan",
+            "--concurrency",
+            "3",
+            "--max-task-input-tokens",
+            "200000",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    plan = json.loads(completed.stdout)
+    assert plan["concurrency"] == 3
+    assert plan["max_task_input_tokens"] == 200_000
+
+
+def test_harbor_runner_rejects_prime_before_starting_jobs() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--suite",
+            "smoke",
+            "--plan",
+            "--config",
+            "harness/config/profiles/prime-ptc-jsonl.yaml",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "Prime PTC is not Harbor-compatible" in completed.stderr
 
 
 def test_deepswe_verifier_image_is_built_once_and_pinned(monkeypatch, tmp_path: Path) -> None:

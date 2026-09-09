@@ -111,6 +111,8 @@ and the implementation/evaluation rubric.
     exhausted the 200k input budget. See `docs/audits/ptc-matched-smoke-2026-09-09.md`.
   - [x] Remove ADK Code Mode, its container pool/image, and vendored Docker SDK; keep a
     helpful configuration migration error and the smoke report as historical evidence.
+  - [x] Add bounded concurrent Harbor task scheduling while preserving one isolated
+    Pier trial per worker; reject Prime until its native workspace adapter exists.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.

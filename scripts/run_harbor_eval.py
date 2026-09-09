@@ -13,13 +13,16 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from harness.config import SkeinConfig, load_harness_composition
 from harness.evals.experiments import harbor_task_path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,12 +43,14 @@ CONTRACT_FIELDS = (
     "reasoning",
     "config",
     "max_output_tokens",
+    "max_task_input_tokens",
     "attempts",
     "concurrency",
     "harbor_retries",
     "git_revision",
     "git_diff_sha256",
 )
+_APPEND_LOCK = threading.Lock()
 
 
 def dump(value: Any) -> str:
@@ -128,7 +133,7 @@ def ledger_rows(path: Path) -> list[dict[str, Any]]:
 
 
 def append_row(path: Path, value: dict[str, Any]) -> None:
-    with path.open("a", encoding="utf-8") as handle:
+    with _APPEND_LOCK, path.open("a", encoding="utf-8") as handle:
         handle.write(dump(value))
         handle.flush()
         os.fsync(handle.fileno())
@@ -168,6 +173,18 @@ def pier_environment(env: dict[str, str]) -> dict[str, str]:
     if env.get("PYTHONPATH"):
         paths.append(env["PYTHONPATH"])
     return {**env, "PYTHONPATH": os.pathsep.join(dict.fromkeys(paths))}
+
+
+def validate_harbor_config(path: str) -> None:
+    composition = load_harness_composition((ROOT / path).resolve())
+    config = composition.harness.config
+    if not isinstance(config, SkeinConfig):
+        raise SystemExit("Harbor evaluation requires the skein_v1 harness")
+    if config.notebook_ptc.enabled and config.notebook_ptc.implementation == "prime_repl":
+        raise SystemExit(
+            "Prime PTC is not Harbor-compatible: native execution cannot mutate Harbor's "
+            "authoritative task workspace; implement a native workspace adapter first"
+        )
 
 
 def docker_ready() -> None:
@@ -324,7 +341,7 @@ def run_command(
         "--agent-kwarg",
         "max_iterations=24",
         "--agent-kwarg",
-        "max_task_input_tokens=1000000000",
+        f"max_task_input_tokens={args.max_task_input_tokens}",
         "--agent-kwarg",
         "wall_time_seconds=5400",
         "--n-concurrent",
@@ -378,6 +395,118 @@ def incomplete_job(output: Path, prefix: str) -> Path | None:
     return None
 
 
+def run_task(
+    index: int,
+    total: int,
+    task: dict[str, Any],
+    *,
+    args: argparse.Namespace,
+    attempts: int,
+    output: Path,
+    ledger: Path,
+    complete: frozenset[str],
+    env: dict[str, str],
+) -> bool:
+    key = f"{args.suite}:{task['task_id']}:{task['artifact_sha256']}:{args.config}:{attempts}"
+    if key in complete:
+        print(f"[{index}/{total}] skip {task['task_id']} (complete)")
+        return True
+    prefix = f"{index:03d}-{safe_name(task['task_id'])}"
+    recovered = completed_task(output, prefix)
+    if recovered is not None:
+        task_dir, result_paths, rewards = recovered
+        append_row(
+            ledger,
+            {
+                "schema_version": "skein-harbor-run-record-v1",
+                "key": key,
+                "suite": args.suite,
+                "task_id": task["task_id"],
+                "benchmark": task["benchmark"],
+                "artifact_sha256": task["artifact_sha256"],
+                "attempts": attempts,
+                "returncode": 0,
+                "status": "complete",
+                "recovered": True,
+                "task_dir": str(task_dir),
+                "result_paths": result_paths,
+                "rewards": rewards,
+                "errors": [],
+                "files": inventory(task_dir),
+            },
+        )
+        print(f"[{index}/{total}] recover {task['task_id']} (complete)")
+        return True
+    source_task = cached_task(task)
+    prepared_root = output / "prepared-tasks"
+    prepared_root.mkdir(exist_ok=True)
+    task_path, verifier_image = prepared_task(task, source_task, prepared_root)
+    for retry in range(args.retries + 1):
+        resumed = incomplete_job(output, prefix)
+        if resumed is not None:
+            task_dir = resumed.parent
+            command = [pier_binary(), "job", "resume", "--job-path", str(resumed)]
+        else:
+            task_dir = next_attempt_dir(output, prefix)
+            task_dir.mkdir(parents=True, exist_ok=True)
+            command = run_command(task, args, attempts, task_dir, task_path)
+        append_row(
+            task_dir / "commands.jsonl",
+            {"started_at": datetime.now(UTC).isoformat(), "command": command},
+        )
+        (task_dir / "task.json").write_text(
+            dump({**task, "runtime_verifier_image": verifier_image}), encoding="utf-8"
+        )
+        started = time.monotonic()
+        timeout_seconds = args.timeout_seconds or (int(task["expected_runtime_seconds"]) + 1800)
+        with (
+            (task_dir / "pier.stdout.log").open("a", encoding="utf-8") as stdout,
+            (task_dir / "pier.stderr.log").open("a", encoding="utf-8") as stderr,
+        ):
+            returncode, timed_out = execute(
+                command,
+                cwd=ROOT,
+                env=env,
+                stdout=stdout,
+                stderr=stderr,
+                timeout_seconds=timeout_seconds,
+            )
+        result_paths, rewards, errors = result_summary(task_dir)
+        status = "complete" if returncode == 0 and result_paths and not errors else "incomplete"
+        append_row(
+            ledger,
+            {
+                "schema_version": "skein-harbor-run-record-v1",
+                "key": key,
+                "retry": retry,
+                "suite": args.suite,
+                "task_id": task["task_id"],
+                "benchmark": task["benchmark"],
+                "artifact_sha256": task["artifact_sha256"],
+                "attempts": attempts,
+                "returncode": returncode,
+                "timed_out": timed_out,
+                "timeout_seconds": timeout_seconds,
+                "status": status,
+                "wall_time_seconds": round(time.monotonic() - started, 3),
+                "task_dir": str(task_dir),
+                "result_paths": result_paths,
+                "rewards": rewards,
+                "errors": errors,
+                "files": inventory(task_dir),
+            },
+        )
+        print(
+            f"[{index}/{total}] {task['task_id']}: "
+            f"{status} returncode={returncode} rewards={rewards}"
+        )
+        if status == "complete":
+            return True
+        if retry < args.retries:
+            print(f"  retrying ({retry + 1}/{args.retries})")
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", choices=tuple(MANIFESTS), default="smoke")
@@ -390,11 +519,13 @@ def main() -> int:
     )
     parser.add_argument("--config", default="harness/config/profiles/four-tool.yaml")
     parser.add_argument("--attempts", type=int)
+    parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--task-id", action="append", default=[])
     parser.add_argument("--timeout-seconds", type=int)
     parser.add_argument("--max-output-tokens", type=int, default=16_384)
+    parser.add_argument("--max-task-input-tokens", type=int, default=2_000_000)
     parser.add_argument(
         "--provider-defaults",
         action="store_true",
@@ -408,6 +539,10 @@ def main() -> int:
     args = parser.parse_args()
     if args.retries < 0:
         parser.error("--retries cannot be negative")
+    if not 1 <= args.concurrency <= 8:
+        parser.error("--concurrency must be between 1 and 8")
+    if args.stop_on_error and args.concurrency != 1:
+        parser.error("--stop-on-error requires --concurrency 1")
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be positive")
     if args.timeout_seconds is not None and args.timeout_seconds < 1:
@@ -418,6 +553,9 @@ def main() -> int:
         args.max_output_tokens = None
     if args.max_output_tokens is not None and not 256 <= args.max_output_tokens <= 131_072:
         parser.error("--max-output-tokens must be between 256 and 131072")
+    if not 8_000 <= args.max_task_input_tokens <= 1_000_000_000:
+        parser.error("--max-task-input-tokens must be between 8000 and 1000000000")
+    validate_harbor_config(args.config)
     manifest_name, limit = MANIFESTS[args.suite]
     manifest_path = ROOT / "tests/eval/manifests" / manifest_name
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -442,10 +580,12 @@ def main() -> int:
                     "manifest_sha256": manifest["manifest_sha256"],
                     "tasks": [task["task_id"] for task in tasks],
                     "attempts": attempts,
+                    "concurrency": args.concurrency,
                     "retries": args.retries,
                     "timeout_seconds": args.timeout_seconds,
                     "reasoning": args.reasoning,
                     "max_output_tokens": args.max_output_tokens,
+                    "max_task_input_tokens": args.max_task_input_tokens,
                 }
             )
         )
@@ -485,7 +625,7 @@ def main() -> int:
         "max_output_tokens": args.max_output_tokens,
         "attempts": attempts,
         "retries": args.retries,
-        "concurrency": 1,
+        "concurrency": args.concurrency,
         "harbor_retries": 0,
         "git_revision": subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
@@ -496,113 +636,29 @@ def main() -> int:
     }
     write_or_validate_metadata(output / "run-metadata.json", metadata)
 
-    for index, task in enumerate(tasks, 1):
-        key = f"{args.suite}:{task['task_id']}:{task['artifact_sha256']}:{args.config}:{attempts}"
-        if key in complete:
-            print(f"[{index}/{len(tasks)}] skip {task['task_id']} (complete)")
-            continue
-        prefix = f"{index:03d}-{safe_name(task['task_id'])}"
-        recovered = completed_task(output, prefix)
-        if recovered is not None:
-            task_dir, result_paths, rewards = recovered
-            append_row(
-                ledger,
-                {
-                    "schema_version": "skein-harbor-run-record-v1",
-                    "key": key,
-                    "suite": args.suite,
-                    "task_id": task["task_id"],
-                    "benchmark": task["benchmark"],
-                    "artifact_sha256": task["artifact_sha256"],
-                    "attempts": attempts,
-                    "returncode": 0,
-                    "status": "complete",
-                    "recovered": True,
-                    "task_dir": str(task_dir),
-                    "result_paths": result_paths,
-                    "rewards": rewards,
-                    "errors": [],
-                    "files": inventory(task_dir),
-                },
-            )
-            complete.add(key)
-            print(f"[{index}/{len(tasks)}] recover {task['task_id']} (complete)")
-            continue
-        source_task = cached_task(task)
-        prepared_root = output / "prepared-tasks"
-        prepared_root.mkdir(exist_ok=True)
-        task_path, verifier_image = prepared_task(task, source_task, prepared_root)
-        finished = False
-        for retry in range(args.retries + 1):
-            resumed = incomplete_job(output, prefix)
-            if resumed is not None:
-                task_dir = resumed.parent
-                command = [pier_binary(), "job", "resume", "--job-path", str(resumed)]
-            else:
-                task_dir = next_attempt_dir(output, prefix)
-                task_dir.mkdir(parents=True, exist_ok=True)
-                command = run_command(task, args, attempts, task_dir, task_path)
-            append_row(
-                task_dir / "commands.jsonl",
-                {
-                    "started_at": datetime.now(UTC).isoformat(),
-                    "command": command,
-                },
-            )
-            (task_dir / "task.json").write_text(
-                dump({**task, "runtime_verifier_image": verifier_image}), encoding="utf-8"
-            )
-            started = time.monotonic()
-            timeout_seconds = args.timeout_seconds or (int(task["expected_runtime_seconds"]) + 1800)
-            with (
-                (task_dir / "pier.stdout.log").open("a", encoding="utf-8") as stdout,
-                (task_dir / "pier.stderr.log").open("a", encoding="utf-8") as stderr,
-            ):
-                returncode, timed_out = execute(
-                    command,
-                    cwd=ROOT,
-                    env=env,
-                    stdout=stdout,
-                    stderr=stderr,
-                    timeout_seconds=timeout_seconds,
-                )
-            result_paths, rewards, errors = result_summary(task_dir)
-            status = "complete" if returncode == 0 and result_paths and not errors else "incomplete"
-            append_row(
-                ledger,
-                {
-                    "schema_version": "skein-harbor-run-record-v1",
-                    "key": key,
-                    "retry": retry,
-                    "suite": args.suite,
-                    "task_id": task["task_id"],
-                    "benchmark": task["benchmark"],
-                    "artifact_sha256": task["artifact_sha256"],
-                    "attempts": attempts,
-                    "returncode": returncode,
-                    "timed_out": timed_out,
-                    "timeout_seconds": timeout_seconds,
-                    "status": status,
-                    "wall_time_seconds": round(time.monotonic() - started, 3),
-                    "task_dir": str(task_dir),
-                    "result_paths": result_paths,
-                    "rewards": rewards,
-                    "errors": errors,
-                    "files": inventory(task_dir),
-                },
-            )
-            print(
-                f"[{index}/{len(tasks)}] {task['task_id']}: "
-                f"{status} returncode={returncode} rewards={rewards}"
-            )
-            if status == "complete":
-                finished = True
-                complete.add(key)
-                break
-            if retry < args.retries:
-                print(f"  retrying ({retry + 1}/{args.retries})")
-        if not finished and args.stop_on_error:
-            return 1
+    work = tuple(enumerate(tasks, 1))
+
+    def run(item: tuple[int, dict[str, Any]]) -> bool:
+        index, task = item
+        return run_task(
+            index,
+            len(tasks),
+            task,
+            args=args,
+            attempts=attempts,
+            output=output,
+            ledger=ledger,
+            complete=frozenset(complete),
+            env=env,
+        )
+
+    if args.concurrency == 1:
+        for item in work:
+            if not run(item) and args.stop_on_error:
+                return 1
+        return 0
+    with ThreadPoolExecutor(max_workers=args.concurrency) as executor:
+        list(executor.map(run, work))
     return 0
 
 
