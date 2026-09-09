@@ -7,7 +7,7 @@
 Skein is a trace-native coding agent built on Google ADK. It runs one coding worker
 inside a minimal deterministic harness for execution, memory, policy, and verification.
 
-Read [the premise of Skein](docs/adr/premise.md) for why code mode, notebook documents,
+Read [Skein architecture design](docs/adr/skein_architecture_design.md) for why code mode, notebook documents,
 append-only traces, and versioned memory programs belong together, with links to the
 current architecture decisions.
 

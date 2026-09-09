@@ -8,7 +8,7 @@
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
 
-[The premise of Skein](premise.md) explains the motivation and links the companion ADRs.
+[Skein architecture design](skein_architecture_design.md) explains the motivation and links the companion ADRs.
 
 ## Decisions
 

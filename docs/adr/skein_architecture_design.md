@@ -1,4 +1,4 @@
-# The premise of Skein
+# Skein architecture design
 
 Skein explores a simple idea: give a capable model one programmable way to act,
 retain the evidence of its work, and compute the context it needs from that evidence.
