@@ -136,7 +136,9 @@ _DESCRIPTION_SUFFIX = (
     "Variables and the working directory persist across calls within the same "
     "turn and reset on the next turn — use `save_artifact` / `load_artifact` "
     "(imported the same way) to persist across turns. Files created or changed "
-    "by the code are saved as artifacts automatically"
+    "by the code are saved as artifacts automatically; they do not modify the "
+    "host or project workspace. Use an available repository mutation function "
+    "for project changes"
 )
 
 
@@ -380,15 +382,17 @@ class ExecuteCodeTool(BaseTool):
     async def _run_async_locked(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
         code = args["code"]
         if self._max_code_chars and len(code) > self._max_code_chars:
-            return self._present({
-                "status": "error",
-                "stdout": "",
-                "stderr": (
-                    f"Code exceeds maximum allowed length "
-                    f"({len(code):,} > {self._max_code_chars:,} chars)."
-                ),
-                "output_files": [],
-            })
+            return self._present(
+                {
+                    "status": "error",
+                    "stdout": "",
+                    "stderr": (
+                        f"Code exceeds maximum allowed length "
+                        f"({len(code):,} > {self._max_code_chars:,} chars)."
+                    ),
+                    "output_files": [],
+                }
+            )
 
         invocation_context = tool_context._invocation_context
         invocation_id = tool_context.invocation_id
@@ -442,16 +446,18 @@ class ExecuteCodeTool(BaseTool):
                 uri for uri in (stdout_res.artifact_uri, stderr_res.artifact_uri) if uri
             ]
             artifact_uris.extend(saved_output_files)
-            return self._present({
-                "status": "ok" if result.exit_code == 0 else "error",
-                "stdout": stdout_res.text,
-                "stderr": stderr_res.text,
-                "exit_code": result.exit_code,
-                "attempt_id": execution_id,
-                "artifact_uris": artifact_uris,
-                "truncated": bool(stdout_res.omitted_bytes or stderr_res.omitted_bytes),
-                "omitted_bytes": stdout_res.omitted_bytes + stderr_res.omitted_bytes,
-            })
+            return self._present(
+                {
+                    "status": "ok" if result.exit_code == 0 else "error",
+                    "stdout": stdout_res.text,
+                    "stderr": stderr_res.text,
+                    "exit_code": result.exit_code,
+                    "attempt_id": execution_id,
+                    "artifact_uris": artifact_uris,
+                    "truncated": bool(stdout_res.omitted_bytes or stderr_res.omitted_bytes),
+                    "omitted_bytes": stdout_res.omitted_bytes + stderr_res.omitted_bytes,
+                }
+            )
         finally:
             turn.mark_idle()
 

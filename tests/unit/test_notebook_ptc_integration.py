@@ -17,7 +17,7 @@ from google.genai import types
 from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.factory import default_harness_registry
-from app.agent.ptc import PtcSession, select_ptc_session
+from app.agent.ptc import PtcSession, build_adk_session, select_ptc_session
 from harness.agent import SteeringCommand
 from harness.ai.codex_responses import build_codex_request_body, provider_request_profile
 from harness.config import (
@@ -94,6 +94,22 @@ def test_disabled_ptc_dispatch_is_identity_and_builds_nothing() -> None:
         is None
     )
     assert called == []
+
+
+def test_adk_code_mode_description_keeps_sandbox_files_out_of_project_workspace(
+    tmp_path: Path,
+) -> None:
+    settings = settings_from_composition(
+        load_harness_composition(),
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
+    )
+    config = NotebookPtcConfig(
+        enabled=True,
+        implementation="adk_code_mode",
+        adk_code_mode_image="image:test",
+    )
+    session = build_adk_session(settings, config, [])
+    assert "do not modify the host or project workspace" in session.tool.description
 
 
 @pytest.mark.asyncio

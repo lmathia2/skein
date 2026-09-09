@@ -9,6 +9,7 @@ import pytest
 
 from harness.config import SkeinConfig, load_harness_composition
 from harness.evals import runner
+from harness.models import TaskRequest
 from harness.server.protocol import AgUiEvent, AgUiEventType, ServerEnvelope
 
 
@@ -38,9 +39,7 @@ def _request(tmp_path: Path, workspace: Path) -> runner.EvaluationRunRequest:
 
 
 def test_evaluation_config_pins_luna_max_without_auth_state(tmp_path: Path) -> None:
-    request = _request(tmp_path, tmp_path).model_copy(
-        update={"max_output_tokens": 16_384}
-    )
+    request = _request(tmp_path, tmp_path).model_copy(update={"max_output_tokens": 16_384})
 
     path, composition = runner.prepare_evaluation_config(request)
     loaded = load_harness_composition(path)
@@ -113,25 +112,28 @@ def test_evaluation_config_preserves_provider_generation_defaults(tmp_path: Path
 
 
 def test_empty_evaluation_batch_does_not_start_docker(tmp_path: Path) -> None:
-    assert asyncio.run(
-        runner.run_evaluation_batch([], image="unused", worker_root=tmp_path / "pool")
-    ) == []
+    assert (
+        asyncio.run(runner.run_evaluation_batch([], image="unused", worker_root=tmp_path / "pool"))
+        == []
+    )
 
 
 def test_evaluation_batch_requires_isolated_roots(tmp_path: Path) -> None:
     first = _request(tmp_path, tmp_path / "workspace")
-    second = first.model_copy(
-        update={"state_root": tmp_path / "state-2", "task_id": "smoke-2"}
-    )
+    second = first.model_copy(update={"state_root": tmp_path / "state-2", "task_id": "smoke-2"})
 
     with pytest.raises(ValueError, match="distinct state and authorization roots"):
-        asyncio.run(runner.run_evaluation_batch(
-            [first, second], image="unused", worker_root=tmp_path / "pool"
-        ))
+        asyncio.run(
+            runner.run_evaluation_batch(
+                [first, second], image="unused", worker_root=tmp_path / "pool"
+            )
+        )
     with pytest.raises(ValueError, match="outside example-owned roots"):
-        asyncio.run(runner.run_evaluation_batch(
-            [first], image="unused", worker_root=first.state_root / "pool"
-        ))
+        asyncio.run(
+            runner.run_evaluation_batch(
+                [first], image="unused", worker_root=first.state_root / "pool"
+            )
+        )
 
 
 def test_evaluation_rejects_a_dirty_workspace_before_model_start(tmp_path: Path) -> None:
@@ -185,8 +187,10 @@ def test_evaluation_fails_closed_on_missing_or_unverified_results(
             self.store = Store()
             self.record = SimpleNamespace(run_id="run-1", status="completed", error=None)
             self.created = True
+            self.messages = []
 
         async def start(self, message, *, user_id):
+            self.messages.append(message)
             return self.record, self.created
 
         async def wait(self, run_id):
@@ -208,6 +212,10 @@ def test_evaluation_fails_closed_on_missing_or_unverified_results(
 
     missing = asyncio.run(runner.run_evaluation(request))
     assert missing.error is not None and missing.error.code == "missing_result"
+    submitted = TaskRequest.model_validate_json(coordinator.messages[-1].input)
+    assert submitted.mode == "coding"
+    assert submitted.verification_level == "behavioral"
+    assert submitted.acceptance_criteria == ["Fix the fixture"]
 
     request = request.model_copy(update={"state_root": tmp_path / "state-2"})
     coordinator.store.result = {"status": "complete", "changed_paths": ["app.py"]}
@@ -250,16 +258,25 @@ def test_evaluation_exit_codes_are_machine_readable(tmp_path: Path) -> None:
         result=tmp_path / "result.json",
     )
 
-    assert runner.EvaluationRunResult(
-        task_id="ok", status="answered", wall_time_ms=0, artifacts=artifacts
-    ).exit_code == 0
-    assert runner.EvaluationRunResult(
-        task_id="blocked", status="blocked", wall_time_ms=0, artifacts=artifacts
-    ).exit_code == 2
-    assert runner.EvaluationRunResult(
-        task_id="timeout",
-        status="failed",
-        wall_time_ms=0,
-        artifacts=artifacts,
-        error=runner.EvaluationError(code="run_total_timeout", message="timed out"),
-    ).exit_code == 124
+    assert (
+        runner.EvaluationRunResult(
+            task_id="ok", status="answered", wall_time_ms=0, artifacts=artifacts
+        ).exit_code
+        == 0
+    )
+    assert (
+        runner.EvaluationRunResult(
+            task_id="blocked", status="blocked", wall_time_ms=0, artifacts=artifacts
+        ).exit_code
+        == 2
+    )
+    assert (
+        runner.EvaluationRunResult(
+            task_id="timeout",
+            status="failed",
+            wall_time_ms=0,
+            artifacts=artifacts,
+            error=runner.EvaluationError(code="run_total_timeout", message="timed out"),
+        ).exit_code
+        == 124
+    )

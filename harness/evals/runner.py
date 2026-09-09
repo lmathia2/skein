@@ -23,7 +23,9 @@ from harness.config import (
     load_harness_composition,
     parse_harness_composition,
 )
+from harness.models import TaskRequest
 from harness.models.verification import VerificationReport
+from harness.orchestration.runtime import parse_task_request
 from harness.safety import SecretRedactor
 from harness.server.bootstrap import ServerAssembly, build_server_assembly
 from harness.server.protocol import AgUiEventType, StartTaskMessage
@@ -58,9 +60,7 @@ class EvaluationRunRequest(BaseModel):
     config_template: Path = DEFAULT_COMPOSITION_PATH
     client_version: str | None = None
     max_iterations: int | None = Field(default=None, ge=1, le=1_000)
-    max_task_input_tokens: int | None = Field(
-        default=None, ge=8_000, le=1_000_000_000
-    )
+    max_task_input_tokens: int | None = Field(default=None, ge=8_000, le=1_000_000_000)
     max_output_tokens: int | None = Field(default=None, ge=256, le=131_072)
     wall_time_seconds: float = Field(default=1_800, gt=0, le=86_400)
     trust_project: bool = False
@@ -194,9 +194,7 @@ def prepare_evaluation_config(request: EvaluationRunRequest) -> tuple[Path, Harn
     if request.max_task_input_tokens is not None:
         config["context"]["max_task_input_tokens"] = request.max_task_input_tokens
     if request.max_output_tokens is not None:
-        agents["coding_worker"]["generation"]["max_output_tokens"] = (
-            request.max_output_tokens
-        )
+        agents["coding_worker"]["generation"]["max_output_tokens"] = request.max_output_tokens
     if request.isolated_environment_authority:
         safety = config["safety"]
         assert isinstance(safety, dict)
@@ -242,7 +240,9 @@ def _git(command: tuple[str, ...], workspace: Path) -> str:
     )
     if completed.returncode != 0:
         detail = " ".join((completed.stderr or completed.stdout).split())[:500]
-        raise EvaluationRunFailure("invalid_workspace", detail or "workspace is not a Git repository")
+        raise EvaluationRunFailure(
+            "invalid_workspace", detail or "workspace is not a Git repository"
+        )
     return completed.stdout.strip()
 
 
@@ -337,7 +337,10 @@ def _private_run_data(
     changed_paths: tuple[str, ...] = ()
     if artifacts.events is not None and artifacts.events.exists():
         for event in JsonlEventStore(artifacts.events).read(run_id):
-            if event.kind == EventKind.MESSAGE_RECORDED and event.payload.get("role") == "assistant":
+            if (
+                event.kind == EventKind.MESSAGE_RECORDED
+                and event.payload.get("role") == "assistant"
+            ):
                 answer = str(event.payload.get("content", ""))
             elif event.kind == EventKind.VERIFICATION_COMPLETED:
                 report = event.payload.get("report")
@@ -388,12 +391,20 @@ async def run_evaluation(
             config_path=config_path,
             trust_project=request.trust_project,
         )
+        parsed_task = parse_task_request(request.prompt)
+        evaluation_task = TaskRequest.model_validate(
+            {
+                **parsed_task.model_dump(mode="json"),
+                "mode": "coding",
+                "verification_level": "behavioral",
+            }
+        )
         message = StartTaskMessage(
             type="task.start",
             request_id=request.task_id,
             idempotency_key=request.task_id,
             thread_id=f"evaluation:{request.task_id}",
-            input=request.prompt,
+            input=evaluation_task.model_dump_json(),
             metadata={"evaluation.task_id": request.task_id},
         )
         record, created = await assembly.coordinator.start(message, user_id="evaluation")
@@ -519,7 +530,10 @@ async def run_evaluation(
 
 
 async def run_evaluation_batch(
-    requests: list[EvaluationRunRequest], *, image: str, worker_root: Path,
+    requests: list[EvaluationRunRequest],
+    *,
+    image: str,
+    worker_root: Path,
     validate_workspace: bool = True,
 ) -> list[EvaluationRunResult]:
     """Run sequential trusted examples through one reset-verified ADK container."""
@@ -546,8 +560,7 @@ async def run_evaluation_batch(
             raise ValueError("reusable PTC containers require enabled adk_code_mode")
         if ptc.adk_code_mode_image != image:
             raise ValueError(
-                f"batch image {image!r} does not match configured image "
-                f"{ptc.adk_code_mode_image!r}"
+                f"batch image {image!r} does not match configured image {ptc.adk_code_mode_image!r}"
             )
     worker = ReusableDockerBackend(image, worker_root)
     results: list[EvaluationRunResult] = []
@@ -562,10 +575,7 @@ async def run_evaluation_batch(
             result = await run_evaluation(
                 request, assembly_builder=build, validate_workspace=validate_workspace
             )
-            pool_metrics = {
-                key: worker.metrics[key] - before[key]
-                for key in worker.metrics
-            }
+            pool_metrics = {key: worker.metrics[key] - before[key] for key in worker.metrics}
             result = result.model_copy(update={"metrics": {**result.metrics, **pool_metrics}})
             write_evaluation_result(result)
             results.append(result)
