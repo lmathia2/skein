@@ -175,7 +175,7 @@ def tuning_spec(composition: HarnessComposition) -> TuningSpec:
         "notebook_ptc.enabled",
         config.notebook_ptc.enabled,
         "boolean",
-        "Use notebook-native PTC instead of the four-tool worker",
+        "Use one-tool PTC instead of the four-tool worker",
         experimental=True,
     )
     add(
@@ -183,7 +183,7 @@ def tuning_spec(composition: HarnessComposition) -> TuningSpec:
         config.notebook_ptc.implementation,
         "categorical",
         "PTC worker implementation used by matched ablations",
-        choices=("skein_notebook", "adk_code_mode"),
+        choices=("skein_notebook", "prime_repl"),
         experimental=True,
     )
     add(

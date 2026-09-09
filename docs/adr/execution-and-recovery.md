@@ -87,7 +87,7 @@ reusing an idempotency key for different content is an error. File changes use
 atomic confined primitives where practical. Shell and MCP results are redacted and
 bounded. Large bodies become content-addressed artifacts.
 
-Skein notebook PTC and ADK Code Mode reach file, shell, and registered capabilities
+Skein notebook PTC reaches file, shell, and registered capabilities
 through this protocol. Prime-native code has direct trusted OS access instead. Skein
 therefore records the submitted source, terminal cell result, snapshot outcome, and
 `native_untracked` effect, refuses automatic replay of interrupted/unknown cells, and

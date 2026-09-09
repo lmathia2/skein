@@ -45,7 +45,9 @@ quality or recovery behavior. Notebook PTC reduced calls and wall time but more 
 doubled input tokens. ADK Code Mode's request growth is a blocking efficiency issue.
 
 Do not extract a shared coordinator/runtime/serializer/state layer from this result.
-The modes still differ materially in execution authority and failure behavior, and the
-ADK path needs context investigation before a broader matched run. The next paid gate
-remains the frozen representative task comparison; Prime also needs a local-workspace
-adapter because its native effects cannot be treated as Harbor-brokered operations.
+The remaining modes still differ materially in execution authority and failure behavior.
+ADK Code Mode, its container image and pool, and its vendored Docker SDK were removed
+after this smoke; the table remains historical evidence. Stale configurations now fail
+with a migration error. The next paid gate remains the frozen representative task
+comparison; Prime also needs a local-workspace adapter because its native effects cannot
+be treated as Harbor-brokered operations.

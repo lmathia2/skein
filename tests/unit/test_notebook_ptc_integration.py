@@ -17,7 +17,7 @@ from google.genai import types
 from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.factory import default_harness_registry
-from app.agent.ptc import PtcSession, build_adk_session, select_ptc_session
+from app.agent.ptc import PtcSession, select_ptc_session
 from harness.agent import SteeringCommand
 from harness.ai.codex_responses import build_codex_request_body, provider_request_profile
 from harness.config import (
@@ -46,7 +46,6 @@ def _enabled_composition():
     ("implementation", "options"),
     [
         ("skein_notebook", {}),
-        ("adk_code_mode", {"adk_code_mode_image": "image:test"}),
         ("prime_repl", {"prime_native_execution": True}),
     ],
 )
@@ -55,7 +54,7 @@ def test_ptc_dispatch_selects_exactly_one_common_session(
 ) -> None:
     sessions = {
         name: PtcSession(tool=object(), description=name)
-        for name in ("skein_notebook", "adk_code_mode", "prime_repl")
+        for name in ("skein_notebook", "prime_repl")
     }
     called: list[str] = []
 
@@ -69,7 +68,6 @@ def test_ptc_dispatch_selects_exactly_one_common_session(
     selected = select_ptc_session(
         NotebookPtcConfig(enabled=True, implementation=implementation, **options),
         skein_notebook=factory("skein_notebook"),
-        adk_code_mode=factory("adk_code_mode"),
         prime_repl=factory("prime_repl"),
     )
 
@@ -88,28 +86,11 @@ def test_disabled_ptc_dispatch_is_identity_and_builds_nothing() -> None:
         select_ptc_session(
             NotebookPtcConfig(),
             skein_notebook=build,
-            adk_code_mode=build,
             prime_repl=build,
         )
         is None
     )
     assert called == []
-
-
-def test_adk_code_mode_description_keeps_sandbox_files_out_of_project_workspace(
-    tmp_path: Path,
-) -> None:
-    settings = settings_from_composition(
-        load_harness_composition(),
-        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
-    )
-    config = NotebookPtcConfig(
-        enabled=True,
-        implementation="adk_code_mode",
-        adk_code_mode_image="image:test",
-    )
-    session = build_adk_session(settings, config, [])
-    assert "do not modify the host or project workspace" in session.tool.description
 
 
 @pytest.mark.asyncio
@@ -369,34 +350,6 @@ def test_factory_exposes_only_execute_code_when_notebook_ptc_is_enabled(tmp_path
     assert {item.name for item in resources.items if item.kind == "tool"} == {"execute_code"}
     assert assembly.close is not None
     assembly.close()
-
-
-def test_factory_exposes_vendored_adk_code_mode_as_execute_code(tmp_path: Path) -> None:
-    backend = SimpleNamespace(identity="sha256:pinned")
-    registry = default_harness_registry(ptc_backend=cast(Any, backend))
-    payload = load_harness_composition(config_models=registry.config_models()).model_dump(
-        mode="python"
-    )
-    payload["harness"]["config"]["notebook_ptc"].update(
-        enabled=True,
-        implementation="adk_code_mode",
-        adk_code_mode_image="example.invalid/adk-code-mode@sha256:fixture",
-    )
-    composition = parse_harness_composition(payload, config_models=registry.config_models())
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-
-    assembly = registry.build(
-        composition,
-        RuntimeBindings(workspace=workspace, state_root=tmp_path / "state", task_id="task"),
-    )
-
-    worker = cast(LlmAgent, assembly.agents["coding_worker"])
-    assert {tool.name for tool in worker.tools} == {"execute_code"}
-    assert worker.tools[0].backend is backend
-    assert assembly.build_info.tool_names == ("execute_code",)
-    assert "turn-scoped Docker sandbox" in worker.static_instruction
-    assert "durable notebook cell" not in worker.static_instruction
 
 
 def test_default_factory_keeps_main_four_tool_path_without_canonical_memory(

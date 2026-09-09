@@ -84,7 +84,7 @@ selector plus persistence fields that validate supported native pairings:
 ```yaml
 notebook_ptc:
   enabled: true
-  implementation: skein_notebook     # skein_notebook | adk_code_mode | prime_repl
+  implementation: skein_notebook     # skein_notebook | prime_repl
   serialization: native              # native or the implementation's explicit format
   state: native                      # native or the implementation's explicit policy
   continuity: run                    # run | conversation when supported
@@ -118,7 +118,6 @@ The initial compatibility mapping is deterministic:
 | PTC value | Execution | Serialization | State | Continuity |
 | --- | --- | --- | --- | --- |
 | `skein_notebook` | `skein_repl` | `notebook` | `replay_safe` | existing value |
-| `adk_code_mode` | vendored ADK Code Mode | implementation-native turn history | `none` | `run` |
 | `prime_repl` | vendored Prime-native REPL | task JSONL lifecycle events | `snapshot` | `run` |
 
 `serialization: native` and `state: native` preserve these pairings. Their explicit
@@ -137,16 +136,13 @@ validation errors. There is no fallback to another runtime or persistence policy
 
 The transitional `notebook_ptc` schema accepts `serialization: native` and
 `state: native` by default. Skein additionally accepts its explicit `notebook` and
-`replay_safe` pairing. ADK Code Mode accepts native ADK-managed history and `none`;
-it does not yet implement a selectable JSONL session serializer. Prime's native pairing
+`replay_safe` pairing. Prime's native pairing
 is JSONL transcript plus runtime snapshots, gated by explicit native execution and
 project trust. Its first adapter supports run continuity only. Conversation snapshot
 lineage, safe-auto effect recovery, and the brokered memory-command bridge raise
 `NotImplementedError`. The matrix below is a delivery
 target, not a promise that all combinations are available now.
 
-- `adk_code_mode` is turn-scoped and initially supports `state: none` and
-  `continuity: run` only.
 - `replay_safe` requires a persistent runtime and canonical cell lifecycle events.
 - `snapshot` requires a runtime that implements bounded snapshot/restore and records
   snapshot manifests. It does not make opaque heap bytes historical evidence.
@@ -168,9 +164,9 @@ selectable plugin contract.
 
 | Module | Current code seam | Current status | Host-owned invariant |
 | --- | --- | --- | --- |
-| Environment lifecycle | `ExecutionRuntime`, `CommandSandbox`, ADK `SandboxBackend`; reusable eval backend | Typed implementations; reusable container is sequential eval-only | Exclusive ownership, clean setup/reset, cleanup verification |
-| PTC session | `PtcSession` returned by closed `select_ptc_session` dispatch | Common assembly/lifecycle result for three implementations | One model tool and explicit cleanup/reconciliation hooks |
-| PTC serialization | Implementation-owned notebook, ADK history, or ledger events | Native bundle | Stable attempt identity and provenance; serialization never grants execution authority |
+| Environment lifecycle | `ExecutionRuntime`, `CommandSandbox`, and PTC-owned local processes | Typed host and runtime implementations | Exclusive ownership, clean setup/reset, cleanup verification |
+| PTC session | `PtcSession` returned by closed `select_ptc_session` dispatch | Common assembly/lifecycle result for two implementations | One model tool and explicit cleanup/reconciliation hooks |
+| PTC serialization | Implementation-owned notebook or ledger events | Native bundle | Stable attempt identity and provenance; serialization never grants execution authority |
 | Runtime-state policy | Implementation-owned safe replay, none, or bounded snapshot | Native bundle | Explicit restore eligibility; uncertain effects are never automatically replayed |
 | Memory programs | `MemoryProgramSpec`, `MemoryProgramRuntime`, `ViewRequest`/`ViewResult` | Exact version selection through one finite registry | Authorized scope, watermarks, bounds, evidence and result hashes |
 | Context assembly | Pure `select_context_cut` plus one `ContextWindowPlugin`; ADK Pi compaction is separate | Policy seam; strategies are not one plugin registry | Stable prefix, bounded dynamic suffix, complete tool-call/result boundaries |
@@ -287,8 +283,7 @@ into competing sources of truth.
 
 The following is the target coordinator protocol. Current implementations preserve the
 same safety order internally, but the Skein notebook and Prime builders still own their
-event, restore, execution, and persistence sequences, while vendored ADK Code Mode owns
-its turn-scoped container session.
+event, restore, execution, and persistence sequences.
 
 For each `execute_code` call, the extracted coordinator will perform this sequence:
 
@@ -361,8 +356,7 @@ not raw arguments or full results.
 Existing histories are not rewritten. Current Skein notebook writers emit
 `notebook.cell_added` plus `repl.cell_submitted` and a `repl.cell_*` terminal event.
 Prime emits its separate `prime.cell_submitted`, `prime.cell_terminal`, and snapshot
-events. ADK Code Mode contributes its model/tool history, broker receipts, and metrics;
-there is no normalized `ptc.cell_*` writer yet. Any future vocabulary unification must
+events. There is no normalized `ptc.cell_*` writer yet. Any future vocabulary unification must
 retain import compatibility and prove replay equality before changing writers.
 
 ### State policies
@@ -511,7 +505,7 @@ remain separate configuration axes.
 
 This delivery ledger distinguishes landed seams from the remaining extraction:
 
-1. **Landed:** all three PTC implementations return a shared `PtcSession` assembly
+1. **Landed:** both PTC implementations return a shared `PtcSession` assembly
    result and the same compact result envelope; selection is centralized.
 2. **Landed:** unsupported serialization/state/continuity/module combinations fail at
    configuration loading with specific errors.
@@ -519,8 +513,9 @@ This delivery ledger distinguishes landed seams from the remaining extraction:
    prior mutable SQL and duplicate prompt-program catalogs were removed.
 4. **Landed:** Prime runtime, JSONL lifecycle evidence, bounded snapshots, trust gate,
    and native-untracked effect classification are bundled from pinned source.
-5. **Landed:** ADK Code Mode has a pinned image build and an eval-only reusable worker
-   that resets processes, filesystem state, tools, and interpreter state per example.
+5. **Landed:** the evaluated ADK Code Mode arm, image, reusable worker, and Docker SDK
+   were removed after it exhausted the matched 200k input budget; stale configuration
+   fails with a migration error and Git retains the experiment.
 6. **Remaining:** extract a common cell coordinator, runtime, serializer, and state
    policy without changing event bytes, tool declarations, provider prefixes, or
    failure behavior.
@@ -533,8 +528,6 @@ Canonical runtime/persistence matrix after implementation audit:
 | --- | --- | --- | --- | --- |
 | `skein_repl` | `notebook` | `replay_safe` | supported | Durable cells and conservative replay |
 | `skein_repl` | `jsonl` | `replay_safe` | not implemented | Requires extraction of notebook serialization from the coordinator |
-| `adk_code_mode` | implementation-native | `none` | supported | Turn-scoped brokered execution in the pinned container |
-| `adk_code_mode` | `jsonl` | `none` | not selectable | Canonical receipts exist, but no selectable ADK session serializer exists |
 | `prime_repl` | `jsonl` | `snapshot` | supported | Trusted native execution; bounded names restore within ownership limits |
 | `prime_repl` | `notebook` | `snapshot` | not implemented | Requires a deterministic Prime transcript-to-notebook projector |
 
@@ -548,15 +541,14 @@ duplicate or unknown effects, snapshot bytes/failures, and terminal reason.
 ## Implemented boundary
 
 - Four tools are the default profile.
-- `execute_code` is the shared model-facing name for Skein notebook, vendored ADK Code
-  Mode, and trusted Prime implementations; all return the compact result envelope.
+- `execute_code` is the shared model-facing name for Skein notebook and trusted Prime
+  implementations; both return the compact result envelope.
 - Runtime, serialization, and state policy are not yet independently composed; the
   current `NotebookPtcConfig.implementation` remains the compatibility bundle until the
   migration above lands.
 - Notebook PTC is implemented and disabled by default.
 - Skein and Prime local adapters require project trust and are not production security
-  sandboxes. ADK Code Mode uses a pinned per-turn container; its reusable resettable
-  container backend is limited to sequential batch evaluation.
+  sandboxes.
 - Registered MCP calls, direct tools, brokered PTC calls, and verification share policy,
   receipts, redaction, output limits, and task identity. Prime-native effects are the
   explicit cell-level `native_untracked` exception.

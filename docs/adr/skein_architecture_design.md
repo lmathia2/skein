@@ -28,9 +28,9 @@ The code currently composes these layers:
 | Layer | Current implementations | Selection boundary |
 | --- | --- | --- |
 | Model-facing tools | Four direct tools, or one `execute_code` | `notebook_ptc.enabled` |
-| PTC session | Skein notebook, ADK Code Mode, Prime-native REPL | Closed `implementation` dispatch to a shared `PtcSession` assembly result |
-| PTC persistence | Notebook + safe replay, ADK-native turn history + no restore, Prime JSONL events + bounded snapshots | Validated native pairing; cross-pairing is rejected |
-| Execution environment | Local command adapter, Docker command adapter, ADK Code Mode container, reusable sequential eval container | Typed host/runtime seams; the reusable container is eval-only |
+| PTC session | Skein notebook, Prime-native REPL | Closed `implementation` dispatch to a shared `PtcSession` assembly result |
+| PTC persistence | Notebook + safe replay, or Prime JSONL events + bounded snapshots | Validated native pairing; cross-pairing is rejected |
+| Execution environment | Local command adapter, Docker command adapter, trusted Prime-native process | Typed host/runtime seams and explicit trust boundaries |
 | Canonical trace | JSONL or optional DuckDB | `memory.enabled` and `memory.ledger` |
 | Memory programs | Finite `(name, version)` registry with a shared request/result contract | `memory.context_programs`; active, shadow, or off |
 | Context | Exact ADK history, Pi compaction, or trace-backed bounded windows | Memory implementation plus `context.window_management` |

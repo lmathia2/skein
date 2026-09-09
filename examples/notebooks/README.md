@@ -14,7 +14,7 @@ DuckDB, LanceDB, or running harness is required.
    SQLite ledger to demonstrate versioned, cached factual, episodic, semantic, progress,
    and prompt-assembly programs.
 4. [`04_pluggable_ptc_tools.ipynb`](04_pluggable_ptc_tools.ipynb) compares the
-   `skein_notebook`/`execute_code` and `adk_code_mode`/`execute_code` state contracts while
+   `skein_notebook` and `prime_repl` state contracts behind `execute_code` while
    showing that both use the same host effect broker.
 5. [`05_optional_memory_strategies.ipynb`](05_optional_memory_strategies.ipynb)
    compares disabled memory, trace-native versioned programs, and Pi-derived structured

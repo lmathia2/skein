@@ -2902,7 +2902,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "uvicorn", specifier = ">=0.52,<1.0" },
 ]
-provides-extras = ["eval", "memory-duckdb", "memory-search", "ptc-adk-code-mode", "ptc-prime"]
+provides-extras = ["eval", "memory-duckdb", "memory-search", "ptc-prime"]
 
 [package.metadata.requires-dev]
 dev = [

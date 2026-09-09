@@ -201,15 +201,17 @@ def test_task_input_budget_cannot_be_smaller_than_one_work_packet() -> None:
         parse_harness_composition(payload)
 
 
-def test_adk_code_mode_rejects_conversation_continuity() -> None:
+def test_removed_adk_code_mode_has_a_helpful_migration_error() -> None:
     payload = _composition_payload()
     payload["harness"]["config"]["notebook_ptc"] = {
         "enabled": True,
         "implementation": "adk_code_mode",
-        "continuity": "conversation",
     }
 
-    with pytest.raises(NotImplementedError, match="run-scoped continuity only"):
+    with pytest.raises(
+        NotImplementedError,
+        match="adk_code_mode was removed; use skein_notebook or prime_repl",
+    ):
         parse_harness_composition(payload)
 
 
@@ -220,10 +222,6 @@ def test_adk_code_mode_rejects_conversation_continuity() -> None:
         ("skein_notebook", "notebook", "replay_safe", True),
         ("skein_notebook", "jsonl", "native", False),
         ("skein_notebook", "native", "snapshot", False),
-        ("adk_code_mode", "native", "none", True),
-        ("adk_code_mode", "notebook", "none", False),
-        ("adk_code_mode", "jsonl", "none", False),
-        ("adk_code_mode", "native", "replay_safe", False),
         ("prime_repl", "jsonl", "snapshot", True),
         ("prime_repl", "notebook", "snapshot", False),
         ("prime_repl", "jsonl", "replay_safe", False),
@@ -236,7 +234,6 @@ def test_ptc_native_configuration_support_matrix(
     payload["harness"]["config"]["notebook_ptc"] = {
         "enabled": True, "implementation": implementation,
         "serialization": serialization, "state": state,
-        "adk_code_mode_image": "local-test-image",
         "prime_native_execution": implementation == "prime_repl",
     }
     if supported:

@@ -17,7 +17,6 @@ from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 from google.genai import types
 
-from harness.adk.code_mode.runtime.base import SandboxBackend
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
 from harness.environment.async_call import run_managed_thread
@@ -29,7 +28,7 @@ from harness.state.events import HarnessEvent
 from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
 from .config import HarnessSettings
-from .ptc import build_adk_session, build_notebook_session, select_ptc_session
+from .ptc import build_notebook_session, select_ptc_session
 from .streaming import PublicReplies
 
 LOGGER = logging.getLogger(__name__)
@@ -65,7 +64,6 @@ def build_coding_worker(
     notebook_root: Path | None = None,
     workspace_fingerprint: Callable[[], str] | None = None,
     redactor: SecretRedactor | None = None,
-    ptc_backend: SandboxBackend | None = None,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -259,9 +257,6 @@ def build_coding_worker(
             fingerprint_workspace=fingerprint_workspace,
             read_default_lines=read_default_lines, bash_default_timeout=bash_default_timeout,
             runtime_identity=_runtime_identity, require_verification=_require_verification,
-        ),
-        adk_code_mode=lambda: build_adk_session(
-            settings, active_ptc_config, [read, bash, edit, write], ptc_backend
         ),
         prime_repl=build_prime,
     )

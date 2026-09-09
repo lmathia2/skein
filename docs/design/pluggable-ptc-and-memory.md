@@ -5,16 +5,15 @@ Skein now separates two independent choices:
 | Axis | Option | Model surface | State and history |
 | --- | --- | --- | --- |
 | PTC | `skein_notebook` | `execute_code` | Persistent CPython heap within the run, write-ahead cells, trace-derived notebook |
-| PTC | `adk_code_mode` | `execute_code` | Turn-scoped Docker Python; workspace effects still call Skein's four brokered capabilities |
+| PTC | `prime_repl` | `execute_code` | Trusted native Python, JSONL lifecycle evidence, bounded dill snapshots |
 | Memory | disabled | unchanged | Existing operational events and bounded work packets only |
 | Memory | `trace_native` | reserved `memory` commands when active | Versioned programs over the canonical JSONL/DuckDB ledger |
 | Memory | `pi` | unchanged | Pi's structured checkpoint prompt over ADK session history, with token-triggered compaction and a retained raw tail |
 
-The PTC implementations are ADK tools, not harnesses. They receive the same
-brokered `read`, `bash`, `edit`, and `write` functions, so policy, approval,
-receipt, redaction, and verification remain shared. The vendored Code Mode arm
-disables its artifact helper tools and tool-result artifact wrapper to avoid a
-second effect or persistence path. Its sandbox image must be pinned explicitly.
+The PTC implementations are ADK tools, not harnesses. Skein notebook PTC receives
+brokered `read`, `bash`, `edit`, and `write` functions, preserving policy, approval,
+receipt, redaction, and verification. Prime is deliberately a trusted native arm;
+its direct effects are recorded at cell granularity as `native_untracked`.
 
 The memory choice is optional and independent of PTC. The `pi` summary policy is
 ported from `earendil-works/pi` commit `853a80d`; ADK owns the event range and
@@ -48,17 +47,12 @@ notebook_ptc:
 ```yaml
 notebook_ptc:
   enabled: true
-  implementation: adk_code_mode
-  serialization: native
-  state: none
-  adk_code_mode_image: YOUR_PINNED_IMAGE
+  implementation: prime_repl
+  serialization: jsonl
+  state: snapshot
+  prime_native_execution: true
 ```
 
-ADK's native history is managed by the surrounding ADK session machinery; selecting
-`jsonl` does not silently relabel that history. Unsupported serialization/state
-combinations and ADK conversation continuity raise `NotImplementedError` at load time.
-Invalid field values and missing image settings remain validation errors.
-
-The intended Prime preset is `implementation: prime_repl`, `serialization: jsonl`,
-`state: snapshot`. It currently raises `NotImplementedError` because the Prime runtime
-has not been integrated. These options never trigger a substitute implementation.
+Unsupported serialization/state combinations and Prime conversation continuity raise
+`NotImplementedError` at load time. The trusted Prime preset never triggers a substitute
+implementation. The removed `adk_code_mode` key also raises a migration error.

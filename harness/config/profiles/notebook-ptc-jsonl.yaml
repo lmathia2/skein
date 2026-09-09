@@ -67,7 +67,7 @@ harness:
 
     notebook_ptc:
       enabled: true  # Replace four top-level tools with one persistent execute_code tool.
-      implementation: skein_notebook  # Compared independently with adk_code_mode.
+      implementation: skein_notebook  # Compare independently with prime_repl.
       default_timeout_seconds: 120  # Default cell execution timeout.
       max_timeout_seconds: 600
       max_output_bytes: 16000  # Inline cell output; oversized MIME becomes artifacts.

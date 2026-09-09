@@ -18,7 +18,6 @@ from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 from google.genai import types
 
-from harness.adk.code_mode.runtime.base import SandboxBackend
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import NotebookPtcConfig
 from harness.environment.async_call import run_managed_thread
@@ -94,7 +93,6 @@ def select_ptc_session(
     config: NotebookPtcConfig,
     *,
     skein_notebook: Callable[[], PtcSession],
-    adk_code_mode: Callable[[], PtcSession],
     prime_repl: Callable[[], PtcSession],
 ) -> PtcSession | None:
     """Resolve the closed PTC implementation set, or identity when disabled."""
@@ -102,46 +100,8 @@ def select_ptc_session(
         return None
     return {
         "skein_notebook": skein_notebook,
-        "adk_code_mode": adk_code_mode,
         "prime_repl": prime_repl,
     }[config.implementation]()
-
-
-def build_adk_session(
-    settings: HarnessSettings,
-    config: NotebookPtcConfig,
-    tools: list[Callable[..., Awaitable[dict[str, Any]]]],
-    backend: SandboxBackend | None = None,
-) -> PtcSession:
-    """Preserve upstream invocation ownership and tool declaration."""
-    from harness.adk.code_mode import ExecuteCodeTool, UnsafeLocalDockerBackend
-    assert config.adk_code_mode_image is not None
-    tool = ExecuteCodeTool(
-        tools=tools,
-        backend=backend or UnsafeLocalDockerBackend(image=config.adk_code_mode_image),
-        include_artifact_tools=False,
-        save_tool_results_as_artifacts=False,
-        append_code_mode_metadata_to_system_instruction=False,
-        max_output_chars=max(1, config.max_output_bytes // 2),
-        timeout_seconds=config.default_timeout_seconds,
-        per_tool_timeout_seconds=config.default_timeout_seconds,
-        result_transform=lambda result: compact_tool_result(
-            result, max_chars=config.max_output_bytes
-        ),
-        artifact_writer=lambda content: put_artifact(
-            settings.state_root / "artifacts" / "sha256", content
-        ),
-    )
-
-    async def release(callback_context: CallbackContext) -> None:
-        await tool.release_invocation(callback_context.invocation_id)
-
-    return PtcSession(
-        tool=tool,
-        description="Executes vendored ADK Code Mode in one sandboxed Python tool.",
-        close=tool.aclose,
-        after_agent=release,
-    )
 
 
 def build_notebook_session(

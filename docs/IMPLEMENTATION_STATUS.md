@@ -71,15 +71,14 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
 
 ## Retained and verified
 
-- All three PTC implementations return a common `PtcSession` assembly result and expose
-  the same `execute_code` name. Skein notebook lifecycle remains in `app.agent.ptc`,
-  Prime lifecycle remains in `app.agent.prime_ptc`, and vendored ADK Code Mode owns its
-  turn-scoped container protocol; a shared cell coordinator/runtime/state/serializer
-  contract has not yet been extracted.
+- Both PTC implementations return a common `PtcSession` assembly result and expose the
+  same `execute_code` name. Skein notebook lifecycle remains in `app.agent.ptc` and
+  Prime lifecycle remains in `app.agent.prime_ptc`; a shared cell
+  coordinator/runtime/state/serializer contract has not yet been extracted.
 
 - PTC configuration preserves implementation-native serialization and state policy
-  by default. Explicit Skein notebook/safe-replay, ADK native-history/no-restore, and
-  trusted Prime JSONL/snapshot selections are accepted. Unsupported cross-pairings and
+  by default. Explicit Skein notebook/safe-replay and trusted Prime JSONL/snapshot
+  selections are accepted. Unsupported cross-pairings and
   Prime combinations with conversation continuity, safe-auto recovery, or active
   brokered memory commands fail during configuration loading.
 
@@ -123,10 +122,9 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   `start-ptc.sh` enables this
   path together with the dependency-free canonical JSONL ledger and an isolated state
   root; the ordinary launcher retains the four-tool default.
-- PTC selection is explicit: `skein_notebook`, vendored ADK Code Mode 1.6.0, and
-  `prime_repl` all expose `execute_code` through one `PtcSession` assembly seam and
-  compact result envelope. Skein and ADK call the same four brokered capabilities;
-  Prime is an explicitly trusted native profile whose direct effects are recorded as
+- PTC selection is explicit: `skein_notebook` and `prime_repl` expose `execute_code`
+  through one `PtcSession` assembly seam and compact result envelope. Skein calls the
+  four brokered capabilities; Prime is an explicitly trusted native profile whose direct effects are recorded as
   `native_untracked`. Memory is independently optional: `trace_native` retains
   versioned ledger programs and `pi` uses native ADK session compaction with a bounded
   raw tail. Defaults remain unchanged.
@@ -298,9 +296,11 @@ The existing reviewed context program service also supports optional name/versio
 selection while preserving its default allowlist and existing view identities.
 See [native profile configuration and limitations](design/ptc-native-profiles.md).
 
-PTC-specific Python dependencies are now bundled: dill 0.4.0 for Prime snapshots
-and Docker SDK 7.2.0 for ADK Code Mode. The former extras remain empty compatibility
-aliases. Prime snapshots are tested with site-packages disabled in the child;
-ADK SDK loading is tested with external docker/dill imports blocked. Docker Engine
-and the configured image remain explicit external requirements. Source hashes and
-licenses are retained under `harness/_vendor`.
+The PTC-specific dill 0.4.0 dependency is bundled for Prime snapshots. Its empty
+compatibility extra remains. Prime snapshots are tested with site-packages disabled
+in the child; source hashes and the license are retained under `harness/_vendor`.
+
+ADK Code Mode, its reusable eval container, image package, and vendored Docker SDK were
+removed after the 2026-09-09 matched smoke exhausted the 200k input budget. Stale
+`implementation: adk_code_mode` configurations fail with a migration error instead of
+falling back. Git history retains the experiment.

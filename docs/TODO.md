@@ -104,14 +104,13 @@ and the implementation/evaluation rubric.
   - [x] Pass the full unit suite, runnable integrations, full lint, and changed-code typing.
   - [x] Clear the production `app`/`harness` Pyright baseline; executable tests remain
     covered by pytest rather than static analysis of their deliberately dynamic fakes.
-  - [ ] Run the matched provider comparison; keep four tools as the default until that
-    gate passes. Prior live PTC artifacts confirm OpenRouter execution with
-    `meta/muse-spark-1.3-contributor`; the 2026-09-09 task process did not inherit its
-    intentionally unpersisted `OPENROUTER_API_KEY`. The matched model/revision contract
-    also remains unfrozen. The pinned ADK image and its reset-isolation integration passed.
+  - [ ] Run a larger matched provider comparison; keep four tools as the default until
+    that gate passes. The one-task smoke is directional, not a default-change gate.
   - [x] Run a one-task, four-mode matched OpenRouter smoke with memory disabled. Prime
     used the fewest calls, wall time, and serialized request bytes; ADK Code Mode
     exhausted the 200k input budget. See `docs/audits/ptc-matched-smoke-2026-09-09.md`.
+  - [x] Remove ADK Code Mode, its container pool/image, and vendored Docker SDK; keep a
+    helpful configuration migration error and the smoke report as historical evidence.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
@@ -123,18 +122,17 @@ and the implementation/evaluation rubric.
   `(program name, version)` configuration and receipt identity.
 - [x] Add the pinned Prime REPL runtime and bounded snapshot policy as optional
   implementations without importing Prime's daemon, TUI, or session authority.
-- [x] Bundle the PTC-specific Python dependencies with licenses and provenance;
-  verify Prime recovery without site-packages and ADK SDK import without installed extras.
+- [x] Bundle Prime's snapshot dependency with license and provenance; verify recovery
+  without site-packages.
 - [x] Run the deterministic composition matrix across PTC, memory-program, context,
   serialization, state, and continuity selections, including explicit rejection of
   unsupported combinations.
 - [ ] Run the matched live comparison before changing the four-tool default; retain
   the preflight blockers recorded under U7 until the experiment contract is frozen.
 
-- [x] Make Skein notebook PTC and vendored ADK Code Mode selectable ADK tools,
-  and independently select optional trace-native or Pi-derived memory for
-  matched ablations.
-- [x] Add executable notebooks demonstrating both PTC tools and all optional
+- [x] Make Skein notebook and Prime-native PTC selectable behind one ADK tool, and
+  independently select optional trace-native or Pi-derived memory for matched ablations.
+- [x] Add executable notebooks demonstrating PTC and all optional
   memory strategies without requiring credentials or a running sandbox.
 
 - [x] Reconcile the PTC proposal with the Anthropic sources, reference runtimes,

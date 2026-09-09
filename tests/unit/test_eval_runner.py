@@ -5,8 +5,6 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from harness.config import SkeinConfig, load_harness_composition
 from harness.evals import runner
 from harness.models import TaskRequest
@@ -109,31 +107,6 @@ def test_evaluation_config_preserves_provider_generation_defaults(tmp_path: Path
 
     assert model.reasoning is None
     assert config.agents["coding_worker"].generation.max_output_tokens is None
-
-
-def test_empty_evaluation_batch_does_not_start_docker(tmp_path: Path) -> None:
-    assert (
-        asyncio.run(runner.run_evaluation_batch([], image="unused", worker_root=tmp_path / "pool"))
-        == []
-    )
-
-
-def test_evaluation_batch_requires_isolated_roots(tmp_path: Path) -> None:
-    first = _request(tmp_path, tmp_path / "workspace")
-    second = first.model_copy(update={"state_root": tmp_path / "state-2", "task_id": "smoke-2"})
-
-    with pytest.raises(ValueError, match="distinct state and authorization roots"):
-        asyncio.run(
-            runner.run_evaluation_batch(
-                [first, second], image="unused", worker_root=tmp_path / "pool"
-            )
-        )
-    with pytest.raises(ValueError, match="outside example-owned roots"):
-        asyncio.run(
-            runner.run_evaluation_batch(
-                [first], image="unused", worker_root=first.state_root / "pool"
-            )
-        )
 
 
 def test_evaluation_rejects_a_dirty_workspace_before_model_start(tmp_path: Path) -> None:

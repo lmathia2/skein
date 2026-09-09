@@ -7,63 +7,17 @@ select a universal serializer or promise interchangeable state recovery.
 | Implementation | Serialization | State | Enabling requirements |
 | --- | --- | --- | --- |
 | `skein_notebook` | `native` / `notebook` | `native` / `replay_safe` | Existing notebook profile |
-| `adk_code_mode` | `native` | `native` / `none` | Explicit `adk_code_mode_image` and running Docker Engine; Python SDK bundled |
 | `prime_repl` | `native` / `jsonl` | `native` / `snapshot` | `prime_native_execution: true`, trusted project; dill bundled |
 
 Set `enabled: true` with the selected implementation. Prime's opt-in composition is
 [`prime-ptc-jsonl.yaml`](../../harness/config/profiles/prime-ptc-jsonl.yaml).
-The default composition and existing notebook/ADK behavior are unchanged. Known
+The default composition and existing notebook behavior are unchanged. Known
 unimplemented combinations raise `NotImplementedError`; malformed values and
-missing trust/image requirements are validation errors. No fallback is performed.
+missing trust requirements are validation errors. No fallback is performed. The removed
+`adk_code_mode` key produces a migration error directing users to the two supported modes.
 
-No PTC-specific pip extras are required. The old extra names remain empty compatibility
-aliases. Pinned dill and Docker SDK sources and licenses live in `harness/_vendor`;
-base ADK HTTP dependencies are reused. Docker Engine and the configured image are
-not vendorable Python dependencies, and must still be provisioned separately.
-
-### Prebuild and reuse the ADK image
-
-Build once, then use the cached image for subsequent invocations:
-
-```bash
-docker build -t skein-adk-code-mode:1 harness/adk/code_mode_sandbox
-docker image inspect skein-adk-code-mode:1 --format '{{.Id}}'
-```
-
-Set `notebook_ptc.adk_code_mode_image` to the returned `sha256:...` image ID
-(immutable on this Docker daemon), or the local tag for development. The Dockerfile
-pins its Python base by digest and copies only the vendored sandbox Python sources.
-There is no pip install or rebuild during a run. Rebuild after sandbox source updates.
-This image implements the backend's TCP transport, not the optional HTTP server.
-
-Normal runs keep one container alive for the code blocks in one invocation and then
-remove it. Trusted sequential evals may instead call `run_evaluation_batch`: its
-exclusive `ReusableDockerBackend` resolves the configured image to an immutable ID,
-starts one warm container, and creates a fresh authenticated interpreter connection
-per example. Before and after every lease it kills non-owner processes, verifies that
-none remain, and clears `/workspace`, `/tmp`, and the generated tool tree. Reset
-failure discards the container. Only the private tool directory (read-only) and
-workspace slot (read-write) are mounted; example state and authorization roots must
-be distinct and outside the worker root. The worker root must be on a host path shared
-with Docker Desktop. Each example still receives a fresh harness assembly, ADK
-session, task event store, and model context.
-
-This pool is process-local. Launchers that start a new Skein process per example do
-not share it; cross-process Harbor reuse requires launcher-owned container leasing and
-is intentionally not implied by this API.
-
-For Colima or another non-default Docker context, the SDK needs the daemon address:
-
-```bash
-export DOCKER_HOST="$(docker context inspect --format '{{.Endpoints.docker.Host}}')"
-SKEIN_TEST_ADK_IMAGE=skein-adk-code-mode:1 uv run --no-sync pytest tests/integration/test_adk_container_image.py
-```
-
-The opt-in test checks state reuse across two blocks in one example, then verifies a
-fresh namespace, empty workspace and temp directory, terminated background process,
-read-only tools, and excluded symlink in the next lease of the same container. It
-removes its test container and leaves the image cached. Docker must remain running;
-no image or container is published externally.
+No PTC-specific pip extras are required. The Prime extra remains an empty compatibility
+alias. Pinned dill sources and its license live in `harness/_vendor`.
 
 ## Prime adapter contract
 
@@ -103,7 +57,7 @@ Prime notebook serialization, and notebook heap snapshots are rejected until the
 contracts and tests exist. The existing notebook profile remains the choice for
 brokered capabilities and safe replay.
 
-The shared `PtcSession` is deliberately a lifecycle bundle used by all three
+The shared `PtcSession` is deliberately a lifecycle bundle used by both
 adapters, not a speculative plugin framework. Cross-serializer and state-policy
 adapters can be added behind it when implemented, without altering native defaults.
 

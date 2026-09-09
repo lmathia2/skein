@@ -13,7 +13,7 @@ current architecture decisions.
 
 ## Key features
 
-- **One-tool PTC:** optional Skein notebook, ADK Code Mode, and Prime-native profiles
+- **One-tool PTC:** optional Skein notebook and Prime-native profiles
   expose the same `execute_code` tool under explicit trust and persistence contracts.
 - **Memory as programs:** versioned programs derive bounded, reproducible views from
   append-only traces; JSONL is dependency-free, with DuckDB and LanceDB optional.
@@ -339,10 +339,9 @@ memory:
 ```
 
 `serialization: native` and `state: native` preserve an implementation's supported
-pairing. Explicit current pairings are Skein `notebook`/`replay_safe`, ADK Code Mode
-implementation-native history/`none`, and Prime `jsonl`/`snapshot`. Unsupported
-cross-pairings fail with `NotImplementedError`; there is no fallback. ADK Code Mode
-also requires a pinned `adk_code_mode_image` and Docker Engine. Prime requires
+pairing. Explicit current pairings are Skein `notebook`/`replay_safe` and Prime
+`jsonl`/`snapshot`. Unsupported cross-pairings fail with `NotImplementedError`; there
+is no fallback. Prime requires
 `prime_native_execution: true` plus `--trust-project`, supports run continuity only,
 and cannot be combined with safe-auto recovery or active memory commands.
 
@@ -356,7 +355,7 @@ selects reviewed keys; it never imports user-provided Python implementations.
 | Harness | `HarnessFactory` / `HarnessRegistry` | `skein_v1`; server and TUI depend only on the common assembly/protocol |
 | Model provider | `AdkModelProvider` registry | Google ADK, Codex subscription, OpenRouter OpenResponses |
 | Workspace execution | `ExecutionRuntime`, `WorkspaceEnvironment`, `CommandSandbox`, `RepositoryRuntime` | Local or configured Docker commands; same workspace identity feeds verification |
-| PTC | `PtcSession` and closed `select_ptc_session` dispatch | Off, Skein notebook, vendored ADK Code Mode, trusted Prime-native |
+| PTC | `PtcSession` and closed `select_ptc_session` dispatch | Off, Skein notebook, trusted Prime-native |
 | PTC persistence | `NotebookPtcConfig.serialization` and `.state` | Validated implementation-native bundles today; serializer/state protocols are not yet extracted |
 | Trace storage | `LedgerStore` / `open_ledger` | Dependency-free JSONL or optional DuckDB |
 | Memory | `MemoryProgramSpec`, `MemoryProgramRuntime`, `ViewRequest`/`ViewResult` | Exact reviewed versions from `PROGRAM_REGISTRY`; active, fixed shadow probe, or off |
@@ -460,9 +459,6 @@ old evaluation reports are not evidence for the simplified runtime.
   nbformat workbench containing message, compaction, code, output, timestamp, and
   ledger-provenance cells; required `nb-cli` inspection replaces direct `.ipynb` JSON
   parsing.
-- Optional vendored ADK Code Mode in a pinned per-turn container, plus an eval-only
-  reusable container that resets interpreter, process, tool, and workspace state for
-  each sequential example.
 - Optional trusted Prime-native PTC with JSONL cell evidence and bounded snapshots;
   its native effects are intentionally classified as untracked rather than brokered.
 - One append-only canonical event schema over JSONL or optional DuckDB, including

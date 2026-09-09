@@ -63,16 +63,6 @@ blocked; use the corresponding `agent.*` capability. A notebook is not proof tha
 that write or have unknown effects must never be replayed automatically.
 """.strip()
 
-ADK_CODE_MODE_INSTRUCTION = """
-ADK Code Mode is enabled. Your only model-visible tool is `execute_code(code)`.
-Code runs in a turn-scoped Docker sandbox; list `/tools/` and read the generated
-docstrings to discover the brokered `read`, `bash`, `edit`, and `write` functions.
-Use those functions for workspace effects and print only compact facts needed for
-the next decision. Python globals persist only within the current ADK invocation.
-The host broker still owns policy, approvals, receipts, redaction, and verification.
-""".strip()
-
-
 @dataclass(frozen=True, slots=True)
 class HarnessSettings:
     app_name: str
@@ -220,10 +210,6 @@ def settings_from_composition(
                 "Skein's independent verifier owns completion."
             )
             tool_names = ("execute_code",)
-        else:
-            instruction += "\n\n" + ADK_CODE_MODE_INSTRUCTION
-            tool_names = ("execute_code",)
-
     coding_model = config.models[worker_config.model].name
     skill_roots: list[Path] = []
     if config.skills.project_root_enabled and bindings.project_trusted:

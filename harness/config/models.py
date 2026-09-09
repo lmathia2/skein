@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -168,11 +169,10 @@ class ToolSurfaceConfig(FrozenModel):
 
 class NotebookPtcConfig(FrozenModel):
     enabled: bool = False
-    implementation: Literal["skein_notebook", "adk_code_mode", "prime_repl"] = "skein_notebook"
+    implementation: Literal["skein_notebook", "prime_repl"] = "skein_notebook"
     serialization: Literal["native", "notebook", "jsonl"] = "native"
     state: Literal["native", "none", "replay_safe", "snapshot"] = "native"
     prime_native_execution: bool = False
-    adk_code_mode_image: str | None = Field(default=None, min_length=1, max_length=512)
     continuity: Literal["run", "conversation"] = "run"
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
     max_timeout_seconds: int = Field(default=600, ge=1, le=3_600)
@@ -198,12 +198,20 @@ class NotebookPtcConfig(FrozenModel):
         max_length=8_000,
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_removed_implementation(cls, data: object) -> object:
+        if isinstance(data, Mapping) and data.get("implementation") == "adk_code_mode":
+            raise NotImplementedError(
+                "adk_code_mode was removed; use skein_notebook or prime_repl"
+            )
+        return data
+
     @model_validator(mode="after")
     def validate_timeouts(self) -> NotebookPtcConfig:
         native_serialization, native_state = (
             ("notebook", "replay_safe") if self.implementation == "skein_notebook"
-            else ("jsonl", "snapshot") if self.implementation == "prime_repl"
-            else ("native", "none")
+            else ("jsonl", "snapshot")
         )
         if self.prime_native_execution and self.implementation != "prime_repl":
             raise ValueError("prime_native_execution is exclusive to prime_repl")
@@ -219,12 +227,8 @@ class NotebookPtcConfig(FrozenModel):
                 f"{self.implementation} does not implement state={self.state}; "
                 f"its native state policy is {native_state}"
             )
-        if self.implementation == "adk_code_mode" and self.continuity != "run":
-            raise NotImplementedError("adk-code-mode supports run-scoped continuity only")
         if self.implementation == "prime_repl" and self.continuity != "run":
             raise NotImplementedError("prime_repl conversation snapshot lineage is not implemented")
-        if self.enabled and self.implementation == "adk_code_mode" and not self.adk_code_mode_image:
-            raise ValueError("adk-code-mode requires an explicit sandbox image tag or digest")
         if self.continuity == "conversation" and not self.enabled:
             raise ValueError("conversation continuity requires notebook PTC")
         if self.default_timeout_seconds > self.max_timeout_seconds:
