@@ -83,11 +83,15 @@ and the implementation/evaluation rubric.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
+  - [x] Extract native lifecycle adapters behind a shared `PtcSession`.
+    Keep runtime-specific protocols separate until cross-pairing requires more.
 - [ ] Separate PTC serialization (`notebook` or ledger-only `jsonl`) from runtime-state
   recovery (`none`, `replay_safe`, or bounded `snapshot`) and reject invalid combinations.
 - [ ] Replace bundled memory implementation selection with exact code-owned
   `(program name, version)` configuration and receipt identity.
-- [ ] Add the pinned Prime REPL runtime and bounded snapshot policy as optional
+  - [x] Add optional exact version selection for the existing reviewed context programs.
+    Full internal prompt-program substitution remains pending.
+- [x] Add the pinned Prime REPL runtime and bounded snapshot policy as optional
   implementations without importing Prime's daemon, TUI, or session authority.
 - [ ] Run the deterministic composition matrix and matched live comparison before
   changing the four-tool default.

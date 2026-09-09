@@ -489,6 +489,7 @@ class SkeinHarnessFactory:
                 approvals=approvals,
                 replies=replies,
                 workspace_fingerprint=execution.repository.fingerprint,
+                redactor=SecretRedactor(known_secrets=known_secrets),
                 **notebook_options,
             )
         else:

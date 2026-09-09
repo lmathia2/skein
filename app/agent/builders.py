@@ -22,6 +22,7 @@ from harness.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfi
 from harness.environment.async_call import run_managed_thread
 from harness.environment.runtime import LocalRepositoryRuntime
 from harness.models.agent_step import StructuredAgentStep
+from harness.safety.redaction import SecretRedactor
 from harness.state import EventStore, JsonlEventStore
 from harness.state.events import HarnessEvent
 from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
@@ -62,6 +63,7 @@ def build_coding_worker(
     prior_notebook_events: tuple[HarnessEvent, ...] = (),
     notebook_root: Path | None = None,
     workspace_fingerprint: Callable[[], str] | None = None,
+    redactor: SecretRedactor | None = None,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -248,6 +250,16 @@ def build_coding_worker(
         )
     elif active_ptc_config.enabled and active_ptc_config.implementation == "adk_code_mode":
         ptc_session = build_adk_session(active_ptc_config, [read, bash, edit, write])
+    elif active_ptc_config.enabled and active_ptc_config.implementation == "prime_repl":
+        from .prime_ptc import build_prime_session
+
+        ptc_session = build_prime_session(
+            settings, config=active_ptc_config, events=active_event_store,
+            runtime_identity=_runtime_identity, require_verification=_require_verification,
+            replies=replies, redactor=redactor or SecretRedactor(),
+            conversation_id=conversation_notebook_id, prior_events=prior_notebook_events,
+            state_root=notebook_root,
+        )
 
     model_tools: list[Any] = [ptc_session.tool] if ptc_session else [read, bash, edit, write]
     generation = active_generation_config.model_dump(exclude_none=True)
@@ -287,6 +299,8 @@ def build_coding_worker(
         description=(
             "Executes Skein notebook PTC in one persistent CPython tool."
             if native_ptc_enabled
+            else "Executes Prime-native Python with JSONL history and snapshot recovery."
+            if active_ptc_config.enabled and active_ptc_config.implementation == "prime_repl"
             else "Executes vendored ADK Code Mode in one sandboxed Python tool."
             if ptc_session is not None
             else "Owns one complete coding run with four composable tools."

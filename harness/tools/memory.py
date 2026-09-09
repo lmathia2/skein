@@ -34,6 +34,7 @@ class ContextProgramService:
         redactor: SecretRedactor | None = None,
         on_note: Callable[[dict[str, Any]], object] | None = None,
         semantic_search: LanceMemorySearch | None = None,
+        programs: Mapping[str, int] | None = None,
     ) -> None:
         if mode not in {"off", "shadow", "active"}:
             raise ValueError("unknown context program mode")
@@ -42,6 +43,7 @@ class ContextProgramService:
         self.timeout_seconds, self.working_notes = timeout_seconds, working_notes
         self.redactor = redactor or SecretRedactor()
         self.on_note = on_note
+        self.programs = dict(programs) if programs is not None else None
         self.runtime = MemoryProgramRuntime(
             ledger, authorized_tasks=tuple(sorted(set((task_id, *authorized_tasks)))),
             redactor=self.redactor, reuse=reuse, artifact_reader=artifact_reader,
@@ -129,6 +131,8 @@ class ContextProgramService:
             else:
                 raise ValueError(f"unknown memory query option: {flag}")
         request = ViewRequest.model_validate(parameters)
+        if self.programs is not None and self.programs.get(request.program) != request.version:
+            raise ValueError("program/version is not enabled in this profile")
         # The virtual command cannot expose older unbounded internal prompt programs.
         from harness.memory.context import CONTEXT_PROGRAMS, REVIEWED_PROGRAMS
         if request.program not in CONTEXT_PROGRAMS | REVIEWED_PROGRAMS:

@@ -282,3 +282,12 @@ An explicit destructive erasure API removes an exact task from the ledger and re
 operational stores, its JSONL/notebook, uniquely referenced local artifacts, and sealed
 segments carrying a task manifest, including that task's derived Lance projections. It
 is not invoked automatically.
+
+Native PTC profiles now share the `PtcSession` lifecycle adapter. The optional pinned
+Prime Python runtime supports trusted run-scoped JSONL receipts and per-cell dill
+snapshots, with ownership, restart integrity, redaction and uncertain-attempt guards.
+It does not implement conversation snapshot lineage, safe-auto native effect recovery,
+or the brokered memory command bridge; those configurations fail explicitly.
+The existing reviewed context program service also supports optional name/version
+selection while preserving its default allowlist and existing view identities.
+See [native profile configuration and limitations](design/ptc-native-profiles.md).

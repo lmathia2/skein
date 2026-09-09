@@ -171,6 +171,7 @@ class NotebookPtcConfig(FrozenModel):
     implementation: Literal["skein_notebook", "adk_code_mode", "prime_repl"] = "skein_notebook"
     serialization: Literal["native", "notebook", "jsonl"] = "native"
     state: Literal["native", "none", "replay_safe", "snapshot"] = "native"
+    prime_native_execution: bool = False
     adk_code_mode_image: str | None = Field(default=None, min_length=1, max_length=512)
     continuity: Literal["run", "conversation"] = "run"
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
@@ -199,12 +200,15 @@ class NotebookPtcConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_timeouts(self) -> NotebookPtcConfig:
-        if self.implementation == "prime_repl":
-            raise NotImplementedError("prime_repl is not integrated; its native persistence is JSONL plus snapshots")
         native_serialization, native_state = (
             ("notebook", "replay_safe") if self.implementation == "skein_notebook"
+            else ("jsonl", "snapshot") if self.implementation == "prime_repl"
             else ("native", "none")
         )
+        if self.prime_native_execution and self.implementation != "prime_repl":
+            raise ValueError("prime_native_execution is exclusive to prime_repl")
+        if self.enabled and self.implementation == "prime_repl" and not self.prime_native_execution:
+            raise ValueError("prime_repl requires explicit prime_native_execution=true")
         if self.serialization not in {"native", native_serialization}:
             raise NotImplementedError(
                 f"{self.implementation} does not implement serialization={self.serialization}; "
@@ -217,6 +221,8 @@ class NotebookPtcConfig(FrozenModel):
             )
         if self.implementation == "adk_code_mode" and self.continuity != "run":
             raise NotImplementedError("adk-code-mode supports run-scoped continuity only")
+        if self.implementation == "prime_repl" and self.continuity != "run":
+            raise NotImplementedError("prime_repl conversation snapshot lineage is not implemented")
         if self.enabled and self.implementation == "adk_code_mode" and not self.adk_code_mode_image:
             raise ValueError("adk-code-mode requires an explicit sandbox image tag or digest")
         if self.continuity == "conversation" and not self.enabled:
@@ -230,6 +236,7 @@ class NotebookPtcConfig(FrozenModel):
 
 class ContextProgramConfig(FrozenModel):
     mode: Literal["off", "shadow", "active"] = "off"
+    programs: dict[str, int] | None = None
     max_result_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
     max_scan_events: int = Field(default=10_000, ge=1, le=100_000)
     timeout_seconds: float = Field(default=2, gt=0, le=60)
@@ -237,6 +244,17 @@ class ContextProgramConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_reuse(self) -> ContextProgramConfig:
+        if self.programs is not None:
+            from harness.memory.context import CONTEXT_PROGRAMS, REVIEWED_PROGRAMS
+
+            available = CONTEXT_PROGRAMS | (REVIEWED_PROGRAMS if self.reuse else set())
+            for name, version in self.programs.items():
+                if name not in available or version != 1:
+                    raise NotImplementedError(f"context program {name}@{version} is not implemented in this profile")
+            if self.mode == "off":
+                raise ValueError("program selection requires shadow or active context programs")
+            if self.mode == "shadow" and self.programs.get("events.count") != 1:
+                raise ValueError("shadow mode requires events.count@1")
         if self.reuse and self.mode != "active":
             raise ValueError("program reuse requires active context programs")
         return self
@@ -393,6 +411,11 @@ class SkeinConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_references(self) -> SkeinConfig:
+        if self.notebook_ptc.enabled and self.notebook_ptc.implementation == "prime_repl":
+            if self.adk.recovery == "safe_auto":
+                raise NotImplementedError("prime_repl does not implement safe-auto effect recovery")
+            if self.memory.context_programs.mode == "active":
+                raise NotImplementedError("prime_repl does not implement the brokered memory command bridge")
         if self.context.window_management and not (
             self.memory.enabled and self.memory.implementation == "trace_native"
         ):

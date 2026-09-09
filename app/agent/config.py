@@ -208,6 +208,18 @@ def settings_from_composition(
                 + config.notebook_ptc.batching_instruction.strip()
             )
             tool_names = ("execute_code",)
+        elif config.notebook_ptc.implementation == "prime_repl":
+            instruction += (
+                "\n\nPrime-native code mode is enabled. Your only tool is execute_code(code). "
+                "Python is a persistent control environment with native OS access in this trusted profile. "
+                "Use await bash(command) for project commands; use the project's own environment for tests. "
+                "asyncio, bash, and emit are prebound. Top-level await works. "
+                "Select concise printed results; emit accepts MIME bundles. "
+                "A failed cell retains earlier assignments. Serializable values are snapshotted after cells; "
+                "open resources and background tasks may not restore. Execution history is JSONL. "
+                "Skein's independent verifier owns completion."
+            )
+            tool_names = ("execute_code",)
         else:
             instruction += "\n\n" + ADK_CODE_MODE_INSTRUCTION
             tool_names = ("execute_code",)

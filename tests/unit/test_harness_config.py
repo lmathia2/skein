@@ -36,6 +36,21 @@ def _composition_payload() -> dict[str, Any]:
     }
 
 
+@pytest.mark.parametrize("unsupported", ["conversation", "safe_auto", "memory_bridge"])
+def test_prime_rejects_unimplemented_integrations(unsupported: str) -> None:
+    payload = _composition_payload()
+    config = payload["harness"]["config"]
+    config["notebook_ptc"] = {"enabled": True, "implementation": "prime_repl", "prime_native_execution": True}
+    if unsupported == "conversation":
+        config["notebook_ptc"]["continuity"] = "conversation"
+    elif unsupported == "safe_auto":
+        config["adk"] = {"recovery": "safe_auto"}
+    else:
+        config["memory"] = {"enabled": True, "context_programs": {"mode": "active"}}
+    with pytest.raises(NotImplementedError):
+        parse_harness_composition(payload)
+
+
 def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:
     composition = load_harness_composition()
     config = composition.harness.config
@@ -95,6 +110,16 @@ def test_annotated_standard_profiles_are_complete_and_strict(
     assert "Primary learnable" in annotations
     assert "optimizer-owned" in annotations
     assert "verification" in annotations
+
+
+def test_prime_opt_in_profile_loads() -> None:
+    path = Path(__file__).parents[2] / "harness/config/profiles/prime-ptc-jsonl.yaml"
+    config = load_harness_composition(path).harness.config
+    assert isinstance(config, SkeinConfig)
+    assert config.notebook_ptc.implementation == "prime_repl"
+    assert config.notebook_ptc.prime_native_execution
+    assert config.notebook_ptc.serialization == "jsonl"
+    assert config.notebook_ptc.state == "snapshot"
 
 
 @pytest.mark.parametrize("removed_field", ["inbound_queue_size", "heartbeat_seconds"])
@@ -163,7 +188,9 @@ def test_adk_code_mode_rejects_conversation_continuity() -> None:
         ("adk_code_mode", "notebook", "none", False),
         ("adk_code_mode", "jsonl", "none", False),
         ("adk_code_mode", "native", "replay_safe", False),
-        ("prime_repl", "jsonl", "snapshot", False),
+        ("prime_repl", "jsonl", "snapshot", True),
+        ("prime_repl", "notebook", "snapshot", False),
+        ("prime_repl", "jsonl", "replay_safe", False),
     ],
 )
 def test_ptc_native_configuration_support_matrix(
@@ -174,6 +201,7 @@ def test_ptc_native_configuration_support_matrix(
         "enabled": True, "implementation": implementation,
         "serialization": serialization, "state": state,
         "adk_code_mode_image": "local-test-image",
+        "prime_native_execution": implementation == "prime_repl",
     }
     if supported:
         config = parse_harness_composition(payload).harness.config

@@ -1,0 +1,35 @@
+# Opt-in trusted native execution, NOT the Skein capability sandbox.
+# Install the ptc-prime extra and explicitly trust the project at launch.
+schema_version: 1
+app:
+  name: skein
+harness:
+  implementation: skein_v1
+  api_version: 1
+  config:
+    models:
+      coding:
+        provider: google_adk
+        name: gemini-3.7-flash
+    agents:
+      coding_worker:
+        model: coding
+        instruction: >-
+          You are an expert coding assistant. Inspect relevant code, make the smallest
+          coherent change, and let the outer workflow verify it. Return the AgentStep
+          schema with criterion-bound evidence; the host decides completion.
+    workflow:
+      max_iterations: 40
+    notebook_ptc:
+      enabled: true
+      implementation: prime_repl
+      serialization: jsonl
+      state: snapshot
+      prime_native_execution: true
+      continuity: run
+    memory:
+      enabled: true
+      implementation: trace_native
+      ledger: jsonl
+    adk:
+      recovery: explicit

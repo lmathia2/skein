@@ -132,8 +132,10 @@ The transitional `notebook_ptc` schema accepts `serialization: native` and
 `state: native` by default. Skein additionally accepts its explicit `notebook` and
 `replay_safe` pairing. ADK Code Mode accepts native ADK-managed history and `none`;
 it does not yet implement a selectable JSONL session serializer. Prime's native pairing
-is JSONL transcript plus runtime snapshots, but selecting `prime_repl` raises
-`NotImplementedError` until its integration lands. The matrix below is a delivery
+is JSONL transcript plus runtime snapshots, gated by explicit native execution and
+project trust. Its first adapter supports run continuity only. Conversation snapshot
+lineage, safe-auto effect recovery, and the brokered memory-command bridge raise
+`NotImplementedError`. The matrix below is a delivery
 target, not a promise that all combinations are available now.
 
 - `adk_code_mode` is turn-scoped and initially supports `state: none` and

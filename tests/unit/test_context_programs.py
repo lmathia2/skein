@@ -18,6 +18,23 @@ def seed(store, n=6, task="task"):
             for i in range(n)]
 
 
+def test_configured_program_versions_restrict_the_live_service(tmp_path: Path):
+    from harness.config.models import ContextProgramConfig
+
+    store = JsonlLedgerStore(tmp_path / "events.jsonl")
+    seed(store)
+    config = ContextProgramConfig(mode="active", programs={"events.count": 1})
+    service = ContextProgramService(store, "task", **config.model_dump())
+    assert service.execute("memory query --program events.count")["status"] == "ok"
+    assert service.execute("memory history")["status"] == "unavailable"
+    assert service.execute("memory query --program events.count --version 2")["status"] == "unavailable"
+    for programs in ({"events.count": 2}, {"unknown": 1}, {"failures.by_kind": 1}):
+        with pytest.raises(NotImplementedError):
+            ContextProgramConfig(mode="active", programs=programs)
+    assert ContextProgramConfig().programs is None
+    assert ContextProgramConfig(mode="active", reuse=True, programs={"failures.by_kind": 1})
+
+
 def test_snapshot_paging_is_stable_and_erasure_invalidates(tmp_path: Path):
     store = JsonlLedgerStore(tmp_path / "events.jsonl")
     events = seed(store)
