@@ -262,6 +262,9 @@ skills require explicit trust. Recent events MUST be redacted and bounded.
 [`ContextWindowPlugin`](../harness/adk/context.py) selects the bounded dynamic suffix
 from canonical evidence while the static prefix remains byte-stable. Each handoff
 records its context epoch, source watermark, result hash, and retained evidence.
+`select_context_cut` is the pure selection policy; the plugin remains the sole renderer
+and publisher. Cuts MUST occur only after complete tool-call/result interactions, and
+a newly returned result MUST retain its matching call in the next provider request.
 
 ## 9. Memory programs
 

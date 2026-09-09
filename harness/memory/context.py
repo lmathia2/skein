@@ -210,7 +210,61 @@ def _tool_usage(
     return data, "ok"
 
 
-def compute_context(  # pyright: ignore[reportGeneralTypeIssues]  # U6 extracts policy branches.
+def _fast_counts(
+    ledger: LedgerStore,
+    request: ViewRequest,
+    tasks: tuple[str, ...],
+    source_ledgers: Mapping[str, LedgerStore] | None,
+) -> tuple[str, int, str, dict[str, Any]] | None:
+    """Use the maintained DuckDB aggregate only for its exact supported shape."""
+    from harness.ledger.store import DuckDbLedgerStore
+
+    if not (
+        isinstance(ledger, DuckDbLedgerStore)
+        and request.program in {"events.count", "failures.by_kind"}
+        and not source_ledgers
+        and len(tasks) == 1
+        and request.watermark is None
+        and request.recorded_before is None
+        and request.as_of is None
+        and request.observed_after is None
+        and not request.query
+        and request.retrieval == "keyword"
+        and not request.kinds
+        and not request.statuses
+    ):
+        return None
+    watermark, stream_hash, groups = ledger.event_counts(tasks[0])
+    visible = [
+        row for row in groups
+        if row[1] in _FIELDS or (
+            row[0] == "tool_receipt"
+            and row[1] in {
+                "tool.read", "tool.bash", "tool.edit", "tool.write",
+                "tool.python", "tool.execute_code",
+            }
+        )
+    ]
+    if request.program == "failures.by_kind":
+        visible = [row for row in visible if row[2] in {"failed", "timeout", "blocked"}]
+    counts = dict(sorted(
+        (kind, sum(count for _, candidate, _, count in visible if candidate == kind))
+        for kind in {row[1] for row in visible}
+    ))
+    statuses = dict(sorted(
+        (status, sum(count for _, _, candidate, count in visible if candidate == status))
+        for status in {row[2] for row in visible}
+    ))
+    return tasks[0], watermark, stream_hash, {
+        "count": sum(counts.values()),
+        "by_kind": counts,
+        "by_status": statuses,
+        "complete": True,
+        "evidence_manifest_hash": _hash([counts, statuses]),
+    }
+
+
+def compute_context(
     ledger: LedgerStore, request: ViewRequest, *, authorized_tasks: tuple[str, ...],
     redactor: SecretRedactor, reuse: bool = False, artifact_reader: ArtifactReader | None = None,
     source_ledgers: Mapping[str, LedgerStore] | None = None,
@@ -274,29 +328,10 @@ def compute_context(  # pyright: ignore[reportGeneralTypeIssues]  # U6 extracts 
         except (ValueError, KeyError, TypeError):
             return result({"reason": "invalid cursor"}, "unavailable")
     try:
-        from harness.ledger.store import DuckDbLedgerStore
-
-        if (
-            isinstance(ledger, DuckDbLedgerStore)
-            and request.program in {"events.count", "failures.by_kind"}
-            and not source_ledgers and len(tasks) == 1 and request.watermark is None
-            and request.recorded_before is None and request.as_of is None
-            and request.observed_after is None and not request.query
-            and request.retrieval == "keyword" and not request.kinds and not request.statuses
-        ):
-            watermark, stream_hash, groups = ledger.event_counts(tasks[0])
-            manifest[tasks[0]] = {"watermark": watermark, "hash": stream_hash}
-            visible_groups = [row for row in groups if row[1] in _FIELDS or (
-                row[0] == "tool_receipt" and row[1] in {"tool.read", "tool.bash", "tool.edit", "tool.write", "tool.python", "tool.execute_code"}
-            )]
-            if request.program == "failures.by_kind":
-                visible_groups = [row for row in visible_groups if row[2] in {"failed", "timeout", "blocked"}]
-            counts = dict(sorted((kind, sum(count for _, candidate, _, count in visible_groups if candidate == kind))
-                                 for kind in {row[1] for row in visible_groups}))
-            statuses = dict(sorted((status, sum(count for _, _, candidate, count in visible_groups if candidate == status))
-                                   for status in {row[2] for row in visible_groups}))
-            data = {"count": sum(counts.values()), "by_kind": counts, "by_status": statuses,
-                    "complete": True, "evidence_manifest_hash": _hash([counts, statuses])}
+        fast = _fast_counts(ledger, request, tasks, source_ledgers)
+        if fast is not None:
+            task, watermark, stream_hash, data = fast
+            manifest[task] = {"watermark": watermark, "hash": stream_hash}
             execution_hash = _hash({"parameters": parameters, "sources": manifest, "program": program_hash})
             return result(data)
         if source_ledgers:

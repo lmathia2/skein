@@ -95,7 +95,7 @@ and the implementation/evaluation rubric.
 - [x] U5: Consolidate memory programs into one code-owned `(name, version)` registry
   used by configuration and execution; remove unused competing prompt/program code
   only after proving it has no production callers.
-- [ ] U6: Extract context selection as a pure policy computation while retaining one
+- [x] U6: Extract context selection as a pure policy computation while retaining one
   renderer, stable-prefix bytes, complete call/result pairs and bounded evidence.
 - [ ] U7: Re-evaluate the resulting module combinations from first principles,
   update the canonical support matrix, and run unit/integration/type/lint plus the

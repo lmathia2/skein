@@ -6,7 +6,12 @@ import pytest
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 
-from harness.adk.context import ContextWindowPlugin, _complete_cuts, _serialized
+from harness.adk.context import (
+    ContextWindowPlugin,
+    _complete_cuts,
+    _serialized,
+    select_context_cut,
+)
 from harness.config.models import ContextConfig
 from harness.context import estimate_tokens
 from harness.ledger import JsonlLedgerStore
@@ -119,6 +124,39 @@ def test_only_complete_tool_interactions_can_be_cut():
         _complete_cuts([call])
     with pytest.raises(ValueError, match="unmatched"):
         _complete_cuts([result])
+
+
+def test_context_selection_is_pure_bounded_and_keeps_unconsumed_result() -> None:
+    old = text("old " * 5_000)
+    call = types.Content(
+        role="model", parts=[types.Part.from_function_call(name="read", args={})]
+    )
+    result = types.Content(
+        role="user",
+        parts=[types.Part.from_function_response(name="read", response={"value": 42})],
+    )
+    raw = [old, call, result]
+    before = _serialized(raw)
+    header = text("bounded handoff")
+    config = ContextConfig(
+        window_management=True,
+        reconstruction="fresh",
+        work_packet_tokens=2_000,
+    )
+
+    first = select_context_cut(
+        raw, prior_cut=0, header=header, transient=[], config=config
+    )
+    second = select_context_cut(
+        raw, prior_cut=0, header=header, transient=[], config=config
+    )
+
+    assert first == second == 1
+    assert _serialized(raw) == before
+    selected = [header, *raw[first:]]
+    assert estimate_tokens(_serialized(selected)) <= config.work_packet_tokens
+    assert any(part.function_call for part in selected[1].parts or ())
+    assert any(part.function_response for part in selected[2].parts or ())
 
 
 def test_history_capture_only_reads_and_appends_the_new_tail(tmp_path, monkeypatch):

@@ -67,6 +67,38 @@ def _complete_cuts(contents: list[types.Content]) -> list[int]:
     return cuts
 
 
+def select_context_cut(
+    contents: list[types.Content],
+    *,
+    prior_cut: int,
+    header: types.Content,
+    transient: list[types.Content],
+    config: ContextConfig,
+) -> int:
+    """Purely select a bounded complete-interaction suffix boundary."""
+    cuts = _complete_cuts(contents)
+    selected = len(contents)
+    # A just-returned result has not been consumed by the model. Keep its call too.
+    if any(part.function_response for part in contents[-1].parts or ()):
+        selected = cuts[-2]
+    if config.reconstruction == "handoff_tail":
+        for candidate in cuts:
+            if candidate <= prior_cut or candidate > selected:
+                continue
+            tail = contents[candidate:]
+            if (
+                estimate_tokens(_serialized(tail)) <= config.recent_event_tokens
+                and estimate_tokens(_serialized([header, *tail, *transient]))
+                <= config.work_packet_tokens
+            ):
+                selected = candidate
+                break
+    effective = [header, *contents[selected:], *transient]
+    if estimate_tokens(_serialized(effective)) > config.work_packet_tokens:
+        raise ValueError("required control context exceeds the configured window")
+    return selected
+
+
 class ContextWindowPlugin(BasePlugin):
     """Keep ADK history durable; publish a cut before changing a model request.
 
@@ -261,25 +293,14 @@ class ContextWindowPlugin(BasePlugin):
                 )
                 control = self.redactor.redact_text(control)
                 header = types.Content(role="user", parts=[types.Part.from_text(text=control)])
-            cuts = _complete_cuts(raw)
-            new_cut = len(raw)
-            # A just-returned tool result has not yet been consumed by the model.
-            # Keep its whole call/result interaction even in a fresh window.
-            if any(part.function_response for part in raw[-1].parts or ()):
-                new_cut = cuts[-2]
-            if self.config.reconstruction == "handoff_tail":
-                for candidate in cuts:
-                    if candidate <= cut or candidate > new_cut:
-                        continue
-                    tail = raw[candidate:]
-                    if (estimate_tokens(_serialized(tail)) <= self.config.recent_event_tokens
-                            and estimate_tokens(_serialized([header, *tail, *transient]))
-                            <= self.config.work_packet_tokens):
-                        new_cut = candidate
-                        break
+            new_cut = select_context_cut(
+                raw,
+                prior_cut=cut,
+                header=header,
+                transient=transient,
+                config=self.config,
+            )
             effective = [header, *raw[new_cut:], *transient]
-            if estimate_tokens(_serialized(effective)) > self.config.work_packet_tokens:
-                raise ValueError("required control context exceeds the configured window")
             prefix_hash = hashlib.sha256(_serialized(raw[:new_cut]).encode()).hexdigest()
             epoch = hashlib.sha256(f"{invocation}:{anchor}:{new_cut}:{prefix_hash}".encode()).hexdigest()
             # Publication failure leaves llm_request untouched; caller fails closed.

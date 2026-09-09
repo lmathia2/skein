@@ -197,6 +197,13 @@ unknown values fail schema validation; no module silently falls back to another
 implementation. Safety, redaction, authorization, trace authority and independent
 completion verification are invariants rather than selectable modules.
 
+Context selection is a pure policy computation over retained content identities,
+the prior cut, configured budgets, and reconstruction mode. It returns only a cut
+boundary after complete tool interactions. The single ADK context plugin renders the
+header and suffix, publishes the epoch receipt, and mutates the provider request only
+after durable publication succeeds. A newly returned tool result always retains its
+matching call; no policy may split that pair to satisfy a budget.
+
 The smallest useful split is one coordinator and three narrow implementation
 contracts. These are behavioral interfaces; exact Python names may change during
 implementation.
