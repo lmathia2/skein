@@ -12,7 +12,9 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
+import tomllib
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -249,6 +251,56 @@ def cached_task(task: dict[str, Any]) -> Path:
     return path
 
 
+def prepared_task(task: dict[str, Any], source: Path, root: Path) -> tuple[Path, str | None]:
+    """Use one content-addressed verifier image for every trial of a DeepSWE task."""
+
+    root.mkdir(parents=True, exist_ok=True)
+    config = tomllib.loads((source / "task.toml").read_text(encoding="utf-8"))
+    verifier_environment = config.get("verifier", {}).get("environment", {})
+    if task["benchmark"] != "deep-swe" or verifier_environment.get("docker_image"):
+        return source, verifier_environment.get("docker_image")
+
+    image = f"skein-deepswe-verifier:{task['artifact_sha256']}"
+    if subprocess.run(
+        ["docker", "image", "inspect", image],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode:
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "--platform",
+                "linux/amd64",
+                "--tag",
+                image,
+                str(source / "tests"),
+            ],
+            check=True,
+        )
+    image_id = subprocess.check_output(
+        ["docker", "image", "inspect", image, "--format", "{{.Id}}"], text=True
+    ).strip()
+    if not image_id.startswith("sha256:"):
+        raise SystemExit(f"Docker returned an invalid verifier image ID for {image}")
+
+    target = root / task["artifact_sha256"]
+    expected = f'docker_image = "{image_id}"'
+    if not target.is_dir() or expected not in (target / "task.toml").read_text(encoding="utf-8"):
+        temporary = Path(tempfile.mkdtemp(prefix="task-", dir=root))
+        shutil.copytree(source, temporary, dirs_exist_ok=True)
+        task_toml = temporary / "task.toml"
+        text = task_toml.read_text(encoding="utf-8")
+        header = "[verifier.environment]\n"
+        if header not in text:
+            raise SystemExit(f"{source} has no separate verifier environment")
+        task_toml.write_text(text.replace(header, f"{header}{expected}\n", 1), encoding="utf-8")
+        if target.exists():
+            shutil.rmtree(target)
+        temporary.replace(target)
+    return target, image_id
+
+
 def run_command(
     task: dict[str, Any],
     args: argparse.Namespace,
@@ -281,6 +333,7 @@ def run_command(
         str(attempts),
         "--max-retries",
         "0",
+        "--no-delete",
         "--quiet",
         "--yes",
         "--job-name",
@@ -475,6 +528,10 @@ def main() -> int:
             complete.add(key)
             print(f"[{index}/{len(tasks)}] recover {task['task_id']} (complete)")
             continue
+        source_task = cached_task(task)
+        prepared_root = output / "prepared-tasks"
+        prepared_root.mkdir(exist_ok=True)
+        task_path, verifier_image = prepared_task(task, source_task, prepared_root)
         finished = False
         for retry in range(args.retries + 1):
             resumed = incomplete_job(output, prefix)
@@ -484,7 +541,7 @@ def main() -> int:
             else:
                 task_dir = next_attempt_dir(output, prefix)
                 task_dir.mkdir(parents=True, exist_ok=True)
-                command = run_command(task, args, attempts, task_dir, cached_task(task))
+                command = run_command(task, args, attempts, task_dir, task_path)
             append_row(
                 task_dir / "commands.jsonl",
                 {
@@ -492,7 +549,9 @@ def main() -> int:
                     "command": command,
                 },
             )
-            (task_dir / "task.json").write_text(dump(task), encoding="utf-8")
+            (task_dir / "task.json").write_text(
+                dump({**task, "runtime_verifier_image": verifier_image}), encoding="utf-8"
+            )
             started = time.monotonic()
             timeout_seconds = args.timeout_seconds or (int(task["expected_runtime_seconds"]) + 1800)
             with (

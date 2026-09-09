@@ -45,6 +45,20 @@ python scripts/run_harbor_eval.py --suite broader
 python scripts/run_harbor_eval.py --suite full
 ```
 
+For every DeepSWE task, this runner builds the task's frozen `tests/` context
+once as `linux/amd64`, resolves the resulting immutable `sha256:` image ID, and
+passes that ID through Pier's supported `verifier.environment.docker_image`
+field. Later trials start fresh verifier containers from the same image instead
+of rebuilding it. The official cached task is never modified, and each trial's
+`task.json` records the resolved verifier image ID. Do not replace this runner
+with a raw `pier run` for scored DeepSWE campaigns unless the equivalent pinned
+image preparation and provenance recording are preserved.
+
+The cache changes startup cost only. A new host or Docker backend must pass an
+official oracle task with the prebuilt path before scored runs; the Wazero
+oracle gate passed with reward `1`, full F2P/P2P, and no exception on the local
+Rosetta-backed Docker environment.
+
 Rerun the same command after an interruption. Completed task keys are skipped,
 an incomplete Pier job is resumed with `pier job resume`, and a finished
 infrastructure error gets a separate attempt directory. A result written before

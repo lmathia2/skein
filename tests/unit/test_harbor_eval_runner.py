@@ -64,6 +64,7 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
     assert "harness.evals.harbor:SkeinPierAgent" in command
     assert command[command.index("--model") + 1] == "openai/gpt-5.5"
     assert "max_task_input_tokens=1000000000" in command
+    assert "--no-delete" in command
     assert str(ROOT) in runner.pier_environment({})["PYTHONPATH"].split(":")
 
 
@@ -82,6 +83,43 @@ def test_provider_defaults_omit_reasoning_and_output_limit(tmp_path: Path) -> No
 
     assert not any("reasoning=" in value for value in command)
     assert not any("max_output_tokens=" in value for value in command)
+
+
+def test_deepswe_verifier_image_is_built_once_and_pinned(monkeypatch, tmp_path: Path) -> None:
+    runner = load_runner()
+    source = tmp_path / "source"
+    (source / "tests").mkdir(parents=True)
+    (source / "tests" / "Dockerfile").write_text("FROM example@sha256:abc\n")
+    (source / "task.toml").write_text(
+        '[verifier]\nenvironment_mode = "separate"\n\n[verifier.environment]\n'
+    )
+    task = {"benchmark": "deep-swe", "artifact_sha256": "a" * 64}
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1 if "inspect" in command else 0)
+
+    monkeypatch.setattr(runner.subprocess, "run", run)
+    monkeypatch.setattr(
+        runner.subprocess,
+        "check_output",
+        lambda *args, **kwargs: "sha256:" + "b" * 64 + "\n",
+    )
+    prepared, image = runner.prepared_task(task, source, tmp_path / "prepared")
+
+    assert image == "sha256:" + "b" * 64
+    assert f'docker_image = "{image}"' in (prepared / "task.toml").read_text()
+    tag = f"skein-deepswe-verifier:{'a' * 64}"
+    assert calls[1][:6] == [
+        "docker",
+        "build",
+        "--platform",
+        "linux/amd64",
+        "--tag",
+        tag,
+    ]
+    assert "docker_image" not in (source / "task.toml").read_text()
 
 
 def test_provider_default_reasoning_keeps_explicit_output_limit() -> None:
