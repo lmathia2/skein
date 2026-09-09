@@ -512,15 +512,16 @@ Each step is independently testable and lands in its own commit:
 7. **Run the matrix:** compare supported runtime/serializer/state combinations with the
    same model, tasks, budgets, broker, and verifier before changing any default.
 
-Required deterministic matrix:
+Canonical runtime/persistence matrix after implementation audit:
 
-| Runtime | Serialization | State | Required assertion |
-| --- | --- | --- | --- |
-| `skein_repl` | `notebook` | `replay_safe` | Current behavior remains byte-equivalent |
-| `skein_repl` | `jsonl` | `replay_safe` | No notebook file or duplicate JSONL writer |
-| `adk_code_mode` | `jsonl` | `none` | Turn-scoped execution remains brokered |
-| `prime_repl` | `jsonl` | `snapshot` | Serializable names restore within bounds |
-| `prime_repl` | `notebook` | `snapshot` | Document choice does not change execution result |
+| Runtime | Serialization | State | Status | Contract |
+| --- | --- | --- | --- | --- |
+| `skein_repl` | `notebook` | `replay_safe` | supported | Durable cells and conservative replay |
+| `skein_repl` | `jsonl` | `replay_safe` | not implemented | Requires extraction of notebook serialization from the coordinator |
+| `adk_code_mode` | implementation-native | `none` | supported | Turn-scoped brokered execution in the pinned container |
+| `adk_code_mode` | `jsonl` | `none` | not selectable | Canonical receipts exist, but no selectable ADK session serializer exists |
+| `prime_repl` | `jsonl` | `snapshot` | supported | Trusted native execution; bounded names restore within ownership limits |
+| `prime_repl` | `notebook` | `snapshot` | not implemented | Requires a deterministic Prime transcript-to-notebook projector |
 
 For identical brokered programs, changing only serialization must preserve runtime
 result, operation identities, authorization, receipts, workspace result, and
@@ -532,17 +533,19 @@ duplicate or unknown effects, snapshot bytes/failures, and terminal reason.
 ## Implemented boundary
 
 - Four tools are the default profile.
-- `execute_code` is the shared model-facing name for the current Skein notebook and
-  vendored ADK Code Mode implementations.
+- `execute_code` is the shared model-facing name for Skein notebook, vendored ADK Code
+  Mode, and trusted Prime implementations; all return the compact result envelope.
 - Runtime, serialization, and state policy are not yet independently composed; the
   current `NotebookPtcConfig.implementation` remains the compatibility bundle until the
   migration above lands.
 - Notebook PTC is implemented and disabled by default.
-- PTC currently supports the trusted local adapter; this source guard is not a
-  production security sandbox.
+- Skein and Prime local adapters require project trust and are not production security
+  sandboxes. ADK Code Mode uses the pinned reusable container lifecycle.
 - Registered MCP calls, direct tools, PTC calls, and verification share policy,
   receipts, redaction, output limits, and task identity.
 - Canonical JSONL and DuckDB ledgers are implemented and optional.
+- One code-owned memory-program registry controls configuration, execution, and model
+  exposure; legacy prompt/reducer and mutable SQL catalogs were removed.
 - Physical task erasure is an explicit operator action and removes its recognized
   projections; append-only means normal writes do not rewrite history, not that
   retention policy can never delete data.

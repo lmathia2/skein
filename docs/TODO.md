@@ -100,6 +100,10 @@ and the implementation/evaluation rubric.
 - [ ] U7: Re-evaluate the resulting module combinations from first principles,
   update the canonical support matrix, and run unit/integration/type/lint plus the
   controlled live comparison before changing defaults.
+  - [x] Audit and document the actually supported and rejected combinations.
+  - [x] Pass the full unit suite, runnable integrations, full lint, and changed-code typing.
+  - [ ] Clear the repository-wide pre-existing Pyright baseline and run the matched
+    provider comparison; keep four tools as the default until both gates pass.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
@@ -107,10 +111,8 @@ and the implementation/evaluation rubric.
     Keep runtime-specific protocols separate until cross-pairing requires more.
 - [ ] Separate PTC serialization (`notebook` or ledger-only `jsonl`) from runtime-state
   recovery (`none`, `replay_safe`, or bounded `snapshot`) and reject invalid combinations.
-- [ ] Replace bundled memory implementation selection with exact code-owned
+- [x] Replace bundled memory implementation selection with exact code-owned
   `(program name, version)` configuration and receipt identity.
-  - [x] Add optional exact version selection for the existing reviewed context programs.
-    Full internal prompt-program substitution remains pending.
 - [x] Add the pinned Prime REPL runtime and bounded snapshot policy as optional
   implementations without importing Prime's daemon, TUI, or session authority.
 - [x] Bundle the PTC-specific Python dependencies with licenses and provenance;
