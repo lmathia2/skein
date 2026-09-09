@@ -69,6 +69,10 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
 
 ## Retained and verified
 
+- Notebook cell execution, replay, broker receipts, projection, and work-batch control
+  are extracted into `app.agent.ptc`; notebook and ADK Code Mode share a `PtcSession`
+  assembly interface. Their tool declarations and lifecycle behavior are retained.
+
 - PTC configuration preserves implementation-native serialization and state policy
   by default. Explicit Skein notebook/safe-replay and ADK native-history/no-restore
   selections are accepted. Unsupported combinations and the not-yet-integrated
