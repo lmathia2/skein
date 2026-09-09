@@ -105,7 +105,9 @@ and the implementation/evaluation rubric.
   - [x] Clear the production `app`/`harness` Pyright baseline; executable tests remain
     covered by pytest rather than static analysis of their deliberately dynamic fakes.
   - [ ] Run the matched provider comparison; keep four tools as the default until that
-    gate passes.
+    gate passes. The 2026-09-09 preflight correctly refused to run: Codex and
+    OpenRouter credentials were absent, and the subscription/model/revision contract
+    remains unfrozen. The pinned ADK image and its reset-isolation integration passed.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
@@ -119,8 +121,11 @@ and the implementation/evaluation rubric.
   implementations without importing Prime's daemon, TUI, or session authority.
 - [x] Bundle the PTC-specific Python dependencies with licenses and provenance;
   verify Prime recovery without site-packages and ADK SDK import without installed extras.
-- [ ] Run the deterministic composition matrix and matched live comparison before
-  changing the four-tool default.
+- [x] Run the deterministic composition matrix across PTC, memory-program, context,
+  serialization, state, and continuity selections, including explicit rejection of
+  unsupported combinations.
+- [ ] Run the matched live comparison before changing the four-tool default; retain
+  the preflight blockers recorded under U7 until the experiment contract is frozen.
 
 - [x] Make Skein notebook PTC and vendored ADK Code Mode selectable ADK tools,
   and independently select optional trace-native or Pi-derived memory for
