@@ -260,6 +260,19 @@ def test_metadata_rejects_changed_fixed_intelligence(tmp_path: Path) -> None:
         runner.write_or_validate_metadata(path, metadata)
 
 
+def test_append_row_is_actual_resumable_jsonl(tmp_path: Path) -> None:
+    runner = load_runner()
+    path = tmp_path / "runs.jsonl"
+    runner.append_row(path, {"key": "first", "status": "complete"})
+    runner.append_row(path, {"key": "second", "status": "incomplete"})
+
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+    assert runner.ledger_rows(path) == [
+        {"key": "first", "status": "complete"},
+        {"key": "second", "status": "incomplete"},
+    ]
+
+
 def test_watchdog_terminates_a_hung_job(tmp_path: Path) -> None:
     runner = load_runner()
     with (

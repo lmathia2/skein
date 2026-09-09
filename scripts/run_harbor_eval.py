@@ -165,7 +165,8 @@ def ledger_rows(path: Path) -> list[dict[str, Any]]:
 
 def append_row(path: Path, value: dict[str, Any]) -> None:
     with _APPEND_LOCK, path.open("a", encoding="utf-8") as handle:
-        handle.write(dump(value))
+        handle.write(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        handle.write("\n")
         handle.flush()
         os.fsync(handle.fileno())
 
