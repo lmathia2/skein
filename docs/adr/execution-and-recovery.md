@@ -147,6 +147,10 @@ distributed coordination.
 - Safe-auto recovery is opt-in and covered by deterministic subprocess scenarios.
 - Prime-native snapshot recovery is run-scoped, explicitly trusted, and separate from
   safe-auto effect recovery; interrupted or unknown native effects require reconciliation.
+- Under Harbor, Prime's persistent worker and trial-stable snapshot directory live
+  inside the disposable task container. Host-side orchestration sends bounded requests
+  through Harbor's environment interface; it never treats a host shadow checkout as
+  execution authority. A new trial/container is the cross-example reset boundary.
 - Workspace fingerprints detect divergence but do not restore a workspace.
 - Conversation notebook continuity and prior-run memory are separately authorized.
 - Live model-quality, cost, and cache promotion gates remain pending.

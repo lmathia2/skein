@@ -111,7 +111,7 @@ def test_plan_accepts_bounded_campaign_concurrency() -> None:
     assert plan["max_task_input_tokens"] == 200_000
 
 
-def test_harbor_runner_rejects_prime_before_starting_jobs() -> None:
+def test_harbor_runner_accepts_prime_with_container_runtime_bridge() -> None:
     completed = subprocess.run(
         [
             sys.executable,
@@ -127,8 +127,8 @@ def test_harbor_runner_rejects_prime_before_starting_jobs() -> None:
         text=True,
     )
 
-    assert completed.returncode != 0
-    assert "Prime PTC is not Harbor-compatible" in completed.stderr
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["suite"] == "smoke"
 
 
 def test_deepswe_verifier_image_is_built_once_and_pinned(monkeypatch, tmp_path: Path) -> None:

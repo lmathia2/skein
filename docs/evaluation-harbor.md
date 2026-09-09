@@ -65,9 +65,12 @@ Pier job, task workspace, Skein state root, and `--n-concurrent 1`; only ledger 
 are serialized. Use a separate jobs directory for each candidate. Concurrency is part
 of the frozen run metadata, so changing it requires a new jobs directory.
 
-The Harbor runner rejects Prime PTC before job creation. Prime's trusted native process
-cannot mutate Harbor's authoritative container workspace through the current brokered
-adapter; a dedicated native workspace adapter is required for a valid comparison.
+Prime PTC runs one persistent Python worker inside each disposable Harbor task
+container. The host reaches it through bounded one-shot environment calls, while the
+live heap, snapshots, and native filesystem effects remain in the authoritative task
+environment. The bridge bundle contains only the vendored Prime runtime and snapshot
+dependency; provider credentials remain on the host. Closing a run terminates the
+worker, and Harbor's per-trial container boundary prevents state crossing examples.
 
 Rerun the same command after an interruption. Completed task keys are skipped,
 an incomplete Pier job is resumed with `pier job resume`, and a finished

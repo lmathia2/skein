@@ -180,11 +180,6 @@ def validate_harbor_config(path: str) -> None:
     config = composition.harness.config
     if not isinstance(config, SkeinConfig):
         raise SystemExit("Harbor evaluation requires the skein_v1 harness")
-    if config.notebook_ptc.enabled and config.notebook_ptc.implementation == "prime_repl":
-        raise SystemExit(
-            "Prime PTC is not Harbor-compatible: native execution cannot mutate Harbor's "
-            "authoritative task workspace; implement a native workspace adapter first"
-        )
 
 
 def docker_ready() -> None:

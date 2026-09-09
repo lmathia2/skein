@@ -22,6 +22,7 @@ from harness.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfi
 from harness.environment.async_call import run_managed_thread
 from harness.environment.runtime import LocalRepositoryRuntime
 from harness.models.agent_step import StructuredAgentStep
+from harness.repl.prime import PrimeRuntime
 from harness.safety.redaction import SecretRedactor
 from harness.state import EventStore, JsonlEventStore
 from harness.state.events import HarnessEvent
@@ -64,6 +65,7 @@ def build_coding_worker(
     notebook_root: Path | None = None,
     workspace_fingerprint: Callable[[], str] | None = None,
     redactor: SecretRedactor | None = None,
+    prime_runtime_factory: Callable[[Path, int], PrimeRuntime] | None = None,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -244,6 +246,7 @@ def build_coding_worker(
             replies=replies, redactor=redactor or SecretRedactor(),
             conversation_id=conversation_notebook_id, prior_events=prior_notebook_events,
             state_root=notebook_root,
+            runtime_factory=prime_runtime_factory,
         )
 
     ptc_session = select_ptc_session(

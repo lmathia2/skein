@@ -8,6 +8,7 @@ import json
 import os
 import posixpath
 import shlex
+import tarfile
 import tempfile
 import time
 from collections.abc import Coroutine, Sequence
@@ -50,6 +51,7 @@ from harness.evals.runner import (
     write_evaluation_result,
 )
 from harness.models.task import TaskRequest
+from harness.repl.prime import PrimeRuntime
 from harness.repo import RepositoryManifest, repository_manifest_from_snapshot
 from harness.sandbox import CommandSandbox, SandboxRequest, SandboxResult
 from harness.sandbox.output import bounded_result, environment_secret_values
@@ -284,6 +286,132 @@ class HarborCommandSandbox(CommandSandbox):
             )
 
 
+class HarborPrimeRuntime(PrimeRuntime):
+    """Keep Prime's heap and native effects inside Harbor's task container."""
+
+    def __init__(
+        self,
+        environment: BaseEnvironment,
+        bridge: _AsyncBridge,
+        workspace: str,
+        *,
+        max_output_bytes: int,
+    ) -> None:
+        super().__init__(Path(workspace), max_output_bytes=max_output_bytes)
+        self._environment = environment
+        self._bridge = bridge
+        token = uuid4().hex
+        self._root = f"/tmp/skein-prime-{token}"
+        self._socket = f"{self._root}/worker.sock"
+        # One Harbor trial owns one container, so this survives a host worker
+        # replacement without crossing an evaluation-example boundary.
+        self._state = "/tmp/skein-prime-state"
+        self._python: str | None = None
+        self._started = False
+
+    def _exec(self, command: str, *, timeout: float = 30) -> ExecResult:
+        return self._bridge.call(
+            self._environment.exec(
+                command,
+                cwd=self.workspace.as_posix(),
+                timeout_sec=max(1, int(timeout)),
+            )
+        )
+
+    @staticmethod
+    def _bundle(path: Path) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tarfile.open(path, "w:gz") as archive:
+            archive.add(root / "harness/repl/prime.py", arcname="prime_transport.py")
+            archive.add(root / "harness/repl/prime_bridge.py", arcname="prime_bridge.py")
+            archive.add(root / "harness/repl/prime_runtime", arcname="rlm")
+            archive.add(root / "harness/_vendor/dill", arcname="dill")
+
+    def _call(self, payload: dict[str, Any], *, timeout: float = 30) -> dict[str, Any]:
+        if self._python is None:
+            raise RuntimeError("Harbor Prime bridge is not started")
+        encoded = json.dumps(payload, allow_nan=False, separators=(",", ":"))
+        command = " ".join((
+            shlex.quote(self._python), shlex.quote(f"{self._root}/prime_bridge.py"),
+            "request", shlex.quote(self._socket), shlex.quote(encoded),
+        ))
+        result = self._exec(command, timeout=timeout)
+        if result.return_code != 0:
+            raise RuntimeError(result.stderr or result.stdout or "Harbor Prime bridge failed")
+        try:
+            response = json.loads(result.stdout or "")
+        except json.JSONDecodeError as error:
+            raise RuntimeError("Harbor Prime bridge returned invalid JSON") from error
+        if response.get("bridge_error"):
+            if response["bridge_error"] == "TimeoutError":
+                raise TimeoutError(response.get("detail") or "Prime REPL deadline exceeded")
+            raise RuntimeError(
+                f"Harbor Prime bridge {response['bridge_error']}: {response.get('detail', '')}"
+            )
+        return response
+
+    def start(self) -> None:
+        if self._started:
+            return
+        descriptor, temporary = tempfile.mkstemp(prefix="skein-prime-", suffix=".tar.gz")
+        os.close(descriptor)
+        bundle = Path(temporary)
+        try:
+            self._bundle(bundle)
+            remote_bundle = f"{self._root}/bundle.tar.gz"
+            HarborWorkspaceEnvironment._require(self._exec(f"mkdir -p {shlex.quote(self._root)}"))
+            self._bridge.call(self._environment.upload_file(bundle, remote_bundle))
+            python = self._exec("command -v python3 || command -v python", timeout=10)
+            HarborWorkspaceEnvironment._require(python)
+            self._python = (python.stdout or "").strip().splitlines()[0]
+            launch = (
+                f"tar -xzf {shlex.quote(remote_bundle)} -C {shlex.quote(self._root)} && "
+                f"nohup {shlex.quote(self._python)} {shlex.quote(f'{self._root}/prime_bridge.py')} "
+                f"serve {shlex.quote(self._socket)} {shlex.quote(self.workspace.as_posix())} "
+                f"{shlex.quote(self._state)} {self.max_output_bytes} "
+                f">{shlex.quote(f'{self._root}/bridge.log')} 2>&1 &"
+            )
+            HarborWorkspaceEnvironment._require(self._exec(launch))
+            for _ in range(30):
+                ready = self._exec(f"test -S {shlex.quote(self._socket)}", timeout=2)
+                if ready.return_code == 0:
+                    break
+                time.sleep(0.1)
+            else:
+                detail = self._exec(
+                    f"cat {shlex.quote(f'{self._root}/bridge.log')}", timeout=5
+                ).stdout
+                raise RuntimeError(f"Harbor Prime bridge did not become ready: {detail}")
+            response = self._call({"operation": "start"})
+            self.epoch = str(response["runtime_epoch"])
+            self._started = True
+        finally:
+            bundle.unlink(missing_ok=True)
+
+    def request(self, kind: str, *, timeout: float = 120, **fields: Any) -> dict[str, Any]:
+        return self._call(
+            {"operation": "request", "kind": kind, "timeout": timeout, **fields},
+            timeout=timeout + 5,
+        )
+
+    def snapshot(self, directory: Path) -> dict[str, Any]:
+        del directory
+        return self._call({"operation": "snapshot"})
+
+    def restore(self, receipt: dict[str, Any], directory: Path) -> dict[str, Any]:
+        del directory
+        return self._call({"operation": "restore", "receipt": receipt})
+
+    def close(self) -> None:
+        if self._python is not None:
+            with suppress(Exception):
+                self._call({"operation": "close"}, timeout=5)
+            with suppress(Exception):
+                self._exec(f"rm -rf -- {shlex.quote(self._root)}", timeout=5)
+        self._started = False
+        self._python = None
+
+
 class HarborRepositoryRuntime(RepositoryRuntime):
     def __init__(
         self,
@@ -471,7 +599,15 @@ class SkeinPierAgent(BaseAgent):
             return ExecutionRuntime(files=files, commands=commands, repository=repository)
 
         self.logger.info("Skein Pier repository snapshot initialized")
-        registry = default_harness_registry(execution_runtime_factory=runtime_factory)
+        registry = default_harness_registry(
+            execution_runtime_factory=runtime_factory,
+            prime_runtime_factory=lambda _workspace, max_output_bytes: HarborPrimeRuntime(
+                environment,
+                bridge,
+                self._workspace or "/",
+                max_output_bytes=max_output_bytes,
+            ),
+        )
 
         def assembly_builder(**kwargs: Any):
             return build_server_assembly(**kwargs, registry=registry)
@@ -491,6 +627,7 @@ class SkeinPierAgent(BaseAgent):
             max_task_input_tokens=self.max_task_input_tokens,
             max_output_tokens=self.max_output_tokens,
             wall_time_seconds=self.wall_time_seconds,
+            trust_project=True,
             isolated_environment_authority=True,
         )
         context.metadata = {
@@ -534,6 +671,7 @@ SkeinHarborAgent = SkeinPierAgent
 
 __all__ = [
     "HarborCommandSandbox",
+    "HarborPrimeRuntime",
     "HarborRepositoryRuntime",
     "HarborWorkspaceEnvironment",
     "SkeinHarborAgent",

@@ -27,9 +27,18 @@ class PrimeRuntime:
     Native Python has OS permissions. Neither this transport nor dill is a sandbox.
     """
 
-    def __init__(self, workspace: Path, *, max_output_bytes: int = 16000) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        *,
+        max_output_bytes: int = 16000,
+        runtime_module: str = RUNTIME,
+        python_paths: tuple[Path, ...] | None = None,
+    ) -> None:
         self.workspace = workspace.resolve()
         self.max_output_bytes = max_output_bytes
+        self.runtime_module = runtime_module
+        self.python_paths = python_paths
         self.epoch = uuid4().hex
         self.process: subprocess.Popen[bytes] | None = None
         self._frames: queue.Queue[dict[str, Any] | Exception] = queue.Queue(maxsize=128)
@@ -83,12 +92,16 @@ class PrimeRuntime:
         # Provider credentials stay in the parent. Project tools may obtain their own
         # credentials through the explicitly trusted user's normal OS environment.
         env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "TMPDIR") if key in os.environ}
-        package_root = Path(__file__).resolve().parents[2]
-        env["PYTHONPATH"] = os.pathsep.join((str(package_root / "harness/_vendor"), str(package_root)))
+        if self.python_paths is None:
+            package_root = Path(__file__).resolve().parents[2]
+            python_paths = (package_root / "harness/_vendor", package_root)
+        else:
+            python_paths = self.python_paths
+        env["PYTHONPATH"] = os.pathsep.join(map(str, python_paths))
         env["PRIME_AGENT_KERNEL_OWNER_PID"] = str(os.getpid())
         env["PRIME_AGENT_BASH_SHELL"] = "/bin/bash"
         self.process = subprocess.Popen(
-            [sys.executable, "-u", "-m", RUNTIME], cwd=self.workspace, env=env,
+            [sys.executable, "-u", "-m", self.runtime_module], cwd=self.workspace, env=env,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
@@ -98,9 +111,10 @@ class PrimeRuntime:
             ready = self._next(time.monotonic() + 30)
             if ready.get("event") != "ready" or ready.get("protocol") != 3:
                 raise RuntimeError("Prime REPL protocol version mismatch")
+            runtime_package = self.runtime_module.rpartition(".")[0]
             bootstrap = self.request("execute", code=(
                 "import asyncio\n"
-                "from harness.repl.prime_runtime.bash import bash\n"
+                f"from {runtime_package}.bash import bash\n"
                 "from rlm.repl import emit\n"
             ))
             if bootstrap.get("status") != "ok":

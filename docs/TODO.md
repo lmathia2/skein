@@ -112,7 +112,8 @@ and the implementation/evaluation rubric.
   - [x] Remove ADK Code Mode, its container pool/image, and vendored Docker SDK; keep a
     helpful configuration migration error and the smoke report as historical evidence.
   - [x] Add bounded concurrent Harbor task scheduling while preserving one isolated
-    Pier trial per worker; reject Prime until its native workspace adapter exists.
+    Pier trial per worker; run Prime through a persistent in-container bridge so its
+    native effects target the authoritative task workspace.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.

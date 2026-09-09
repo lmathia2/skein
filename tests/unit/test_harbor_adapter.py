@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from harness.environment import WorkspaceViolationError
 from harness.evals.harbor import (
     HarborCommandSandbox,
+    HarborPrimeRuntime,
     HarborRepositoryRuntime,
     HarborWorkspaceEnvironment,
     _AsyncBridge,
@@ -71,6 +73,37 @@ class _TimeoutEnvironment(_Environment):
         user: str | int | None = None,
     ) -> _Result:
         raise RuntimeError(f"Command timed out after {timeout_sec} seconds")
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="managed macOS tests deny Unix socket bind")
+def test_harbor_prime_runtime_executes_persistently_in_authoritative_workspace(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        environment = _Environment()
+        runtime = HarborPrimeRuntime(
+            environment,  # type: ignore[arg-type]
+            _AsyncBridge(asyncio.get_running_loop()),
+            tmp_path.as_posix(),
+            max_output_bytes=1_000,
+        )
+        await asyncio.to_thread(runtime.start)
+        try:
+            first = await asyncio.to_thread(
+                runtime.request,
+                "execute",
+                code="value = 41\nopen('prime.txt', 'w').write('authoritative')",
+            )
+            second = await asyncio.to_thread(runtime.request, "execute", code="value + 1")
+            assert first["status"] == "ok"
+            assert second["result"] == "42"
+            assert (tmp_path / "prime.txt").read_text() == "authoritative"
+            receipt = await asyncio.to_thread(runtime.snapshot, tmp_path / "ignored")
+            assert receipt["workspace"] == tmp_path.as_posix()
+        finally:
+            await asyncio.to_thread(runtime.close)
+
+    asyncio.run(exercise())
 
 
 def test_harbor_sandbox_normalizes_pier_command_timeout(tmp_path: Path) -> None:

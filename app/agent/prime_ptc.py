@@ -35,6 +35,7 @@ def build_prime_session(
     redactor: SecretRedactor,
     conversation_id: str | None = None, prior_events: tuple[HarnessEvent, ...] = (),
     state_root: Path | None = None,
+    runtime_factory: Callable[[Path, int], PrimeRuntime] | None = None,
 ) -> PtcSession:
     if not config.prime_native_execution or not settings.project_trusted:
         raise ValueError("prime_repl requires prime_native_execution=true and explicit project trust")
@@ -49,7 +50,11 @@ def build_prime_session(
     except OSError:
         owner.close()
         raise RuntimeError("Prime PTC conversation already has an active owner") from None
-    runtime = PrimeRuntime(settings.workspace, max_output_bytes=config.max_output_bytes)
+    runtime = (
+        runtime_factory(settings.workspace, config.max_output_bytes)
+        if runtime_factory is not None
+        else PrimeRuntime(settings.workspace, max_output_bytes=config.max_output_bytes)
+    )
     execution_lock = asyncio.Lock()
     closed = False
     task_id = settings.task_id_override or identity

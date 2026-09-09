@@ -235,7 +235,11 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   provider-reported cost/cache usage, and exposes the concrete routed model.
 - A pinned Harbor 0.22 host-side adapter, immutable public benchmark manifests,
   sequential fixed-intelligence matrices, official-reward import, and paired
-  analysis. A live six-task Muse Spark 1.3 Contributor four-tool/PTC comparison
+  analysis. Prime PTC is installed into each disposable task container and reached
+  through short environment calls to a persistent Unix-socket worker; its heap and
+  native effects remain in the authoritative workspace, with trial-local snapshots
+  and no provider credentials copied into the container. A live six-task Muse Spark
+  1.3 Contributor four-tool/PTC comparison
   has run; the broader Luna/max matrix remains pending.
 - Fresh uv checkout installation and default TUI build; no Magnitude requirement.
 
