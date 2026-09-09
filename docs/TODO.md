@@ -81,6 +81,26 @@ and the implementation/evaluation rubric.
 
 ## PTC execution refinement
 
+### Modular architecture execution checklist
+
+- [x] U1: Prebuild the pinned ADK sandbox image and verify its package contents.
+- [ ] U2: Reuse one trusted-eval container per sequential worker with a fresh
+  interpreter, workspace view, environment and tool package per example; prove
+  descendant cleanup, no cross-example state, replacement on reset failure, and
+  container/start/reset metrics.
+- [ ] U3: Normalize PTC model-visible results to a compact stable envelope and make
+  top-level plus nested tool usage queryable through versioned trace-memory views.
+- [ ] U4: Replace scattered PTC assembly branches with one closed dispatch point;
+  document and exhaustively test behavior with PTC/memory/context independently off.
+- [ ] U5: Consolidate memory programs into one code-owned `(name, version)` registry
+  used by configuration and execution; remove unused competing prompt/program code
+  only after proving it has no production callers.
+- [ ] U6: Extract context selection as a pure policy computation while retaining one
+  renderer, stable-prefix bytes, complete call/result pairs and bounded evidence.
+- [ ] U7: Re-evaluate the resulting module combinations from first principles,
+  update the canonical support matrix, and run unit/integration/type/lint plus the
+  controlled live comparison before changing defaults.
+
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
   - [x] Extract native lifecycle adapters behind a shared `PtcSession`.

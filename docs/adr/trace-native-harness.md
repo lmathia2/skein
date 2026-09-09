@@ -153,6 +153,33 @@ target, not a promise that all combinations are available now.
 
 ## Component contracts
 
+### Required modular boundaries
+
+Every implementation in a row uses that module's common typed contract. Configuration
+may select the replaceable behavior; it may not disable or replace the invariant.
+
+| Module | Replaceable implementations | Host-owned invariant |
+| --- | --- | --- |
+| Environment lifecycle | Local process, fresh container, reusable evaluation worker | Exclusive ownership, clean setup/reset, cleanup verification |
+| PTC serialization | Notebook document, ledger-native JSONL representation | Stable cell identities and ledger provenance; serialization never executes code |
+| Runtime-state policy | Fresh state, safe replay, bounded snapshot | Explicit restore eligibility; uncertain effects are never automatically replayed |
+| Memory programs | Versioned history, progress, retrieval, summary, handoff | Authorized sources, watermarks, budgets, evidence and result hashes |
+| Context assembly | Recent history, handoff-plus-tail, fresh reconstruction, Pi compaction | Stable prefix, bounded dynamic suffix, complete tool-call/result boundaries |
+| Result presentation | Compact text, structured data, images, artifact references | Redaction, output bounds and links to authoritative evidence |
+
+Turning a replaceable module off selects its identity behavior; it does not bypass an
+invariant. PTC without memory still records its owned execution lifecycle and receives
+normal bounded ADK history, but has no historical memory-query bridge. Memory without
+PTC derives views over direct-tool and task events. Context window management without
+trace-native memory is invalid because it cannot reconstruct an evidence-backed suffix.
+Serialization and runtime-state recovery remain independent of memory visibility.
+
+The support matrix is closed: a combination exists only when assembly validation and
+contract tests cover it. Known unavailable combinations raise `NotImplementedError`;
+unknown values fail schema validation; no module silently falls back to another
+implementation. Safety, redaction, authorization, trace authority and independent
+completion verification are invariants rather than selectable modules.
+
 The smallest useful split is one coordinator and three narrow implementation
 contracts. These are behavioral interfaces; exact Python names may change during
 implementation.

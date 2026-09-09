@@ -30,3 +30,11 @@ assert client.api.base_url == 'http+docker://localhost'
 client.close()
 '''
     subprocess.run([sys.executable, "-c", script], check=True)
+
+
+def test_adk_sandbox_image_is_reproducible_and_install_free():
+    root = Path(__file__).resolve().parents[2]
+    dockerfile = (root / "harness/adk/code_mode_sandbox/Dockerfile").read_text()
+    assert "python:3.12-slim@sha256:" in dockerfile
+    assert "COPY *.py /opt/skein/harness/adk/code_mode_sandbox/" in dockerfile
+    assert "pip install" not in dockerfile
