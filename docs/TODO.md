@@ -104,9 +104,9 @@ and the implementation/evaluation rubric.
   - [x] Pass the full unit suite, runnable integrations, full lint, and changed-code typing.
   - [x] Clear the production `app`/`harness` Pyright baseline; executable tests remain
     covered by pytest rather than static analysis of their deliberately dynamic fakes.
-  - [x] Run a larger matched provider comparison; the six-task DeepSWE run scored 0/6
-    for both PTC modes, so four tools remain the default. Notebook used 13.7% fewer
-    input tokens and 22.1% less active time. See
+  - [x] Run a larger matched provider comparison; all three six-task DeepSWE lanes
+    scored 0/6, so four tools remain the default. Notebook used 12.8% fewer input
+    tokens and 17.3% less active time than the four-tool baseline. See
     `docs/audits/ptc-deepswe-six-task-2026-09-09.md`.
   - [x] Run a one-task, four-mode matched OpenRouter smoke with memory disabled. Prime
     used the fewest calls, wall time, and serialized request bytes; ADK Code Mode
