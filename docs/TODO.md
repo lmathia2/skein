@@ -97,15 +97,17 @@ and the implementation/evaluation rubric.
   only after proving it has no production callers.
 - [x] U6: Extract context selection as a pure policy computation while retaining one
   renderer, stable-prefix bytes, complete call/result pairs and bounded evidence.
-- [ ] U7: Re-evaluate the resulting module combinations from first principles,
+- [x] U7: Re-evaluate the resulting module combinations from first principles,
   update the canonical support matrix, and run unit/integration/type/lint plus the
   controlled live comparison before changing defaults.
   - [x] Audit and document the actually supported and rejected combinations.
   - [x] Pass the full unit suite, runnable integrations, full lint, and changed-code typing.
   - [x] Clear the production `app`/`harness` Pyright baseline; executable tests remain
     covered by pytest rather than static analysis of their deliberately dynamic fakes.
-  - [ ] Run a larger matched provider comparison; keep four tools as the default until
-    that gate passes. The one-task smoke is directional, not a default-change gate.
+  - [x] Run a larger matched provider comparison; the six-task DeepSWE run scored 0/6
+    for both PTC modes, so four tools remain the default. Notebook used 13.7% fewer
+    input tokens and 22.1% less active time. See
+    `docs/audits/ptc-deepswe-six-task-2026-09-09.md`.
   - [x] Run a one-task, four-mode matched OpenRouter smoke with memory disabled. Prime
     used the fewest calls, wall time, and serialized request bytes; ADK Code Mode
     exhausted the 200k input budget. See `docs/audits/ptc-matched-smoke-2026-09-09.md`.
@@ -133,8 +135,8 @@ and the implementation/evaluation rubric.
 - [x] Run the deterministic composition matrix across PTC, memory-program, context,
   serialization, state, and continuity selections, including explicit rejection of
   unsupported combinations.
-- [ ] Run the matched live comparison before changing the four-tool default; retain
-  the preflight blockers recorded under U7 until the experiment contract is frozen.
+- [x] Run the matched live comparison before changing the four-tool default; the
+  six-task result did not clear the quality gate, so the default remains unchanged.
 
 - [x] Make Skein notebook and Prime-native PTC selectable behind one ADK tool, and
   independently select optional trace-native or Pi-derived memory for matched ablations.
