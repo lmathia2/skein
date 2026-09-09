@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from harness.ledger import DuckDbLedgerStore
-from harness.memory import LanceMemorySearch, MemoryProgramRuntime, ViewRequest
+from harness.memory import LanceMemorySearch
 
 
 def _vectorize(text: str) -> list[float]:
@@ -47,31 +47,6 @@ def test_lance_projection_is_rebuildable_and_preserves_event_provenance(tmp_path
     assert calls == len(events) + 2  # Index once, then only embed each query.
     task_root = tmp_path / "lance" / hashlib.sha256(b"task").hexdigest()
     assert len([path for path in task_root.iterdir() if not path.name.startswith(".")]) == 1
-
-
-def test_memory_program_can_use_lance_without_changing_ledger_authority(tmp_path: Path) -> None:
-    pytest.importorskip("lancedb")
-    ledger = DuckDbLedgerStore(tmp_path / "ledger.duckdb")
-    event = ledger.append(
-        task_id="task",
-        source="test",
-        source_id="auth",
-        kind="tool.timeout",
-        status="timeout",
-        payload={"message": "provider authentication failed"},
-    )
-    runtime = MemoryProgramRuntime(
-        ledger,
-        semantic_search=LanceMemorySearch(
-            tmp_path / "lance", vectorizer=_vectorize, embedding_version="test-v1"
-        ),
-    )
-
-    result = runtime.compute(ViewRequest(task_id="task", program="task.memory", query="authentication"))
-
-    assert result.evidence_event_ids == (event.event_id,)
-    assert result.data["retrieval_version"] == "lancedb:test-v1"
-    assert result.data["relevant"][0]["status"] == "timeout"
 
 
 def test_lance_projection_rejects_invalid_vector_contract(tmp_path: Path) -> None:

@@ -93,14 +93,12 @@ memory:
   enabled: true
   ledger: jsonl                        # jsonl | duckdb
   programs:
-    - name: task.progress
+    - name: history.page
       version: "1"
       mode: active                     # shadow | active
-    - name: task.memory
+    - name: tools.usage
       version: "1"
       mode: active
-      parameters:
-        retrieval: lexical
 ```
 
 This is a closed composition, not dependency injection from YAML. Each key resolves

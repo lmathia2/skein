@@ -245,11 +245,11 @@ class ContextProgramConfig(FrozenModel):
     @model_validator(mode="after")
     def validate_reuse(self) -> ContextProgramConfig:
         if self.programs is not None:
-            from harness.memory.context import CONTEXT_PROGRAMS, REVIEWED_PROGRAMS
+            from harness.memory.programs import available_programs
 
-            available = CONTEXT_PROGRAMS | (REVIEWED_PROGRAMS if self.reuse else set())
+            available = available_programs(reuse=self.reuse, model_visible=True)
             for name, version in self.programs.items():
-                if name not in available or version != 1:
+                if available.get(name) != version:
                     raise NotImplementedError(f"context program {name}@{version} is not implemented in this profile")
             if self.mode == "off":
                 raise ValueError("program selection requires shadow or active context programs")

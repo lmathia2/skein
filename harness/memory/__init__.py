@@ -2,14 +2,15 @@
 
 from .lance import LanceMemorySearch
 from .models import ViewRequest, ViewResult
-from .prompt import PromptManifest, compile_prompt
+from .programs import PROGRAM_REGISTRY, MemoryProgramSpec, available_programs
 from .runtime import MemoryProgramRuntime
 
 __all__ = [
+    "PROGRAM_REGISTRY",
     "LanceMemorySearch",
     "MemoryProgramRuntime",
-    "PromptManifest",
+    "MemoryProgramSpec",
     "ViewRequest",
     "ViewResult",
-    "compile_prompt",
+    "available_programs",
 ]

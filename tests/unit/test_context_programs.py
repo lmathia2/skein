@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from harness.ledger import DuckDbLedgerStore, JsonlLedgerStore
-from harness.memory import MemoryProgramRuntime, ViewRequest
+from harness.memory import MemoryProgramRuntime, ViewRequest, available_programs
 from harness.memory.context import bounded_events
 from harness.tools.memory import ContextProgramService
 
@@ -37,6 +37,20 @@ def test_configured_program_versions_restrict_the_live_service(tmp_path: Path):
     assert ContextProgramConfig().programs is None
     assert ContextProgramConfig(mode="active", reuse=True, programs={"failures.by_kind": 1})
     assert ContextProgramConfig(mode="active", programs={"tools.usage": 1})
+
+
+def test_one_registry_controls_standard_and_reviewed_programs() -> None:
+    assert available_programs(reuse=False, model_visible=True) == {
+        "artifact.read": 1,
+        "event.read": 1,
+        "events.count": 1,
+        "history.page": 1,
+        "tools.usage": 1,
+    }
+    assert available_programs(reuse=True, model_visible=True) == {
+        **available_programs(reuse=False, model_visible=True),
+        "failures.by_kind": 1,
+    }
 
 
 def test_snapshot_paging_is_stable_and_erasure_invalidates(tmp_path: Path):

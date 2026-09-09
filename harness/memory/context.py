@@ -21,12 +21,9 @@ from harness.safety.redaction import SecretRedactor
 
 from .lance import LanceMemorySearch
 from .models import ViewRequest, ViewResult
+from .programs import resolve_program
 
 ArtifactReader = Callable[[str, int, int], dict[str, Any]]
-CONTEXT_PROGRAMS = {
-    "history.page", "event.read", "events.count", "artifact.read", "tools.usage"
-}
-REVIEWED_PROGRAMS = {"failures.by_kind"}
 EXPOSURE_VERSION = "context-public-v1"
 # Explicit field/kind allowlist: never expose raw ADK sessions, traces, heaps or reasoning.
 _FIELDS = {
@@ -258,7 +255,7 @@ def compute_context(  # pyright: ignore[reportGeneralTypeIssues]  # U6 extracts 
     tasks = tuple(sorted(set(request.source_tasks or (request.task_id,))))
     if len(tasks) > 16 or not set(tasks) <= set(authorized_tasks):
         return result({"reason": "source scope is not authorized"}, "denied")
-    if request.version != 1 or request.program not in CONTEXT_PROGRAMS | (REVIEWED_PROGRAMS if reuse else set()):
+    if resolve_program(request.program, request.version, reuse=reuse) is None:
         return result({"reason": "program/version is not available"}, "unavailable")
     if request.retrieval != "keyword" and (semantic_search is None or not request.query):
         return result({"reason": "semantic retrieval requires an explicit provider and query"}, "unavailable")

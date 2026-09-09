@@ -120,7 +120,7 @@ result  = bounded data
 
 Three identities must remain separate:
 
-- **Program identity:** exact Python/SQL source, version, contracts, dependencies,
+- **Program identity:** exact reviewed code source, version, contracts, dependencies,
   and exposure-policy version.
 - **Execution identity:** program hash, canonical parameters, authorized scope,
   evidence manifest/watermark, clocks, and budgets.
@@ -137,7 +137,7 @@ memory:
   enabled: true
   ledger: jsonl
   programs:
-    - name: task.progress
+    - name: history.page
       version: "1"
       mode: active
       parameters: {}
@@ -173,10 +173,9 @@ and cannot be selected in `memory.programs`.
 | Need | Implemented representation |
 | --- | --- |
 | Exact episodic history | `history.page`, `event.read`, and artifact byte ranges |
-| Current factual progress | `task.progress`, `execution.open`, `time.state` |
 | Full-set facts | `events.count`; reviewed `failures.by_kind` |
-| Query-relevant task memory | deterministic lexical `task.memory` |
-| Semantic recall | optional immutable LanceDB projection, then canonical hydration |
+| Query-relevant task memory | filtered lexical, semantic, or hybrid `history.page` |
+| Tool accounting | top-level/nested `tools.usage` aggregate |
 | Working intent | bounded, optimistic-concurrency `memory.note` event |
 | Long-context handoff | deterministic control state + note metadata/excerpt + recent tail |
 | Narrative compression | optional evidence-bound model summary, always advisory |
@@ -188,19 +187,15 @@ implicitly, and task erasure invalidates the corresponding projection.
 
 ## Python, SQL, and caching
 
-Checked-in Python functions use an explicit `(name, version)` dispatch table.
-Reusable agent-authored logic must be reviewed, typed, tested, and version-pinned
-before entering that finite library. Notebook code is never auto-promoted.
-
-SQL uses the existing DuckDB catalog. Exact SQL bytes are hashed and move through
-`candidate -> shadow -> active -> retired`; only active versions can serve retrieval.
-Execution copies only the authorized task snapshot into an isolated, killable
-DuckDB process with external access disabled and row, byte, scan, memory, and time
-bounds. The model does not submit arbitrary SQL through the memory command.
+[`PROGRAM_REGISTRY`](../../harness/memory/programs.py) is the only code-owned
+`(name, version)` catalog used by configuration, execution, and model exposure.
+Reusable logic must be reviewed, typed, tested, and version-pinned before entering
+that finite library. Notebook code, YAML callables, and arbitrary SQL are never
+auto-promoted or executed as memory programs.
 
 Program storage is distinct from result caching:
 
-- ordinary deterministic Python and SQL views currently recompute;
+- ordinary deterministic views currently recompute;
 - evidence-bound model summaries have an explicit optional cache keyed by source
   view, prompt, model, and settings;
 - any future deterministic result cache must key on full program and execution

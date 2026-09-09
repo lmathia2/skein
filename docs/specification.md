@@ -259,18 +259,9 @@ Section and total budgets are in
 [`SkeinWorkflowDependencies`](../app/agent/workflow.py). Project instructions and
 skills require explicit trust. Recent events MUST be redacted and bounded.
 
-[`harness/memory/prompt.py`](../harness/memory/prompt.py) defines reproducible memory
-components:
-
-```text
-P0 stable prefix
-P1 history watermark
-P2 task.progress + task.memory
-P3 current query + recent exact tail
-```
-
-Each component carries a content hash and source view IDs. The manifest carries the
-context epoch, task, watermark, and prompt hash.
+[`ContextWindowPlugin`](../harness/adk/context.py) selects the bounded dynamic suffix
+from canonical evidence while the static prefix remains byte-stable. Each handoff
+records its context epoch, source watermark, result hash, and retained evidence.
 
 ## 9. Memory programs
 
@@ -301,37 +292,27 @@ bounded byte range.
 
 | Program | Meaning | Execution |
 | --- | --- | --- |
-| `history.model` | model-readable history | Python reducer |
-| `task.progress` | completed, open, failed work | Python reducer |
-| `execution.open` | open and unknown effects | Python reducer |
-| `time.state` | observed time range | Python reducer |
-| `task.memory` | lexical/optional semantic recall | Python + optional Lance |
-| `dream.analysis` | advisory patterns | reviewed reusable Python |
 | `history.page` | frozen bounded page | context runtime |
 | `event.read` | exact event/UTF-8 byte range | context runtime |
 | `artifact.read` | authorized artifact range | context runtime |
 | `events.count` | complete kind/status counts | scan or DuckDB projection |
+| `tools.usage` | top-level/nested tool counts and bytes | bounded trace aggregate |
 | `failures.by_kind` | reviewed failure aggregate | scan or DuckDB projection |
 
 [`ContextProgramService`](../harness/tools/memory.py) owns the public command route.
 The model requests logical names such as `memory query --program events.count`; it
 MUST NOT discover tables or select physical backends.
 
-### 9.4 Versioned Python and SQL
+### 9.4 Versioned registry
 
-Python programs in [`harness/memory/runtime.py`](../harness/memory/runtime.py) use an
-explicit `(name, version)` dispatch table. Reusable code MUST be reviewed, typed,
-tested, and pinned. Notebook code MUST NOT auto-promote.
-
-SQL programs in [`harness/memory/catalog.py`](../harness/memory/catalog.py) preserve
-exact source and follow `candidate -> shadow -> active -> retired`. Only active
-programs MAY serve retrieval. Execution MUST run in a killable isolated DuckDB
-process with authorized task data, external access disabled, and scan, row, memory,
-byte, and time bounds.
+[`PROGRAM_REGISTRY`](../harness/memory/programs.py) is the single explicit
+`(name, version)` catalog used by configuration, execution, and model exposure.
+Reusable code MUST be reviewed, typed, tested, and pinned. Configuration cannot
+provide Python, SQL, import paths, or callables, and notebook code never auto-promotes.
 
 ### 9.5 Caching and projections
 
-Ordinary deterministic Python and SQL views currently recompute; no general result
+Ordinary deterministic views currently recompute; no general result
 cache exists. [`SummaryCache`](../harness/memory/summary.py) MAY reuse an advisory
 model output only when source view, prompt, model, settings, and source availability
 match.
@@ -415,7 +396,7 @@ This simulated sequence uses implemented events and views:
 3 Build prompt at watermark 2:
     P0 stable instruction/tools
     P1 history watermark
-    P2 task.progress@1 + task.memory@1
+    P2 evidence-backed handoff + optional memory.note
     P3 current query + recent events 1..2
 
 4 Model calls:
@@ -456,7 +437,7 @@ This simulated sequence uses implemented events and views:
 | --- | --- |
 | Canonical parity/import/incremental counts | `test_canonical_ledger.py`, `test_context_programs.py` |
 | Backfill/archive/erasure | `test_ledger_backfill.py`, `test_ledger_archive.py`, `test_ledger_erasure.py`, `test_context_erasure.py` |
-| Programs/SQL/semantic/summaries | `test_memory_programs.py`, `test_memory_program_catalog.py`, `test_context_semantic.py`, `test_lance_memory.py`, `test_memory_summary.py` |
+| Programs/semantic/summaries | `test_context_programs.py`, `test_context_semantic.py`, `test_lance_memory.py`, `test_memory_summary.py` |
 | Prefix/context transitions | `test_harness_factory.py`, `test_codex_responses.py`, `test_context_windows.py`, `test_workflow_compaction.py` |
 | REPL/notebook/write-ahead | `test_repl.py`, `test_notebook.py`, `test_notebook_ptc_integration.py` |
 | Tools/policy/receipts/artifacts | `test_environment_and_tools.py`, `test_managed_adapter.py`, `test_approvals.py`, `test_tool_artifact_plugin.py` |

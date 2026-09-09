@@ -92,7 +92,7 @@ and the implementation/evaluation rubric.
   top-level plus nested tool usage queryable through versioned trace-memory views.
 - [x] U4: Replace scattered PTC assembly branches with one closed dispatch point;
   document and exhaustively test behavior with PTC/memory/context independently off.
-- [ ] U5: Consolidate memory programs into one code-owned `(name, version)` registry
+- [x] U5: Consolidate memory programs into one code-owned `(name, version)` registry
   used by configuration and execution; remove unused competing prompt/program code
   only after proving it has no production callers.
 - [ ] U6: Extract context selection as a pure policy computation while retaining one

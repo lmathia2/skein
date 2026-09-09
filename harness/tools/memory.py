@@ -137,8 +137,10 @@ class ContextProgramService:
         if self.programs is not None and self.programs.get(request.program) != request.version:
             raise ValueError("program/version is not enabled in this profile")
         # The virtual command cannot expose older unbounded internal prompt programs.
-        from harness.memory.context import CONTEXT_PROGRAMS, REVIEWED_PROGRAMS
-        if request.program not in CONTEXT_PROGRAMS | REVIEWED_PROGRAMS:
+        from harness.memory.programs import resolve_program
+        if resolve_program(
+            request.program, request.version, reuse=self.runtime.reuse, model_visible=True
+        ) is None:
             raise ValueError("program is not in the model-visible allowlist")
         view = self.runtime.compute(request)
         response = view.model_dump(mode="json")
