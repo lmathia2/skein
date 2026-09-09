@@ -1,10 +1,13 @@
 import importlib.util
 import json
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from harness.config import load_harness_composition
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/run_harbor_eval.py"
@@ -111,6 +114,49 @@ def test_plan_accepts_bounded_campaign_concurrency() -> None:
     assert plan["max_task_input_tokens"] == 200_000
 
 
+def test_plan_accepts_fail_fast_with_concurrency() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--suite",
+            "smoke",
+            "--plan",
+            "--concurrency",
+            "2",
+            "--stop-on-error",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0
+
+
+def test_plan_can_select_only_deepswe_tasks() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--suite",
+            "smoke",
+            "--benchmark",
+            "deep_swe",
+            "--plan",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    plan = json.loads(completed.stdout)
+    assert plan["benchmark"] == "deep_swe"
+    assert plan["tasks"] == ["textual-kitty-key-phases", "wazero-multi-module-snapshots"]
+    assert plan["retries"] == 0
+
+
 def test_harbor_runner_accepts_prime_with_container_runtime_bridge() -> None:
     completed = subprocess.run(
         [
@@ -129,6 +175,19 @@ def test_harbor_runner_accepts_prime_with_container_runtime_bridge() -> None:
 
     assert completed.returncode == 0
     assert json.loads(completed.stdout)["suite"] == "smoke"
+
+
+def test_ptc_eval_profiles_differ_only_in_ptc_implementation() -> None:
+    notebook = load_harness_composition(
+        ROOT / "harness/config/profiles/notebook-ptc-jsonl.yaml"
+    ).harness.config
+    prime = load_harness_composition(
+        ROOT / "harness/config/profiles/prime-ptc-jsonl.yaml"
+    ).harness.config
+
+    assert notebook.model_copy(update={"notebook_ptc": prime.notebook_ptc}) == prime
+    assert notebook.notebook_ptc.implementation == "skein_notebook"
+    assert prime.notebook_ptc.implementation == "prime_repl"
 
 
 def test_deepswe_verifier_image_is_built_once_and_pinned(monkeypatch, tmp_path: Path) -> None:
@@ -218,6 +277,36 @@ def test_watchdog_terminates_a_hung_job(tmp_path: Path) -> None:
     assert (returncode, timed_out) == (124, True)
 
 
+def test_concurrent_shutdown_terminates_then_kills_hung_processes(monkeypatch) -> None:
+    runner = load_runner()
+
+    class Process:
+        pid = 123
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            if timeout is not None:
+                raise subprocess.TimeoutExpired("pier", timeout)
+            self.returncode = -signal.SIGKILL
+            return self.returncode
+
+    process = Process()
+    signals = []
+    monkeypatch.setattr(runner.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    with runner._PROCESS_LOCK:
+        runner._ACTIVE_PROCESSES.add(process)
+    try:
+        runner.stop_active_processes()
+    finally:
+        with runner._PROCESS_LOCK:
+            runner._ACTIVE_PROCESSES.clear()
+
+    assert signals == [(123, signal.SIGTERM), (123, signal.SIGKILL)]
+
+
 def test_targeted_preflight_selects_one_task() -> None:
     completed = subprocess.run(
         [
@@ -252,12 +341,35 @@ def test_completed_harbor_job_is_recovered_without_rerun(tmp_path: Path) -> None
     assert recovered[2] == [0]
 
 
-def test_failed_skein_result_is_not_treated_as_a_completed_harbor_job(
+def test_scored_harbor_result_is_complete_even_when_skein_stopped_on_budget(
     tmp_path: Path,
 ) -> None:
     task_dir = tmp_path / "001-example-attempt-01"
     result = task_dir / "job" / "trial" / "agent" / "skein-state" / "evaluation"
     result.mkdir(parents=True)
+    (task_dir / "job" / "trial" / "result.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-01-01T00:00:00Z",
+                "finished_at": "2026-01-01T00:02:00Z",
+                "agent_execution": {
+                    "started_at": "2026-01-01T00:00:10Z",
+                    "finished_at": "2026-01-01T00:01:50Z",
+                },
+                "agent_result": {
+                    "metadata": {
+                        "skein": {
+                            "status": "failed",
+                            "error": {"code": "runtime_failed"},
+                            "metrics": {"input_tokens": 200, "output_tokens": 30},
+                        }
+                    }
+                },
+                "verifier_result": {"rewards": {"reward": 1}},
+            }
+        ),
+        encoding="utf-8",
+    )
     (task_dir / "job" / "result.json").write_text("{}", encoding="utf-8")
     (result / "result.json").write_text(
         json.dumps(
@@ -270,7 +382,23 @@ def test_failed_skein_result_is_not_treated_as_a_completed_harbor_job(
         encoding="utf-8",
     )
 
-    assert load_runner().completed_task(tmp_path, "001-example") is None
+    recovered = load_runner().completed_task(tmp_path, "001-example")
+    assert recovered is not None
+    assert recovered[2] == [1]
+    assert recovered[3] == [
+        {
+            "official_reward": 1,
+            "active_wall_time_seconds": 100.0,
+            "end_to_end_wall_time_seconds": 120.0,
+            "input_tokens": 200,
+            "cache_read_tokens": None,
+            "output_tokens": 30,
+            "reasoning_tokens": None,
+            "cost_usd": None,
+            "skein_status": "failed",
+            "skein_error_code": "runtime_failed",
+        }
+    ]
 
 
 def test_next_attempt_directory_survives_process_restart(tmp_path: Path) -> None:

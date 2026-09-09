@@ -421,16 +421,16 @@ Install the optional evaluation dependencies first:
 
     ./install.sh --dev --eval
 
-The Pier runner executes the frozen Harbor-compatible samples sequentially and preserves each full job directory: raw agent trajectories, Skein events and traces, command artifacts, verifier output, stdout/stderr, metadata, and file hashes. Completed task keys are skipped on restart; interrupted jobs use Pier job resume; failed jobs get separate retry directories.
+The Pier runner executes frozen Harbor-compatible samples with bounded concurrency and preserves each full job directory: raw agent trajectories, Skein events and traces, command artifacts, verifier output, stdout/stderr, metadata, and file hashes. Completed scored task keys are skipped on restart; interrupted jobs use Pier job resume; infrastructure retries get separate directories.
 
     .venv/bin/python scripts/run_harbor_eval.py --suite smoke --plan
-    .venv/bin/python scripts/run_harbor_eval.py --suite smoke --task-id modernize-scientific-stack
-    .venv/bin/python scripts/run_harbor_eval.py --suite smoke
+    .venv/bin/python scripts/run_harbor_eval.py --suite smoke --benchmark deep_swe --concurrency 2
     .venv/bin/python scripts/run_harbor_eval.py --suite broader
     .venv/bin/python scripts/run_harbor_eval.py --suite full
 
-Use `--task-id` or `--limit` for a preflight, `--jobs-dir` to choose persistent
-artifacts, `--retries 0` to disable retries, or `--stop-on-error` to halt. A
+Use `--benchmark`, `--task-id`, or `--limit` for a preflight and `--jobs-dir` to
+choose persistent artifacts. Wrapper retries default to zero so quality, latency,
+and token usage describe one attempt; `runs.jsonl` carries those metrics directly. A
 watchdog allows the manifest runtime plus 30 minutes by default; override it
 with `--timeout-seconds`. Reusing a jobs directory with a changed model,
 reasoning setting, harness configuration, sample, or Git revision is rejected.

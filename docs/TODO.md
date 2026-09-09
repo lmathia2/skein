@@ -114,6 +114,9 @@ and the implementation/evaluation rubric.
   - [x] Add bounded concurrent Harbor task scheduling while preserving one isolated
     Pier trial per worker; run Prime through a persistent in-container bridge so its
     native effects target the authoritative task workspace.
+  - [x] Make matched DeepSWE runs benchmark-selectable and single-attempt by default;
+    preserve official reward, latency, token usage, and separate Skein reliability
+    status in each append-only run record.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.

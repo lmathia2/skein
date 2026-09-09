@@ -41,7 +41,7 @@ artifacts, stdout/stderr, run metadata, and SHA-256 file inventory:
 python scripts/run_harbor_eval.py --suite smoke --plan
 python scripts/run_harbor_eval.py --suite smoke --task-id modernize-scientific-stack
 python scripts/run_harbor_eval.py --suite smoke
-python scripts/run_harbor_eval.py --suite smoke --concurrency 3 --max-task-input-tokens 200000
+python scripts/run_harbor_eval.py --suite smoke --benchmark deep_swe --concurrency 3
 python scripts/run_harbor_eval.py --suite broader
 python scripts/run_harbor_eval.py --suite full
 ```
@@ -64,6 +64,14 @@ Rosetta-backed Docker environment.
 Pier job, task workspace, Skein state root, and `--n-concurrent 1`; only ledger appends
 are serialized. Use a separate jobs directory for each candidate. Concurrency is part
 of the frozen run metadata, so changing it requires a new jobs directory.
+
+For a matched DeepSWE comparison, give each candidate its own jobs directory and use
+the same model, reasoning, limits, attempt count, and concurrency. The default wrapper
+retry count is zero so latency and usage describe one assigned attempt. Each completed
+ledger row records the official reward, active and end-to-end seconds, input/cache/output/
+reasoning tokens, cost, and the separate Skein terminal status. Official verifier reward
+defines task quality; an internal Skein budget or completion-policy stop remains a
+reliability diagnostic and does not cause the scored trial to be rerun.
 
 Prime PTC runs one persistent Python worker inside each disposable Harbor task
 container. The host reaches it through bounded one-shot environment calls, while the

@@ -16,7 +16,7 @@ import tempfile
 import threading
 import time
 import tomllib
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +37,7 @@ MANIFESTS = {
 CONTRACT_FIELDS = (
     "schema_version",
     "suite",
+    "benchmark",
     "manifest_sha256",
     "model",
     "provider",
@@ -51,6 +52,8 @@ CONTRACT_FIELDS = (
     "git_diff_sha256",
 )
 _APPEND_LOCK = threading.Lock()
+_PROCESS_LOCK = threading.Lock()
+_ACTIVE_PROCESSES: set[subprocess.Popen[str]] = set()
 
 
 def dump(value: Any) -> str:
@@ -94,8 +97,8 @@ def inventory(root: Path) -> list[dict[str, Any]]:
     return result
 
 
-def result_summary(root: Path) -> tuple[list[str], list[int], list[str]]:
-    paths, rewards, errors = [], [], []
+def result_summary(root: Path) -> tuple[list[str], list[int], list[str], list[dict[str, Any]]]:
+    paths, rewards, errors, trial_metrics = [], [], [], []
     for path in sorted(root.rglob("result.json")):
         paths.append(str(path.relative_to(root)))
         try:
@@ -103,19 +106,47 @@ def result_summary(root: Path) -> tuple[list[str], list[int], list[str]]:
             exception = payload.get("exception_info")
             if isinstance(exception, dict):
                 errors.append(str(exception.get("exception_type") or "exception"))
-            if (
-                payload.get("schema_version") == "skein-eval-run-v1"
-                and payload.get("status") not in {"complete", "answered"}
-            ):
-                error = payload.get("error")
-                code = error.get("code") if isinstance(error, dict) else None
-                errors.append(f"skein:{code or payload.get('status', 'failed')}")
             reward = payload.get("verifier_result", {}).get("rewards", {}).get("reward")
             if reward in (0, 1):
                 rewards.append(int(reward))
+                agent = payload.get("agent_result") or {}
+                metadata = agent.get("metadata") or {}
+                skein = metadata.get("skein") or {}
+                metrics = skein.get("metrics") or {}
+                trial_metrics.append(
+                    {
+                        "official_reward": int(reward),
+                        "active_wall_time_seconds": _duration_seconds(
+                            payload.get("agent_execution")
+                        ),
+                        "end_to_end_wall_time_seconds": _duration_seconds(payload),
+                        "input_tokens": metrics.get("input_tokens", agent.get("n_input_tokens")),
+                        "cache_read_tokens": metrics.get(
+                            "cache_read_tokens", agent.get("n_cache_tokens")
+                        ),
+                        "output_tokens": metrics.get(
+                            "output_tokens", agent.get("n_output_tokens")
+                        ),
+                        "reasoning_tokens": metrics.get("reasoning_tokens"),
+                        "cost_usd": skein.get("api_equivalent_cost_usd", agent.get("cost_usd")),
+                        "skein_status": skein.get("status"),
+                        "skein_error_code": (skein.get("error") or {}).get("code"),
+                    }
+                )
         except (OSError, ValueError, AttributeError):
             pass
-    return paths, rewards, errors
+    return paths, rewards, errors, trial_metrics
+
+
+def _duration_seconds(payload: Any) -> float | None:
+    if not isinstance(payload, dict):
+        return None
+    try:
+        started = datetime.fromisoformat(str(payload["started_at"]).replace("Z", "+00:00"))
+        finished = datetime.fromisoformat(str(payload["finished_at"]).replace("Z", "+00:00"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return max(0.0, (finished - started).total_seconds())
 
 
 def ledger_rows(path: Path) -> list[dict[str, Any]]:
@@ -222,30 +253,41 @@ def execute(
         text=True,
         start_new_session=True,
     )
+    with _PROCESS_LOCK:
+        _ACTIVE_PROCESSES.add(process)
     try:
         return process.wait(timeout=timeout_seconds), False
     except subprocess.TimeoutExpired:
         stderr.write(f"\nSkein watchdog timed out after {timeout_seconds}s\n")
         stderr.flush()
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-        except ProcessLookupError:
-            pass
+        terminate_process(process)
         return 124, True
     except BaseException:
-        with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGTERM)
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
+        terminate_process(process)
         raise
+    finally:
+        with _PROCESS_LOCK:
+            _ACTIVE_PROCESSES.discard(process)
+
+
+def terminate_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    with suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+
+
+def stop_active_processes() -> None:
+    with _PROCESS_LOCK:
+        processes = tuple(_ACTIVE_PROCESSES)
+    for process in processes:
+        terminate_process(process)
 
 
 def cached_task(task: dict[str, Any]) -> Path:
@@ -362,12 +404,14 @@ def run_command(
     return command
 
 
-def completed_task(output: Path, prefix: str) -> tuple[Path, list[str], list[int]] | None:
+def completed_task(
+    output: Path, prefix: str
+) -> tuple[Path, list[str], list[int], list[dict[str, Any]]] | None:
     for task_dir in sorted(p for p in output.iterdir() if p.is_dir() and p.name.startswith(prefix)):
         if any(task_dir.glob("*/result.json")):
-            paths, rewards, errors = result_summary(task_dir)
-            if paths and not errors:
-                return task_dir, paths, rewards
+            paths, rewards, errors, trial_metrics = result_summary(task_dir)
+            if rewards and not errors:
+                return task_dir, paths, rewards, trial_metrics
     return None
 
 
@@ -409,7 +453,7 @@ def run_task(
     prefix = f"{index:03d}-{safe_name(task['task_id'])}"
     recovered = completed_task(output, prefix)
     if recovered is not None:
-        task_dir, result_paths, rewards = recovered
+        task_dir, result_paths, rewards, trial_metrics = recovered
         append_row(
             ledger,
             {
@@ -426,6 +470,7 @@ def run_task(
                 "task_dir": str(task_dir),
                 "result_paths": result_paths,
                 "rewards": rewards,
+                "trial_metrics": trial_metrics,
                 "errors": [],
                 "files": inventory(task_dir),
             },
@@ -466,8 +511,8 @@ def run_task(
                 stderr=stderr,
                 timeout_seconds=timeout_seconds,
             )
-        result_paths, rewards, errors = result_summary(task_dir)
-        status = "complete" if returncode == 0 and result_paths and not errors else "incomplete"
+        result_paths, rewards, errors, trial_metrics = result_summary(task_dir)
+        status = "complete" if returncode == 0 and rewards and not errors else "incomplete"
         append_row(
             ledger,
             {
@@ -487,6 +532,7 @@ def run_task(
                 "task_dir": str(task_dir),
                 "result_paths": result_paths,
                 "rewards": rewards,
+                "trial_metrics": trial_metrics,
                 "errors": errors,
                 "files": inventory(task_dir),
             },
@@ -515,7 +561,10 @@ def main() -> int:
     parser.add_argument("--config", default="harness/config/profiles/four-tool.yaml")
     parser.add_argument("--attempts", type=int)
     parser.add_argument("--concurrency", type=int, default=1)
-    parser.add_argument("--retries", type=int, default=1)
+    parser.add_argument("--retries", type=int, default=0)
+    parser.add_argument(
+        "--benchmark", choices=("deep_swe", "swe_atlas_qna", "terminal_bench")
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--task-id", action="append", default=[])
     parser.add_argument("--timeout-seconds", type=int)
@@ -536,8 +585,6 @@ def main() -> int:
         parser.error("--retries cannot be negative")
     if not 1 <= args.concurrency <= 8:
         parser.error("--concurrency must be between 1 and 8")
-    if args.stop_on_error and args.concurrency != 1:
-        parser.error("--stop-on-error requires --concurrency 1")
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be positive")
     if args.timeout_seconds is not None and args.timeout_seconds < 1:
@@ -555,6 +602,8 @@ def main() -> int:
     manifest_path = ROOT / "tests/eval/manifests" / manifest_name
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     tasks = manifest["tasks"][:limit]
+    if args.benchmark:
+        tasks = [task for task in tasks if task["benchmark"] == args.benchmark]
     if args.task_id:
         wanted = set(args.task_id)
         tasks = [task for task in tasks if task["task_id"] in wanted]
@@ -571,6 +620,7 @@ def main() -> int:
             dump(
                 {
                     "suite": args.suite,
+                    "benchmark": args.benchmark,
                     "manifest": str(manifest_path),
                     "manifest_sha256": manifest["manifest_sha256"],
                     "tasks": [task["task_id"] for task in tasks],
@@ -611,6 +661,7 @@ def main() -> int:
         "schema_version": "skein-harbor-run-v1",
         "created_at": datetime.now(UTC).isoformat(),
         "suite": args.suite,
+        "benchmark": args.benchmark,
         "manifest": str(manifest_path),
         "manifest_sha256": manifest["manifest_sha256"],
         "model": args.model,
@@ -648,13 +699,34 @@ def main() -> int:
         )
 
     if args.concurrency == 1:
+        succeeded = True
         for item in work:
-            if not run(item) and args.stop_on_error:
-                return 1
-        return 0
-    with ThreadPoolExecutor(max_workers=args.concurrency) as executor:
-        list(executor.map(run, work))
-    return 0
+            task_succeeded = run(item)
+            succeeded = task_succeeded and succeeded
+            if not task_succeeded and args.stop_on_error:
+                break
+        return 0 if succeeded else 1
+    executor = ThreadPoolExecutor(max_workers=args.concurrency)
+    futures = [executor.submit(run, item) for item in work]
+    try:
+        succeeded = True
+        ordered = as_completed(futures) if args.stop_on_error else futures
+        for future in ordered:
+            task_succeeded = future.result()
+            succeeded = task_succeeded and succeeded
+            if not task_succeeded and args.stop_on_error:
+                stop_active_processes()
+                for pending in futures:
+                    pending.cancel()
+                break
+    except BaseException:
+        stop_active_processes()
+        for future in futures:
+            future.cancel()
+        raise
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+    return 0 if succeeded else 1
 
 
 if __name__ == "__main__":
