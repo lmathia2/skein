@@ -93,6 +93,8 @@ and the implementation/evaluation rubric.
     Full internal prompt-program substitution remains pending.
 - [x] Add the pinned Prime REPL runtime and bounded snapshot policy as optional
   implementations without importing Prime's daemon, TUI, or session authority.
+- [x] Bundle the PTC-specific Python dependencies with licenses and provenance;
+  verify Prime recovery without site-packages and ADK SDK import without installed extras.
 - [ ] Run the deterministic composition matrix and matched live comparison before
   changing the four-tool default.
 

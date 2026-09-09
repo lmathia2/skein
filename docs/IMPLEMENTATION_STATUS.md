@@ -291,3 +291,10 @@ or the brokered memory command bridge; those configurations fail explicitly.
 The existing reviewed context program service also supports optional name/version
 selection while preserving its default allowlist and existing view identities.
 See [native profile configuration and limitations](design/ptc-native-profiles.md).
+
+PTC-specific Python dependencies are now bundled: dill 0.4.0 for Prime snapshots
+and Docker SDK 7.2.0 for ADK Code Mode. The former extras remain empty compatibility
+aliases. Prime snapshots are tested with site-packages disabled in the child;
+ADK SDK loading is tested with external docker/dill imports blocked. Docker Engine
+and the configured image remain explicit external requirements. Source hashes and
+licenses are retained under `harness/_vendor`.

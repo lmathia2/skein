@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import hashlib
-import importlib.util
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -37,8 +36,6 @@ def build_prime_session(
 ) -> PtcSession:
     if not config.prime_native_execution or not settings.project_trusted:
         raise ValueError("prime_repl requires prime_native_execution=true and explicit project trust")
-    if importlib.util.find_spec("dill") is None:
-        raise NotImplementedError("prime_repl requires the ptc-prime extra (dill)")
     identity = conversation_id or settings.task_id_override
     if not identity:
         raise ValueError("Prime PTC requires an owned task or conversation identity")

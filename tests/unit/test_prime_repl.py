@@ -22,7 +22,6 @@ async def test_prime_session_jsonl_restore_ownership_and_redaction(tmp_path: Pat
     from harness.safety.redaction import SecretRedactor
     from harness.state import JsonlEventStore
 
-    pytest.importorskip("dill")
     payload = load_harness_composition().model_dump(mode="python")
     payload["harness"]["config"]["notebook_ptc"] = {
         "enabled": True, "implementation": "prime_repl", "serialization": "jsonl",
@@ -68,12 +67,19 @@ async def test_prime_session_jsonl_restore_ownership_and_redaction(tmp_path: Pat
     assert "test-secret-value" not in "\n".join(event.model_dump_json() for event in events.read("task"))
 
 
-def test_prime_native_state_error_snapshot_and_bounds(tmp_path: Path) -> None:
-    pytest.importorskip("dill")
+def test_prime_native_state_error_snapshot_and_bounds(tmp_path: Path, monkeypatch) -> None:
+    import subprocess
+
+    popen = subprocess.Popen
+    # No site-packages in the child: snapshot support must come from the wheel.
+    monkeypatch.setattr(subprocess, "Popen", lambda command, **kwargs: popen(
+        [command[0], "-S", *command[1:]], **kwargs,
+    ))
     runtime = PrimeRuntime(tmp_path, max_output_bytes=128)
     runtime.start()
     try:
         assert runtime.request("execute", code="value = 40\nawait asyncio.sleep(0)\nvalue + 2")["result"] == "42"
+        assert runtime.request("execute", code="import dill\n'_vendor/dill' in dill.__file__")["result"] == "True"
         assert runtime.request("execute", code="value = 99\n1 / 0")["status"] == "error"
         assert runtime.request("execute", code="value")["result"] == "99"
         assert runtime.request("execute", code="print('x' * 1000)")["truncated"]

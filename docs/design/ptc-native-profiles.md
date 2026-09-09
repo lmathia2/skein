@@ -7,14 +7,19 @@ select a universal serializer or promise interchangeable state recovery.
 | Implementation | Serialization | State | Enabling requirements |
 | --- | --- | --- | --- |
 | `skein_notebook` | `native` / `notebook` | `native` / `replay_safe` | Existing notebook profile |
-| `adk_code_mode` | `native` | `native` / `none` | Explicit `adk_code_mode_image`, Docker and existing optional dependencies |
-| `prime_repl` | `native` / `jsonl` | `native` / `snapshot` | `ptc-prime` extra, `prime_native_execution: true`, trusted project |
+| `adk_code_mode` | `native` | `native` / `none` | Explicit `adk_code_mode_image` and running Docker Engine; Python SDK bundled |
+| `prime_repl` | `native` / `jsonl` | `native` / `snapshot` | `prime_native_execution: true`, trusted project; dill bundled |
 
 Set `enabled: true` with the selected implementation. Prime's opt-in composition is
 [`prime-ptc-jsonl.yaml`](../../harness/config/profiles/prime-ptc-jsonl.yaml).
 The default composition and existing notebook/ADK behavior are unchanged. Known
 unimplemented combinations raise `NotImplementedError`; malformed values and
 missing trust/image requirements are validation errors. No fallback is performed.
+
+No PTC-specific pip extras are required. The old extra names remain empty compatibility
+aliases. Pinned dill and Docker SDK sources and licenses live in `harness/_vendor`;
+base ADK HTTP dependencies are reused. Docker Engine and the configured image are
+not vendorable Python dependencies, and must still be provisioned separately.
 
 ## Prime adapter contract
 

@@ -93,10 +93,7 @@ def build_adk_session(
     tools: list[Callable[..., Awaitable[dict[str, Any]]]],
 ) -> PtcSession:
     """Preserve upstream invocation ownership and tool declaration."""
-    try:
-        from harness.adk.code_mode import ExecuteCodeTool, UnsafeLocalDockerBackend
-    except ModuleNotFoundError as error:
-        raise RuntimeError("adk-code-mode needs the optional 'ptc-adk-code-mode' dependencies") from error
+    from harness.adk.code_mode import ExecuteCodeTool, UnsafeLocalDockerBackend
     assert config.adk_code_mode_image is not None
     tool = ExecuteCodeTool(
         tools=tools,

@@ -100,7 +100,7 @@ class UnsafeLocalDockerBackend:
         workdir_path: str,
         timeout_seconds: int | None,
     ) -> SandboxSession:
-        import docker  # local import so the rest of the package works without it
+        from harness._vendor import docker
 
         if self.network_mode == "none":
             raise ValueError(

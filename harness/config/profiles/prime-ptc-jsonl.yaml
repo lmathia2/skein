@@ -1,5 +1,5 @@
 # Opt-in trusted native execution, NOT the Skein capability sandbox.
-# Install the ptc-prime extra and explicitly trust the project at launch.
+# Dependencies are bundled; explicitly trust the project at launch.
 schema_version: 1
 app:
   name: skein

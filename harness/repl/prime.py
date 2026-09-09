@@ -83,7 +83,8 @@ class PrimeRuntime:
         # Provider credentials stay in the parent. Project tools may obtain their own
         # credentials through the explicitly trusted user's normal OS environment.
         env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "TMPDIR") if key in os.environ}
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+        package_root = Path(__file__).resolve().parents[2]
+        env["PYTHONPATH"] = os.pathsep.join((str(package_root / "harness/_vendor"), str(package_root)))
         env["PRIME_AGENT_KERNEL_OWNER_PID"] = str(os.getpid())
         env["PRIME_AGENT_BASH_SHELL"] = "/bin/bash"
         self.process = subprocess.Popen(
