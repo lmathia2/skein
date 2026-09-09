@@ -1,0 +1,2 @@
+# Preserve upstream vendor bytes for source-hash verification.
+harness/_vendor/** -whitespace
