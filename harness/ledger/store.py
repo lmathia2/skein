@@ -67,9 +67,13 @@ class DuckDbLedgerStore:
                     task_id VARCHAR PRIMARY KEY, watermark BIGINT NOT NULL, stream_hash VARCHAR NOT NULL
                 )"""
             )
-            count = connection.execute("SELECT COUNT(*) FROM ledger_events").fetchone()[0]
-            projected = connection.execute("SELECT COALESCE(SUM(count), 0) FROM ledger_event_counts").fetchone()[0]
-            if count != projected:
+            count_row = connection.execute("SELECT COUNT(*) FROM ledger_events").fetchone()
+            projected_row = connection.execute(
+                "SELECT COALESCE(SUM(count), 0) FROM ledger_event_counts"
+            ).fetchone()
+            if count_row is None or projected_row is None:
+                raise RuntimeError("DuckDB did not return ledger aggregate counts")
+            if count_row[0] != projected_row[0]:
                 self._rebuild_aggregates(connection)
 
     def _connect(self) -> duckdb.DuckDBPyConnection:

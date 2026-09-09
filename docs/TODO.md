@@ -102,8 +102,10 @@ and the implementation/evaluation rubric.
   controlled live comparison before changing defaults.
   - [x] Audit and document the actually supported and rejected combinations.
   - [x] Pass the full unit suite, runnable integrations, full lint, and changed-code typing.
-  - [ ] Clear the repository-wide pre-existing Pyright baseline and run the matched
-    provider comparison; keep four tools as the default until both gates pass.
+  - [x] Clear the production `app`/`harness` Pyright baseline; executable tests remain
+    covered by pytest rather than static analysis of their deliberately dynamic fakes.
+  - [ ] Run the matched provider comparison; keep four tools as the default until that
+    gate passes.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.

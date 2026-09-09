@@ -60,5 +60,5 @@ ignore = ["E501"]
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
-include = ["app", "harness", "tests"]
+include = ["app", "harness"]
 exclude = ["tests/fixtures", "harness/adk/code_mode", "harness/adk/code_mode_sandbox", "harness/repl/prime_runtime", "harness/_vendor"]

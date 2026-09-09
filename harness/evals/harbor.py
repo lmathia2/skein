@@ -14,17 +14,22 @@ from collections.abc import Coroutine, Sequence
 from contextlib import suppress
 from importlib.metadata import version
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
-try:
-    from pier.agents.base import BaseAgent
-    from pier.environments.base import BaseEnvironment, ExecResult
-    from pier.models.agent.context import AgentContext
-except ImportError:  # Harbor remains a test/runtime compatibility fallback.
+if TYPE_CHECKING:
     from harbor.agents.base import BaseAgent
     from harbor.environments.base import BaseEnvironment, ExecResult
     from harbor.models.agent.context import AgentContext
+else:
+    try:
+        from pier.agents.base import BaseAgent
+        from pier.environments.base import BaseEnvironment, ExecResult
+        from pier.models.agent.context import AgentContext
+    except ImportError:  # Harbor remains a test/runtime compatibility fallback.
+        from harbor.agents.base import BaseAgent
+        from harbor.environments.base import BaseEnvironment, ExecResult
+        from harbor.models.agent.context import AgentContext
 from typing_extensions import override
 
 from app.agent.factory import default_harness_registry
@@ -514,9 +519,10 @@ class SkeinPierAgent(BaseAgent):
         context.n_output_tokens = int(metrics.get("output_tokens", 0) or 0)
         context.cost_usd = result.api_equivalent_cost_usd
         if "peak_context_tokens" in type(context).model_fields:
-            context.peak_context_tokens = int(metrics.get("peak_context_tokens", 0) or 0)
-            context.summarization_count = int(metrics.get("outcome_compactions", 0) or 0)
-            context.n_agent_steps = int(metrics.get("model_calls", 0) or 0)
+            extended_context: Any = context
+            extended_context.peak_context_tokens = int(metrics.get("peak_context_tokens", 0) or 0)
+            extended_context.summarization_count = int(metrics.get("outcome_compactions", 0) or 0)
+            extended_context.n_agent_steps = int(metrics.get("model_calls", 0) or 0)
         context.metadata = {
             "skein": result.model_dump(mode="json", exclude={"final_answer"}),
             "final_answer": result.final_answer,

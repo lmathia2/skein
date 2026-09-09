@@ -71,7 +71,7 @@ class LanceMemorySearch:
         if not events or limit <= 0:
             return ()
         try:
-            import lancedb
+            import lancedb  # pyright: ignore[reportMissingImports]
         except ImportError as exc:  # pragma: no cover - optional dependency boundary
             raise RuntimeError("install skein[memory-search] to use Lance search") from exc
         task_ids = {event.task_id for event in events}
@@ -103,9 +103,9 @@ class LanceMemorySearch:
 
     def _build(self, destination: Path, rows: list[dict[str, Any]], dimension: int) -> None:
         try:
-            import lancedb
-            import pyarrow as pa
-            from lancedb.index import FTS
+            import lancedb  # pyright: ignore[reportMissingImports]
+            import pyarrow as pa  # pyright: ignore[reportMissingImports]
+            from lancedb.index import FTS  # pyright: ignore[reportMissingImports]
         except ImportError as exc:  # pragma: no cover - exercised without the optional extra
             raise RuntimeError("install skein[memory-search] to use Lance search") from exc
 
