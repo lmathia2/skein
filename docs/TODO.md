@@ -90,7 +90,7 @@ and the implementation/evaluation rubric.
   container/start/reset metrics.
 - [x] U3: Normalize PTC model-visible results to a compact stable envelope and make
   top-level plus nested tool usage queryable through versioned trace-memory views.
-- [ ] U4: Replace scattered PTC assembly branches with one closed dispatch point;
+- [x] U4: Replace scattered PTC assembly branches with one closed dispatch point;
   document and exhaustively test behavior with PTC/memory/context independently off.
 - [ ] U5: Consolidate memory programs into one code-owned `(name, version)` registry
   used by configuration and execution; remove unused competing prompt/program code

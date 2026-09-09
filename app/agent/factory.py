@@ -480,32 +480,21 @@ class SkeinHarnessFactory:
                 "prior_notebook_events": tuple(previous_events),
                 "notebook_root": bindings.notebook_state_root,
             }
-        if config.notebook_ptc.enabled:
-            worker = build_coding_worker(
-                settings,
-                coding_model,
-                tools=tools,
-                generation_config=worker_config.generation,
-                tool_config=config.tools,
-                ptc_config=config.notebook_ptc,
-                event_store=event_store,
-                approvals=approvals,
-                replies=replies,
-                workspace_fingerprint=execution.repository.fingerprint,
-                redactor=SecretRedactor(known_secrets=known_secrets),
-                ptc_backend=self._ptc_backend,
-                **notebook_options,
-            )
-        else:
-            worker = build_coding_worker(
-                settings,
-                coding_model,
-                tools=tools,
-                generation_config=worker_config.generation,
-                tool_config=config.tools,
-                approvals=approvals,
-                replies=replies,
-            )
+        worker = build_coding_worker(
+            settings,
+            coding_model,
+            tools=tools,
+            generation_config=worker_config.generation,
+            tool_config=config.tools,
+            ptc_config=config.notebook_ptc,
+            event_store=event_store,
+            approvals=approvals,
+            replies=replies,
+            workspace_fingerprint=execution.repository.fingerprint,
+            redactor=SecretRedactor(known_secrets=known_secrets),
+            ptc_backend=self._ptc_backend,
+            **notebook_options,
+        )
         steering = SteeringQueue(
             settings.state_root / "state.db",
             on_change=(

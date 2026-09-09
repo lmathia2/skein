@@ -15,8 +15,10 @@ from google.adk.models import BaseLlm
 from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.factory import default_harness_registry
+from app.agent.ptc import PtcSession, select_ptc_session
 from harness.agent import SteeringCommand
 from harness.config import (
+    NotebookPtcConfig,
     RuntimeBindings,
     SkeinConfig,
     load_harness_composition,
@@ -35,6 +37,57 @@ def _enabled_composition():
     return composition.model_copy(
         update={"harness": composition.harness.model_copy(update={"config": enabled})}
     )
+
+
+@pytest.mark.parametrize(
+    ("implementation", "options"),
+    [
+        ("skein_notebook", {}),
+        ("adk_code_mode", {"adk_code_mode_image": "image:test"}),
+        ("prime_repl", {"prime_native_execution": True}),
+    ],
+)
+def test_ptc_dispatch_selects_exactly_one_common_session(
+    implementation: str, options: dict[str, Any]
+) -> None:
+    sessions = {
+        name: PtcSession(tool=object(), description=name)
+        for name in ("skein_notebook", "adk_code_mode", "prime_repl")
+    }
+    called: list[str] = []
+
+    def factory(name: str):
+        def build() -> PtcSession:
+            called.append(name)
+            return sessions[name]
+
+        return build
+
+    selected = select_ptc_session(
+        NotebookPtcConfig(enabled=True, implementation=implementation, **options),
+        skein_notebook=factory("skein_notebook"),
+        adk_code_mode=factory("adk_code_mode"),
+        prime_repl=factory("prime_repl"),
+    )
+
+    assert selected is sessions[implementation]
+    assert called == [implementation]
+
+
+def test_disabled_ptc_dispatch_is_identity_and_builds_nothing() -> None:
+    called: list[str] = []
+
+    def build() -> PtcSession:
+        called.append("built")
+        return PtcSession(tool=object(), description="unused")
+
+    assert select_ptc_session(
+        NotebookPtcConfig(),
+        skein_notebook=build,
+        adk_code_mode=build,
+        prime_repl=build,
+    ) is None
+    assert called == []
 
 
 @pytest.mark.asyncio

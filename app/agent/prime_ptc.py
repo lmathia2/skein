@@ -212,4 +212,10 @@ def build_prime_session(
             raise RuntimeError("Prime execution requires reconciliation before continuation or completion")
         return None
 
-    return PtcSession(tool=execute_code, execute_code=execute_code, close=close, before_model=before_model)
+    return PtcSession(
+        tool=execute_code,
+        description="Executes Prime-native Python with JSONL history and snapshot recovery.",
+        execute_code=execute_code,
+        close=close,
+        before_model=before_model,
+    )

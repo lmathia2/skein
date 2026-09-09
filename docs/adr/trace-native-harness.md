@@ -174,6 +174,25 @@ PTC derives views over direct-tool and task events. Context window management wi
 trace-native memory is invalid because it cannot reconstruct an evidence-backed suffix.
 Serialization and runtime-state recovery remain independent of memory visibility.
 
+The assembly behavior is therefore explicit:
+
+| PTC | Trace memory | Memory programs | Bounded context | Result |
+| --- | --- | --- | --- | --- |
+| off | off | off | off | Four direct coding tools; ordinary ADK history only |
+| on | off | off | off | One `execute_code`; PTC lifecycle persists without a memory bridge |
+| off | on | off | off | Four direct tools; trace captures direct receipts but is not model-queryable |
+| off | on | active | off | Four direct tools; reviewed memory commands are available through guarded bash |
+| on | on | off | off | One `execute_code`; trace is durable but has no model memory commands |
+| on | on | active | off | One `execute_code` with brokered memory commands when that PTC profile supports them |
+| either | on | either | on | Evidence-backed bounded suffix; programs may remain model-inaccessible |
+| either | off | active | off | Configuration error: programs require canonical memory |
+| either | off | off | on | Configuration error: bounded context requires trace-native memory |
+
+`prime_repl` with active memory programs is a known unsupported row and raises
+`NotImplementedError` naming the missing brokered memory-command bridge. Its trace-native
+memory may still be enabled with programs off for host-side evidence and context policy.
+Disabling PTC never initializes a runtime, serializer, snapshot owner, or container.
+
 The support matrix is closed: a combination exists only when assembly validation and
 contract tests cover it. Known unavailable combinations raise `NotImplementedError`;
 unknown values fail schema validation; no module silently falls back to another

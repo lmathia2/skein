@@ -47,8 +47,44 @@ def test_prime_rejects_unimplemented_integrations(unsupported: str) -> None:
         config["adk"] = {"recovery": "safe_auto"}
     else:
         config["memory"] = {"enabled": True, "context_programs": {"mode": "active"}}
-    with pytest.raises(NotImplementedError):
+    expected = {
+        "conversation": "conversation snapshot lineage",
+        "safe_auto": "safe-auto effect recovery",
+        "memory_bridge": "brokered memory command bridge",
+    }[unsupported]
+    with pytest.raises(NotImplementedError, match=expected):
         parse_harness_composition(payload)
+
+
+@pytest.mark.parametrize("ptc_enabled", [False, True])
+@pytest.mark.parametrize("memory_enabled", [False, True])
+@pytest.mark.parametrize("programs_active", [False, True])
+@pytest.mark.parametrize("window_management", [False, True])
+def test_ptc_memory_context_support_matrix(
+    ptc_enabled: bool,
+    memory_enabled: bool,
+    programs_active: bool,
+    window_management: bool,
+) -> None:
+    payload = _composition_payload()
+    config = payload["harness"]["config"]
+    config["notebook_ptc"] = {"enabled": ptc_enabled}
+    config["memory"] = {
+        "enabled": memory_enabled,
+        "context_programs": {"mode": "active" if programs_active else "off"},
+    }
+    config["context"] = {"window_management": window_management}
+    supported = memory_enabled or not (programs_active or window_management)
+
+    if supported:
+        parsed = parse_harness_composition(payload).harness.config
+        assert parsed.notebook_ptc.enabled is ptc_enabled
+        assert parsed.memory.enabled is memory_enabled
+        assert (parsed.memory.context_programs.mode == "active") is programs_active
+        assert parsed.context.window_management is window_management
+    else:
+        with pytest.raises(ValidationError, match=r"canonical memory|trace-native memory"):
+            parse_harness_composition(payload)
 
 
 def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:

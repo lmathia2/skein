@@ -83,10 +83,28 @@ def _replay_policy(code: str) -> str:
 @dataclass(frozen=True, slots=True)
 class PtcSession:
     tool: Any
+    description: str
     execute_code: Callable[..., Awaitable[dict[str, Any]]] | None = None
     close: Callable[[], Awaitable[None] | None] | None = None
     before_model: Callable[[CallbackContext], Awaitable[LlmResponse | None]] | None = None
     after_agent: Callable[[CallbackContext], Awaitable[None]] | None = None
+
+
+def select_ptc_session(
+    config: NotebookPtcConfig,
+    *,
+    skein_notebook: Callable[[], PtcSession],
+    adk_code_mode: Callable[[], PtcSession],
+    prime_repl: Callable[[], PtcSession],
+) -> PtcSession | None:
+    """Resolve the closed PTC implementation set, or identity when disabled."""
+    if not config.enabled:
+        return None
+    return {
+        "skein_notebook": skein_notebook,
+        "adk_code_mode": adk_code_mode,
+        "prime_repl": prime_repl,
+    }[config.implementation]()
 
 
 def build_adk_session(
@@ -118,7 +136,12 @@ def build_adk_session(
     async def release(callback_context: CallbackContext) -> None:
         await tool.release_invocation(callback_context.invocation_id)
 
-    return PtcSession(tool=tool, close=tool.aclose, after_agent=release)
+    return PtcSession(
+        tool=tool,
+        description="Executes vendored ADK Code Mode in one sandboxed Python tool.",
+        close=tool.aclose,
+        after_agent=release,
+    )
 
 
 def build_notebook_session(
@@ -859,4 +882,10 @@ def build_notebook_session(
                     )
         return None
 
-    return PtcSession(tool=execute_code, execute_code=execute_code, close=close, before_model=before_model)
+    return PtcSession(
+        tool=execute_code,
+        description="Executes Skein notebook PTC in one persistent CPython tool.",
+        execute_code=execute_code,
+        close=close,
+        before_model=before_model,
+    )

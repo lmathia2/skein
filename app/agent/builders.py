@@ -29,7 +29,7 @@ from harness.state.events import HarnessEvent
 from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
 from .config import HarnessSettings
-from .ptc import build_adk_session, build_notebook_session
+from .ptc import build_adk_session, build_notebook_session, select_ptc_session
 from .streaming import PublicReplies
 
 LOGGER = logging.getLogger(__name__)
@@ -74,10 +74,6 @@ def build_coding_worker(
     active_tool_config = tool_config or ToolSurfaceConfig()
     active_generation_config = generation_config or GenerationConfig()
     active_ptc_config = ptc_config or NotebookPtcConfig()
-    native_ptc_enabled = (
-        active_ptc_config.enabled
-        and active_ptc_config.implementation == "skein_notebook"
-    )
     active_event_store = event_store or JsonlEventStore(settings.state_root / "events")
 
     read_default_lines = active_tool_config.read_default_lines
@@ -241,9 +237,20 @@ def build_coding_worker(
             ),
         ))
 
-    ptc_session = None
-    if native_ptc_enabled:
-        ptc_session = build_notebook_session(
+    def build_prime():
+        from .prime_ptc import build_prime_session
+
+        return build_prime_session(
+            settings, config=active_ptc_config, events=active_event_store,
+            runtime_identity=_runtime_identity, require_verification=_require_verification,
+            replies=replies, redactor=redactor or SecretRedactor(),
+            conversation_id=conversation_notebook_id, prior_events=prior_notebook_events,
+            state_root=notebook_root,
+        )
+
+    ptc_session = select_ptc_session(
+        active_ptc_config,
+        skein_notebook=lambda: build_notebook_session(
             settings, active_ptc_config=active_ptc_config,
             active_event_store=active_event_store, active_tools=active_tools,
             approvals=approvals, replies=replies, capability_handlers=capability_handlers,
@@ -252,21 +259,12 @@ def build_coding_worker(
             fingerprint_workspace=fingerprint_workspace,
             read_default_lines=read_default_lines, bash_default_timeout=bash_default_timeout,
             runtime_identity=_runtime_identity, require_verification=_require_verification,
-        )
-    elif active_ptc_config.enabled and active_ptc_config.implementation == "adk_code_mode":
-        ptc_session = build_adk_session(
+        ),
+        adk_code_mode=lambda: build_adk_session(
             settings, active_ptc_config, [read, bash, edit, write], ptc_backend
-        )
-    elif active_ptc_config.enabled and active_ptc_config.implementation == "prime_repl":
-        from .prime_ptc import build_prime_session
-
-        ptc_session = build_prime_session(
-            settings, config=active_ptc_config, events=active_event_store,
-            runtime_identity=_runtime_identity, require_verification=_require_verification,
-            replies=replies, redactor=redactor or SecretRedactor(),
-            conversation_id=conversation_notebook_id, prior_events=prior_notebook_events,
-            state_root=notebook_root,
-        )
+        ),
+        prime_repl=build_prime,
+    )
 
     model_tools: list[Any] = [ptc_session.tool] if ptc_session else [read, bash, edit, write]
     generation = active_generation_config.model_dump(exclude_none=True)
@@ -304,18 +302,14 @@ def build_coding_worker(
         name="coding_worker",
         model=model,
         description=(
-            "Executes Skein notebook PTC in one persistent CPython tool."
-            if native_ptc_enabled
-            else "Executes Prime-native Python with JSONL history and snapshot recovery."
-            if active_ptc_config.enabled and active_ptc_config.implementation == "prime_repl"
-            else "Executes vendored ADK Code Mode in one sandboxed Python tool."
+            ptc_session.description
             if ptc_session is not None
             else "Owns one complete coding run with four composable tools."
         ),
         static_instruction=settings.static_instruction,
         instruction="",
         tools=model_tools,
-        include_contents="default" if active_ptc_config.enabled else "none",
+        include_contents="default" if ptc_session is not None else "none",
         output_schema=(
             StructuredAgentStep
             if getattr(getattr(model, "capabilities", None), "output_schema_and_tools", False)
