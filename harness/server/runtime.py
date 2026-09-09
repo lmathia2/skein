@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import aclosing, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -154,7 +155,7 @@ class AdkRunExecution:
         coding_model_status: PublicModelStatus | None = None,
         explicit_public_messages: bool = False,
         approvals: ApprovalWaiter | None = None,
-        close_callback: Callable[[], None] | None = None,
+        close_callback: Callable[[], Awaitable[None] | None] | None = None,
         resume: bool = False,
     ) -> None:
         self.record = record
@@ -317,7 +318,12 @@ class AdkRunExecution:
             await self.runner.close()
         finally:
             if self._close_callback is not None:
-                await asyncio.to_thread(self._close_callback)
+                if inspect.iscoroutinefunction(self._close_callback):
+                    await self._close_callback()
+                else:
+                    closed = await asyncio.to_thread(self._close_callback)
+                    if inspect.isawaitable(closed):
+                        await closed
 
 
 class AdkRunExecutionFactory:

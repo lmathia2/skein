@@ -17,6 +17,7 @@ from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 from google.genai import types
 
+from harness.adk.code_mode.runtime.base import SandboxBackend
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
 from harness.environment.async_call import run_managed_thread
@@ -44,7 +45,7 @@ class CodingWorkerBundle:
     edit: ToolFunction
     write: ToolFunction
     execute_code: ToolFunction | None = None
-    close: Callable[[], None] | None = None
+    close: Callable[[], Awaitable[None] | None] | None = None
 
 
 def build_coding_worker(
@@ -64,6 +65,7 @@ def build_coding_worker(
     notebook_root: Path | None = None,
     workspace_fingerprint: Callable[[], str] | None = None,
     redactor: SecretRedactor | None = None,
+    ptc_backend: SandboxBackend | None = None,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -249,7 +251,9 @@ def build_coding_worker(
             runtime_identity=_runtime_identity, require_verification=_require_verification,
         )
     elif active_ptc_config.enabled and active_ptc_config.implementation == "adk_code_mode":
-        ptc_session = build_adk_session(active_ptc_config, [read, bash, edit, write])
+        ptc_session = build_adk_session(
+            active_ptc_config, [read, bash, edit, write], ptc_backend
+        )
     elif active_ptc_config.enabled and active_ptc_config.implementation == "prime_repl":
         from .prime_ptc import build_prime_session
 

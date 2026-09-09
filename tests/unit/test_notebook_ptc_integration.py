@@ -6,7 +6,7 @@ import json
 import threading
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from google.adk.agents import LlmAgent
@@ -35,6 +35,34 @@ def _enabled_composition():
     return composition.model_copy(
         update={"harness": composition.harness.model_copy(update={"config": enabled})}
     )
+
+
+@pytest.mark.asyncio
+async def test_notebook_ptc_rejects_a_different_task_scope(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(
+                workspace=tmp_path, state_root=tmp_path / "state", task_id="owned"
+            ),
+        ),
+        cast(BaseLlm, "test-model"),
+        ptc_config=config.notebook_ptc,
+    )
+    assert worker.execute_code is not None
+    try:
+        with pytest.raises(ValueError, match="outside this owned run"):
+            await worker.execute_code(
+                "42",
+                tool_context=SimpleNamespace(
+                    state={"task_id": "other"}, invocation_id="inv", function_call_id="call"
+                ),
+            )
+    finally:
+        assert worker.close is not None
+        worker.close()
 
 
 @pytest.mark.asyncio
@@ -264,7 +292,8 @@ def test_factory_exposes_only_execute_code_when_notebook_ptc_is_enabled(tmp_path
 
 
 def test_factory_exposes_vendored_adk_code_mode_as_execute_code(tmp_path: Path) -> None:
-    registry = default_harness_registry()
+    backend = SimpleNamespace(identity="sha256:pinned")
+    registry = default_harness_registry(ptc_backend=cast(Any, backend))
     payload = load_harness_composition(config_models=registry.config_models()).model_dump(
         mode="python"
     )
@@ -284,6 +313,7 @@ def test_factory_exposes_vendored_adk_code_mode_as_execute_code(tmp_path: Path) 
 
     worker = cast(LlmAgent, assembly.agents["coding_worker"])
     assert {tool.name for tool in worker.tools} == {"execute_code"}
+    assert worker.tools[0].backend is backend
     assert assembly.build_info.tool_names == ("execute_code",)
     assert "turn-scoped Docker sandbox" in worker.static_instruction
     assert "durable notebook cell" not in worker.static_instruction

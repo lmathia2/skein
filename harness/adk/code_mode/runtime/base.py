@@ -19,9 +19,9 @@ stay backend-agnostic.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import AsyncIterator, Mapping, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from harness.adk.code_mode.runtime.protocol import Frame
 
@@ -93,6 +93,11 @@ class SandboxSession(Protocol):
 @runtime_checkable
 class SandboxBackend(Protocol):
     """Factory for ``SandboxSession`` instances."""
+
+    @property
+    def identity(self) -> str:
+        """Stable runtime/image identity used in execution receipts."""
+        ...
 
     async def start(
         self,

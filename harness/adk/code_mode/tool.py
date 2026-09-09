@@ -30,10 +30,10 @@ import tempfile
 import threading
 import time
 import weakref
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.code_executors.code_execution_utils import File
@@ -115,7 +115,7 @@ _ARTIFACT_TOOL_NAMES = frozenset(tool.name for tool in ARTIFACT_TOOLS)
 # Every open turn session is registered here (removed on ``aclose``) so the test
 # harness (and any host that wants a shutdown hook) can release sandbox
 # containers even if the owning ``ExecuteCodeTool`` is no longer referenced.
-_LIVE_TURN_SESSIONS: "set[_TurnSession]" = set()
+_LIVE_TURN_SESSIONS: set[_TurnSession] = set()
 _LIVE_TURN_SESSIONS_LOCK = threading.Lock()
 
 _DESCRIPTION_PREFIX = (
@@ -346,7 +346,7 @@ class ExecuteCodeTool(BaseTool):
         )
 
     async def process_llm_request(
-        self, *, tool_context: ToolContext, llm_request: "LlmRequest"
+        self, *, tool_context: ToolContext, llm_request: LlmRequest
     ) -> None:
         await super().process_llm_request(tool_context=tool_context, llm_request=llm_request)
         if not self._append_code_mode_metadata_to_system_instruction:
@@ -400,7 +400,7 @@ class ExecuteCodeTool(BaseTool):
                 turn, result, dispatcher = await self._run_block_reconnecting(
                     invocation_id, turn, prepared, invocation_context, code, execution_id
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return _timeout_result(self.timeout_seconds)
             except _BlockConnectionLost as exc:
                 return _connection_lost_result(exc.state)
@@ -449,6 +449,19 @@ class ExecuteCodeTool(BaseTool):
         if turn is not None:
             await turn.aclose()
 
+    async def aclose(self) -> None:
+        """Release every live turn, including invocations that skipped after-agent."""
+        with self._turns_lock:
+            turns = list(self._turns.values())
+            self._turns.clear()
+        async with asyncio.TaskGroup() as group:
+            for turn in turns:
+                group.create_task(turn.aclose())
+        if self._reaper_task is not None:
+            self._reaper_task.cancel()
+            await asyncio.gather(self._reaper_task, return_exceptions=True)
+            self._reaper_task = None
+
     def _ensure_reaper_started(self) -> None:
         if self._reaper_task is not None and not self._reaper_task.done():
             return
@@ -488,7 +501,7 @@ class ExecuteCodeTool(BaseTool):
 
     def _prepare_tool_surface(
         self, ns_tools: list[namespacing.NamespacedTool]
-    ) -> "_PreparedToolSurface":
+    ) -> _PreparedToolSurface:
         registry = namespacing.Registry(ns_tools)
         tree_files = stubs.render_tree(ns_tools)
         tools_map = {f.path: f.source for f in tree_files}
@@ -515,7 +528,7 @@ class ExecuteCodeTool(BaseTool):
 
     async def _run_attempt(
         self,
-        turn: "_TurnSession",
+        turn: _TurnSession,
         invocation_context: InvocationContext,
         code: str,
         execution_id: str,
@@ -546,12 +559,12 @@ class ExecuteCodeTool(BaseTool):
     async def _run_block_reconnecting(
         self,
         invocation_id: str,
-        turn: "_TurnSession",
-        prepared: "_PreparedToolSurface",
+        turn: _TurnSession,
+        prepared: _PreparedToolSurface,
         invocation_context: InvocationContext,
         code: str,
         execution_id: str,
-    ) -> tuple["_TurnSession", SandboxResult, Dispatcher]:
+    ) -> tuple[_TurnSession, SandboxResult, Dispatcher]:
         """Run the block, reconnecting once only if the code never reached the sandbox.
 
         Returns the (possibly reconnected) turn plus its result. On a terminal
@@ -567,7 +580,7 @@ class ExecuteCodeTool(BaseTool):
                     turn, invocation_context, code, execution_id
                 )
                 return turn, result, dispatcher
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await self._discard_turn(invocation_id, turn)
                 raise
             except _BlockConnectionLost as exc:
@@ -588,8 +601,8 @@ class ExecuteCodeTool(BaseTool):
         raise _BlockConnectionLost(_BlockRunState.NOT_RUN)  # unreachable: loop returns or raises
 
     async def _create_turn(
-        self, invocation_id: str, prepared: "_PreparedToolSurface"
-    ) -> "_TurnSession":
+        self, invocation_id: str, prepared: _PreparedToolSurface
+    ) -> _TurnSession:
         workspace = _TurnWorkspace.create()
         try:
             session = await self._backend.start(
@@ -612,7 +625,7 @@ class ExecuteCodeTool(BaseTool):
             self._turns[invocation_id] = turn
         return turn
 
-    async def _discard_turn(self, invocation_id: str, turn: "_TurnSession") -> None:
+    async def _discard_turn(self, invocation_id: str, turn: _TurnSession) -> None:
         with self._turns_lock:
             if self._turns.get(invocation_id) is turn:
                 del self._turns[invocation_id]
@@ -686,7 +699,7 @@ class _TurnWorkspace:
     baseline_hashes: dict[str, str]
 
     @classmethod
-    def create(cls) -> "_TurnWorkspace":
+    def create(cls) -> _TurnWorkspace:
         return cls(root=tempfile.mkdtemp(prefix="adk-code-mode-turn-"), baseline_hashes={})
 
     def cleanup(self) -> None:
@@ -969,7 +982,7 @@ def _level_name_to_int(name: str) -> int:
     return levels.get((name or "info").lower(), logging.INFO)
 
 
-async def _reap_idle_turns(tool_ref: "weakref.ref[ExecuteCodeTool]") -> None:
+async def _reap_idle_turns(tool_ref: weakref.ref[ExecuteCodeTool]) -> None:
     """Poll the tool's turns and close idle ones.
 
     Holds only a weak reference so a dropped ``ExecuteCodeTool`` can be

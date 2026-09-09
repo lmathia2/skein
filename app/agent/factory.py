@@ -17,6 +17,7 @@ from google.adk.plugins.base_plugin import BasePlugin
 from pydantic import BaseModel
 
 from harness.adk import SteeringPlugin
+from harness.adk.code_mode.runtime.base import SandboxBackend
 from harness.adk.context import ContextWindowPlugin, MemoryShadowPlugin
 from harness.adk.pi_compaction import pi_event_summarizer
 from harness.agent import (
@@ -168,11 +169,13 @@ class SkeinHarnessFactory:
         model_providers: AdkModelProviderRegistry | None = None,
         execution_runtime_factory: ExecutionRuntimeFactory | None = None,
         semantic_search_factory: Callable[[Path], LanceMemorySearch] | None = None,
+        ptc_backend: SandboxBackend | None = None,
     ) -> None:
         self._pricing = dict(pricing or {})
         self._model_providers = model_providers or default_adk_model_provider_registry()
         self._execution_runtime_factory = execution_runtime_factory
         self._semantic_search_factory = semantic_search_factory
+        self._ptc_backend = ptc_backend
         self._descriptor = HarnessDescriptor(
             implementation="skein_v1",
             api_version=1,
@@ -490,6 +493,7 @@ class SkeinHarnessFactory:
                 replies=replies,
                 workspace_fingerprint=execution.repository.fingerprint,
                 redactor=SecretRedactor(known_secrets=known_secrets),
+                ptc_backend=self._ptc_backend,
                 **notebook_options,
             )
         else:
@@ -716,6 +720,7 @@ def default_harness_registry(
     model_providers: AdkModelProviderRegistry | None = None,
     execution_runtime_factory: ExecutionRuntimeFactory | None = None,
     semantic_search_factory: Callable[[Path], LanceMemorySearch] | None = None,
+    ptc_backend: SandboxBackend | None = None,
 ) -> HarnessRegistry:
     registry = HarnessRegistry()
     registry.register(
@@ -724,6 +729,7 @@ def default_harness_registry(
             pricing=pricing_from_env(),
             execution_runtime_factory=execution_runtime_factory,
             semantic_search_factory=semantic_search_factory,
+            ptc_backend=ptc_backend,
         )
     )
     return registry

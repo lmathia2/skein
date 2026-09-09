@@ -1187,6 +1187,39 @@ async def test_real_adk_runner_creates_session_and_maps_output_without_credentia
 
 
 @pytest.mark.asyncio
+async def test_real_adk_runner_awaits_async_worker_close(tmp_path: Path) -> None:
+    store = SqliteRunEventStore(tmp_path / "record.db")
+    record, _ = store.create_run(
+        request_id="request-close",
+        idempotency_key="start-close",
+        thread_id="thread-close",
+        user_id="user-close",
+        input="Close",
+    )
+    service = InMemorySessionService()
+    app = App(name="close_app", root_agent=_CredentialFreeAgent(name="worker"))
+    closed: list[str] = []
+
+    async def close() -> None:
+        await asyncio.sleep(0)
+        closed.append("worker")
+
+    execution = AdkRunExecution(
+        record=record,
+        runner=Runner(app=app, session_service=service, auto_create_session=False),
+        app_name=app.name,
+        session_service=service,
+        controls=None,
+        max_llm_calls=1,
+        close_callback=close,
+    )
+
+    await execution.aclose()
+
+    assert closed == ["worker"]
+
+
+@pytest.mark.asyncio
 async def test_real_adk_runner_disambiguates_reused_stream_event_ids(
     tmp_path: Path,
 ) -> None:

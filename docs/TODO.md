@@ -84,7 +84,7 @@ and the implementation/evaluation rubric.
 ### Modular architecture execution checklist
 
 - [x] U1: Prebuild the pinned ADK sandbox image and verify its package contents.
-- [ ] U2: Reuse one trusted-eval container per sequential worker with a fresh
+- [x] U2: Reuse one trusted-eval container per sequential worker with a fresh
   interpreter, workspace view, environment and tool package per example; prove
   descendant cleanup, no cross-example state, replacement on reset failure, and
   container/start/reset metrics.

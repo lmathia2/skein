@@ -18,6 +18,7 @@ from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 from google.genai import types
 
+from harness.adk.code_mode.runtime.base import SandboxBackend
 from harness.approvals.waiting import ApprovalWaiter
 from harness.config import NotebookPtcConfig
 from harness.environment.async_call import run_managed_thread
@@ -83,7 +84,7 @@ def _replay_policy(code: str) -> str:
 class PtcSession:
     tool: Any
     execute_code: Callable[..., Awaitable[dict[str, Any]]] | None = None
-    close: Callable[[], None] | None = None
+    close: Callable[[], Awaitable[None] | None] | None = None
     before_model: Callable[[CallbackContext], Awaitable[LlmResponse | None]] | None = None
     after_agent: Callable[[CallbackContext], Awaitable[None]] | None = None
 
@@ -91,13 +92,14 @@ class PtcSession:
 def build_adk_session(
     config: NotebookPtcConfig,
     tools: list[Callable[..., Awaitable[dict[str, Any]]]],
+    backend: SandboxBackend | None = None,
 ) -> PtcSession:
     """Preserve upstream invocation ownership and tool declaration."""
     from harness.adk.code_mode import ExecuteCodeTool, UnsafeLocalDockerBackend
     assert config.adk_code_mode_image is not None
     tool = ExecuteCodeTool(
         tools=tools,
-        backend=UnsafeLocalDockerBackend(image=config.adk_code_mode_image),
+        backend=backend or UnsafeLocalDockerBackend(image=config.adk_code_mode_image),
         include_artifact_tools=False,
         save_tool_results_as_artifacts=False,
         append_code_mode_metadata_to_system_instruction=False,
@@ -109,7 +111,7 @@ def build_adk_session(
     async def release(callback_context: CallbackContext) -> None:
         await tool.release_invocation(callback_context.invocation_id)
 
-    return PtcSession(tool=tool, after_agent=release)
+    return PtcSession(tool=tool, close=tool.aclose, after_agent=release)
 
 
 def build_notebook_session(
@@ -486,6 +488,8 @@ def build_notebook_session(
             replies.guard_tool(tool_context)
         _require_verification(tool_context)
         task_scope, invocation_id = _runtime_identity(tool_context)
+        if settings.task_id_override and task_scope and task_scope != settings.task_id_override:
+            raise ValueError("notebook PTC task is outside this owned run")
         task_id = task_scope or "unscoped"
         notebook_id = conversation_notebook_id or hashlib.sha256(task_id.encode()).hexdigest()[:32]
         active_notebooks[task_id] = notebook_id

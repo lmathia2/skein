@@ -518,6 +518,62 @@ async def run_evaluation(
             await assembly.coordinator.aclose()
 
 
+async def run_evaluation_batch(
+    requests: list[EvaluationRunRequest], *, image: str, worker_root: Path,
+    validate_workspace: bool = True,
+) -> list[EvaluationRunResult]:
+    """Run sequential trusted examples through one reset-verified ADK container."""
+    from app.agent.factory import default_harness_registry
+    from harness.evals.ptc_worker import ReusableDockerBackend
+
+    if not requests:
+        return []
+    state_roots = [request.state_root.resolve() for request in requests]
+    auth_roots = [request.auth_state_root.resolve() for request in requests]
+    if len(set(state_roots)) != len(state_roots) or len(set(auth_roots)) != len(auth_roots):
+        raise ValueError("batch examples require distinct state and authorization roots")
+    pool_root = worker_root.resolve()
+    owned_roots = state_roots + auth_roots + [request.workspace.resolve() for request in requests]
+    if any(
+        pool_root == root or pool_root.is_relative_to(root) or root.is_relative_to(pool_root)
+        for root in owned_roots
+    ):
+        raise ValueError("batch PTC worker root must be outside example-owned roots")
+    for request in requests:
+        composition = load_harness_composition(request.config_template)
+        ptc = getattr(composition.harness.config, "notebook_ptc", None)
+        if not ptc or not ptc.enabled or ptc.implementation != "adk_code_mode":
+            raise ValueError("reusable PTC containers require enabled adk_code_mode")
+        if ptc.adk_code_mode_image != image:
+            raise ValueError(
+                f"batch image {image!r} does not match configured image "
+                f"{ptc.adk_code_mode_image!r}"
+            )
+    worker = ReusableDockerBackend(image, worker_root)
+    results: list[EvaluationRunResult] = []
+    try:
+        for request in requests:
+            before = dict(worker.metrics)
+            registry = default_harness_registry(ptc_backend=worker)
+
+            def build(*, _registry=registry, **kwargs):
+                return build_server_assembly(**kwargs, registry=_registry)
+
+            result = await run_evaluation(
+                request, assembly_builder=build, validate_workspace=validate_workspace
+            )
+            pool_metrics = {
+                key: worker.metrics[key] - before[key]
+                for key in worker.metrics
+            }
+            result = result.model_copy(update={"metrics": {**result.metrics, **pool_metrics}})
+            write_evaluation_result(result)
+            results.append(result)
+    finally:
+        await worker.aclose()
+    return results
+
+
 def run_evaluation_sync(
     request: EvaluationRunRequest,
     *,
@@ -543,6 +599,7 @@ __all__ = [
     "SubscriptionLimitObservation",
     "prepare_evaluation_config",
     "run_evaluation",
+    "run_evaluation_batch",
     "run_evaluation_sync",
     "write_evaluation_result",
 ]
