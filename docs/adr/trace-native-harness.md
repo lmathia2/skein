@@ -7,6 +7,8 @@
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
 
+[The premise of Skein](premise.md) explains the motivation and links the companion ADRs.
+
 ## Decisions
 
 1. One append-only canonical ledger is the historical source of truth.

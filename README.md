@@ -7,6 +7,10 @@
 Skein is a trace-native coding agent built on Google ADK. It runs one coding worker
 inside a minimal deterministic harness for execution, memory, policy, and verification.
 
+Read [the premise of Skein](docs/adr/premise.md) for why code mode, notebook documents,
+append-only traces, and versioned memory programs belong together, with links to the
+current architecture decisions.
+
 ## Key features
 
 - **One-tool PTC:** optional notebook mode exposes one persistent `execute_code` tool that
@@ -56,7 +60,7 @@ and skills.
 | Mode | Start command | Model-visible tools | Durable history |
 | --- | --- | --- | --- |
 | Default | `./start.sh run --workspace DIR` | `read`, `bash`, `edit`, `write` | Existing JSONL/SQLite stores |
-| Notebook PTC | `./start-ptc.sh DIR` | One persistent `python` tool | Notebook transcript plus canonical JSONL ledger |
+| Notebook PTC | `./start-ptc.sh DIR` | One persistent `execute_code` tool | Notebook transcript plus canonical JSONL ledger |
 
 ## Install details
 
