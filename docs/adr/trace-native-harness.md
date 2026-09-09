@@ -121,6 +121,21 @@ behavior hash. New profiles use only the decomposed shape.
 
 ### Supported combination rules
 
+Implementation-native presets are the first supported configurations. Selecting an
+implementation preserves its own execution, persistence, and error behavior; cross
+combinations become selectable only when their adapters and contract tests exist.
+Known but unsupported combinations raise `NotImplementedError` during configuration
+loading. Unknown enum values, invalid budgets, and missing required settings remain
+validation errors. There is no fallback to another runtime or persistence policy.
+
+The transitional `notebook_ptc` schema accepts `serialization: native` and
+`state: native` by default. Skein additionally accepts its explicit `notebook` and
+`replay_safe` pairing. ADK Code Mode accepts native ADK-managed history and `none`;
+it does not yet implement a selectable JSONL session serializer. Prime's native pairing
+is JSONL transcript plus runtime snapshots, but selecting `prime_repl` raises
+`NotImplementedError` until its integration lands. The matrix below is a delivery
+target, not a promise that all combinations are available now.
+
 - `adk_code_mode` is turn-scoped and initially supports `state: none` and
   `continuity: run` only.
 - `replay_safe` requires a persistent runtime and canonical cell lifecycle events.

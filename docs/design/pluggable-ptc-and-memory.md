@@ -30,3 +30,35 @@ A matched comparison changes only `notebook_ptc.implementation` or
 `memory.implementation`, keeps the model/task/budgets fixed, and records the
 existing pass, cost, token, cache, latency, retry, effect, and verification metrics.
 No default changes until that ablation passes.
+
+## Native configuration presets
+
+Use these blocks under `harness.config` in an existing composition. Omitted
+`serialization` and `state` settings default to `native`, preserving the implementation's
+existing behavior.
+
+```yaml
+notebook_ptc:
+  enabled: true
+  implementation: skein_notebook
+  serialization: notebook
+  state: replay_safe
+```
+
+```yaml
+notebook_ptc:
+  enabled: true
+  implementation: adk_code_mode
+  serialization: native
+  state: none
+  adk_code_mode_image: YOUR_PINNED_IMAGE
+```
+
+ADK's native history is managed by the surrounding ADK session machinery; selecting
+`jsonl` does not silently relabel that history. Unsupported serialization/state
+combinations and ADK conversation continuity raise `NotImplementedError` at load time.
+Invalid field values and missing image settings remain validation errors.
+
+The intended Prime preset is `implementation: prime_repl`, `serialization: jsonl`,
+`state: snapshot`. It currently raises `NotImplementedError` because the Prime runtime
+has not been integrated. These options never trigger a substitute implementation.

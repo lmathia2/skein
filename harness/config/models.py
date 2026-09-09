@@ -168,7 +168,9 @@ class ToolSurfaceConfig(FrozenModel):
 
 class NotebookPtcConfig(FrozenModel):
     enabled: bool = False
-    implementation: Literal["skein_notebook", "adk_code_mode"] = "skein_notebook"
+    implementation: Literal["skein_notebook", "adk_code_mode", "prime_repl"] = "skein_notebook"
+    serialization: Literal["native", "notebook", "jsonl"] = "native"
+    state: Literal["native", "none", "replay_safe", "snapshot"] = "native"
     adk_code_mode_image: str | None = Field(default=None, min_length=1, max_length=512)
     continuity: Literal["run", "conversation"] = "run"
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
@@ -197,8 +199,24 @@ class NotebookPtcConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_timeouts(self) -> NotebookPtcConfig:
+        if self.implementation == "prime_repl":
+            raise NotImplementedError("prime_repl is not integrated; its native persistence is JSONL plus snapshots")
+        native_serialization, native_state = (
+            ("notebook", "replay_safe") if self.implementation == "skein_notebook"
+            else ("native", "none")
+        )
+        if self.serialization not in {"native", native_serialization}:
+            raise NotImplementedError(
+                f"{self.implementation} does not implement serialization={self.serialization}; "
+                "use serialization=native to preserve its existing persistence"
+            )
+        if self.state not in {"native", native_state}:
+            raise NotImplementedError(
+                f"{self.implementation} does not implement state={self.state}; "
+                f"its native state policy is {native_state}"
+            )
         if self.implementation == "adk_code_mode" and self.continuity != "run":
-            raise ValueError("adk-code-mode supports run-scoped continuity only")
+            raise NotImplementedError("adk-code-mode supports run-scoped continuity only")
         if self.enabled and self.implementation == "adk_code_mode" and not self.adk_code_mode_image:
             raise ValueError("adk-code-mode requires an explicit sandbox image tag or digest")
         if self.continuity == "conversation" and not self.enabled:

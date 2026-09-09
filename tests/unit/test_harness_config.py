@@ -148,8 +148,41 @@ def test_adk_code_mode_rejects_conversation_continuity() -> None:
         "continuity": "conversation",
     }
 
-    with pytest.raises(ValidationError, match="run-scoped continuity only"):
+    with pytest.raises(NotImplementedError, match="run-scoped continuity only"):
         parse_harness_composition(payload)
+
+
+@pytest.mark.parametrize(
+    ("implementation", "serialization", "state", "supported"),
+    [
+        ("skein_notebook", "native", "native", True),
+        ("skein_notebook", "notebook", "replay_safe", True),
+        ("skein_notebook", "jsonl", "native", False),
+        ("skein_notebook", "native", "snapshot", False),
+        ("adk_code_mode", "native", "none", True),
+        ("adk_code_mode", "notebook", "none", False),
+        ("adk_code_mode", "jsonl", "none", False),
+        ("adk_code_mode", "native", "replay_safe", False),
+        ("prime_repl", "jsonl", "snapshot", False),
+    ],
+)
+def test_ptc_native_configuration_support_matrix(
+    implementation: str, serialization: str, state: str, supported: bool,
+) -> None:
+    payload = _composition_payload()
+    payload["harness"]["config"]["notebook_ptc"] = {
+        "enabled": True, "implementation": implementation,
+        "serialization": serialization, "state": state,
+        "adk_code_mode_image": "local-test-image",
+    }
+    if supported:
+        config = parse_harness_composition(payload).harness.config
+        assert config.notebook_ptc.implementation == implementation
+        assert config.notebook_ptc.serialization == serialization
+        assert config.notebook_ptc.state == state
+    else:
+        with pytest.raises(NotImplementedError):
+            parse_harness_composition(payload)
 
 
 def test_pi_memory_rejects_trace_native_programs() -> None:

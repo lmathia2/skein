@@ -69,6 +69,11 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
 
 ## Retained and verified
 
+- PTC configuration preserves implementation-native serialization and state policy
+  by default. Explicit Skein notebook/safe-replay and ADK native-history/no-restore
+  selections are accepted. Unsupported combinations and the not-yet-integrated
+  `prime_repl` fail at configuration loading with `NotImplementedError`.
+
 - The project identity is Skein: the Python distribution and primary CLI are `skein`,
   the runtime implementation key is `skein_v1`, launchers are `skein-start` and
   `skein-tui`, and runtime environment settings use the `SKEIN_` prefix.
