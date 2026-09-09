@@ -88,7 +88,7 @@ and the implementation/evaluation rubric.
   interpreter, workspace view, environment and tool package per example; prove
   descendant cleanup, no cross-example state, replacement on reset failure, and
   container/start/reset metrics.
-- [ ] U3: Normalize PTC model-visible results to a compact stable envelope and make
+- [x] U3: Normalize PTC model-visible results to a compact stable envelope and make
   top-level plus nested tool usage queryable through versioned trace-memory views.
 - [ ] U4: Replace scattered PTC assembly branches with one closed dispatch point;
   document and exhaustively test behavior with PTC/memory/context independently off.

@@ -15,7 +15,7 @@ from harness.telemetry.metrics import ModelUsageSample, TaskOutcomeSample, ToolU
 from harness.tracing.store import TraceSpan
 
 from .base import LedgerStore
-from .models import EventStatus, LedgerEvent, canonical_json
+from .models import EffectStatus, EventStatus, LedgerEvent, canonical_json
 
 
 def _time(value: str | float | int) -> datetime:
@@ -25,11 +25,37 @@ def _time(value: str | float | int) -> datetime:
 
 
 def import_harness_event(store: LedgerStore, event: HarnessEvent) -> LedgerEvent:
+    statuses: dict[str, EventStatus] = {
+        "repl.cell_submitted": "started",
+        "repl.cell_completed": "completed",
+        "repl.cell_failed": "failed",
+        "repl.cell_timeout": "timeout",
+        "prime.cell_submitted": "started",
+        "capability.requested": "started",
+        "capability.completed": "completed",
+        "capability.failed": "failed",
+        "capability.blocked": "blocked",
+    }
+    status = statuses.get(event.kind, "observed")
+    if event.kind == "prime.cell_terminal":
+        candidate = str((event.payload.get("result") or {}).get("status", "observed"))
+        terminal_statuses: dict[str, EventStatus] = {
+            "ok": "completed", "error": "failed", "blocked": "blocked", "timeout": "timeout"
+        }
+        status = terminal_statuses.get(candidate, "observed")
+    effects: dict[str, EffectStatus] = {
+        "changed": "applied", "unknown": "unknown", "native_untracked": "unknown"
+    }
+    effect = effects.get(str(event.payload.get("effect", "")), "none")
+    if event.kind == "capability.requested":
+        effect = "intended"
     return store.append(
         task_id=event.task_id,
         source="harness_event",
         source_id=event.event_id,
         kind=event.kind,
+        status=status,
+        effect=effect,
         payload=event.payload,
         observed_at=event.timestamp,
         idempotency_key=(

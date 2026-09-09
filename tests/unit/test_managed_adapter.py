@@ -417,9 +417,13 @@ def test_managed_read_recovers_bounded_workspace_and_command_artifacts(
     )
     command_artifact.parent.mkdir(parents=True)
     command_artifact.write_bytes(command_content)
+    sha_artifact = state_root / "artifacts" / "sha256" / command_digest
+    sha_artifact.parent.mkdir(parents=True)
+    sha_artifact.write_bytes(command_content)
 
     workspace_result = tools.read(workspace_uri, offset=2, limit=1)
     command_result = tools.read(command_artifact.as_uri(), offset=2, limit=2)
+    sha_result = tools.read(f"artifact://sha256/{command_digest}", offset=2, limit=2)
 
     assert workspace_result["status"] == "ok"
     assert "artifact-sensitive-value" not in workspace_result["model_text"]
@@ -428,6 +432,9 @@ def test_managed_read_recovers_bounded_workspace_and_command_artifacts(
     assert "[more available: read offset=3]" in workspace_result["model_text"]
     assert "line one" in command_result["model_text"]
     assert "line two" in command_result["model_text"]
+    assert sha_result["content_hashes"] == {
+        f"artifact://sha256/{command_digest}": command_digest
+    }
     assert len(command_result["model_text"].encode()) < 32_000
 
 

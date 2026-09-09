@@ -23,7 +23,9 @@ from .lance import LanceMemorySearch
 from .models import ViewRequest, ViewResult
 
 ArtifactReader = Callable[[str, int, int], dict[str, Any]]
-CONTEXT_PROGRAMS = {"history.page", "event.read", "events.count", "artifact.read"}
+CONTEXT_PROGRAMS = {
+    "history.page", "event.read", "events.count", "artifact.read", "tools.usage"
+}
 REVIEWED_PROGRAMS = {"failures.by_kind"}
 EXPOSURE_VERSION = "context-public-v1"
 # Explicit field/kind allowlist: never expose raw ADK sessions, traces, heaps or reasoning.
@@ -38,6 +40,25 @@ _FIELDS = {
     "task.blocked": {"reason", "summary"},
     "task.finished": {"status", "summary", "outcome"},
     "memory.note": {"version", "text", "evidence_event_ids", "expected_version"},
+    "metric.tool": {
+        "invocation_id", "tool_name", "status", "arguments_hash", "result_hash",
+        "duration_ms", "model_visible_bytes", "omitted_bytes", "replayed",
+    },
+    "capability.requested": {
+        "attempt_id", "operation_id", "operation", "arguments_sha256",
+    },
+    "capability.completed": {
+        "attempt_id", "operation_id", "operation", "status", "effect", "result_hash",
+        "artifact_refs", "truncated", "omitted_bytes",
+    },
+    "capability.failed": {
+        "attempt_id", "operation_id", "operation", "status", "effect", "result_hash",
+        "error", "truncated", "omitted_bytes",
+    },
+    "capability.blocked": {
+        "attempt_id", "operation_id", "operation", "status", "effect", "result_hash",
+        "truncated", "omitted_bytes",
+    },
 }
 _TOOL_FIELDS = {"tool_name", "status", "artifact_uri", "error", "result_hash"}
 
@@ -132,7 +153,67 @@ def bounded_events(
     return events
 
 
-def compute_context(
+def _tool_usage(
+    events: list[LedgerEvent], request: ViewRequest
+) -> tuple[dict[str, Any], str]:
+    metric_events = [event for event in events if event.kind == "metric.tool"]
+    code_invocations = {
+        str(event.payload.get("invocation_id", ""))
+        for event in metric_events if event.payload.get("tool_name") == "execute_code"
+    }
+    rows: list[dict[str, Any]] = []
+    for event in metric_events:
+        name = str(event.payload.get("tool_name", "unknown"))
+        invocation = str(event.payload.get("invocation_id", ""))
+        rows.append({
+            "level": "top_level" if name == "execute_code" or invocation not in code_invocations else "nested",
+            "name": name,
+            "status": str(event.payload.get("status", "error")),
+            "model_visible_bytes": int(event.payload.get("model_visible_bytes", 0)),
+            "omitted_bytes": int(event.payload.get("omitted_bytes", 0)),
+        })
+    capability_kinds = {"capability.completed", "capability.failed", "capability.blocked"}
+    for event in events:
+        if event.kind in capability_kinds:
+            rows.append({
+                "level": "nested",
+                "name": str(event.payload.get("operation", "unknown")),
+                "status": str(event.payload.get("status", event.status)),
+                "model_visible_bytes": 0,
+                "omitted_bytes": int(event.payload.get("omitted_bytes", 0)),
+            })
+    if request.query:
+        rows = [row for row in rows if request.query.casefold() in row["name"].casefold()]
+    if request.statuses:
+        rows = [row for row in rows if row["status"] in request.statuses]
+
+    def aggregate(selected: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "count": len(selected),
+            "by_name": dict(sorted(Counter(row["name"] for row in selected).items())),
+            "by_status": dict(sorted(Counter(row["status"] for row in selected).items())),
+        }
+
+    data = {
+        "count": len(rows),
+        "top_level": aggregate([row for row in rows if row["level"] == "top_level"]),
+        "nested": aggregate([row for row in rows if row["level"] == "nested"]),
+        "native_untracked_cells": sum(
+            1 for event in events
+            if event.kind == "prime.cell_terminal"
+            and event.payload.get("effect") == "native_untracked"
+        ),
+        "model_visible_bytes": sum(row["model_visible_bytes"] for row in rows),
+        "omitted_bytes": sum(row["omitted_bytes"] for row in rows),
+        "complete": True,
+    }
+    data["evidence_manifest_hash"] = _hash(data)
+    if len(canonical_json(data).encode()) > request.max_bytes:
+        return {"reason": "tool usage aggregate exceeds budget", "complete": False}, "partial"
+    return data, "ok"
+
+
+def compute_context(  # pyright: ignore[reportGeneralTypeIssues]  # U6 extracts policy branches.
     ledger: LedgerStore, request: ViewRequest, *, authorized_tasks: tuple[str, ...],
     redactor: SecretRedactor, reuse: bool = False, artifact_reader: ArtifactReader | None = None,
     source_ledgers: Mapping[str, LedgerStore] | None = None,
@@ -181,8 +262,10 @@ def compute_context(
         return result({"reason": "program/version is not available"}, "unavailable")
     if request.retrieval != "keyword" and (semantic_search is None or not request.query):
         return result({"reason": "semantic retrieval requires an explicit provider and query"}, "unavailable")
-    if request.retrieval != "keyword" and request.program in {"event.read", "artifact.read"}:
-        return result({"reason": "exact reads do not apply semantic ranking"}, "unavailable")
+    if request.retrieval != "keyword" and request.program in {
+        "event.read", "artifact.read", "tools.usage"
+    }:
+        return result({"reason": "selected program does not apply semantic ranking"}, "unavailable")
     previous: dict[str, Any] | None = None
     if request.cursor:
         try:
@@ -229,6 +312,7 @@ def compute_context(
         else:
             events = bounded_events(ledger, tasks, maximum=request.max_scan_events, deadline=deadline)
         visible: list[dict[str, Any]] = []
+        retained_events: list[LedgerEvent] = []
         for task in tasks:
             source = [event for event in events if event.task_id == task and event.kind not in {"memory.retrieval", "memory.summary"}]
             if not source and (task != request.task_id or (known_sources is not None and task in known_sources)):
@@ -256,6 +340,7 @@ def compute_context(
                     continue
                 if request.observed_after and event.observed_at < request.observed_after:
                     continue
+                retained_events.append(event)
                 row = project(event, redactor)
                 if row is None or (request.kinds and event.kind not in request.kinds):
                     continue
@@ -278,6 +363,8 @@ def compute_context(
             visible = [safe_rows[event_id] for event_id in dict.fromkeys(ranked_ids) if event_id in safe_rows]
             ranked_partial = True  # semantic top-k is never an exact full-set predicate
         execution_hash = _hash({"parameters": parameters, "sources": manifest, "program": program_hash})
+        if request.program == "tools.usage":
+            return result(*_tool_usage(retained_events, request))
         if request.program in {"events.count", "failures.by_kind"}:
             if request.program == "failures.by_kind":
                 visible = [row for row in visible if row["status"] in {"failed", "timeout", "blocked"}]

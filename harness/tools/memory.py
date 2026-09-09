@@ -104,7 +104,10 @@ class ContextProgramService:
         """Small advisory metadata; caller allocates its existing dynamic budget."""
         try:
             note = self.note_read()
-            hint = "memory history; memory query --program events.count; memory note read"
+            hint = (
+                "memory history; memory query --program events.count; "
+                "memory query --program tools.usage; memory note read"
+            )
             if self.runtime.semantic_search is not None:
                 hint += "; memory history --query TEXT --retrieval semantic|hybrid (top-k, not exhaustive)"
             return {"memory": self.mode, "note": {key: value for key, value in note.items() if key != "text"},

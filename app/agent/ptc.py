@@ -34,7 +34,7 @@ from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT
 from harness.state import EventKind, EventStore
 from harness.state.events import HarnessEvent
 from harness.tools.adk_adapter import AdkCodingTools
-from harness.tools.output import bound_output
+from harness.tools.output import bound_output, compact_tool_result
 from harness.verification.contracts import is_reusable_validation_command
 
 from .config import HarnessSettings
@@ -90,6 +90,7 @@ class PtcSession:
 
 
 def build_adk_session(
+    settings: HarnessSettings,
     config: NotebookPtcConfig,
     tools: list[Callable[..., Awaitable[dict[str, Any]]]],
     backend: SandboxBackend | None = None,
@@ -103,9 +104,15 @@ def build_adk_session(
         include_artifact_tools=False,
         save_tool_results_as_artifacts=False,
         append_code_mode_metadata_to_system_instruction=False,
-        max_output_chars=config.max_output_bytes,
+        max_output_chars=max(1, config.max_output_bytes // 2),
         timeout_seconds=config.default_timeout_seconds,
         per_tool_timeout_seconds=config.default_timeout_seconds,
+        result_transform=lambda result: compact_tool_result(
+            result, max_chars=config.max_output_bytes
+        ),
+        artifact_writer=lambda content: put_artifact(
+            settings.state_root / "artifacts" / "sha256", content
+        ),
     )
 
     async def release(callback_context: CallbackContext) -> None:
@@ -204,7 +211,13 @@ def build_notebook_session(
             active_event_store.append(
                 self.task_id,
                 EventKind.CAPABILITY_FAILED,
-                {**common, "status": "failed", "effect": effect, "error": type(error).__name__},
+                {
+                    **common,
+                    "status": "failed",
+                    "effect": effect,
+                    "error": type(error).__name__,
+                    "result_hash": hashlib.sha256(type(error).__name__.encode()).hexdigest(),
+                },
                 idempotency_key=f"capability:{operation_id}:failed",
             )
             self.effects.append(effect)
@@ -234,10 +247,21 @@ def build_notebook_session(
             }
             self.artifact_refs.update(refs)
             self.effects.append(effect)
+            result_hash = hashlib.sha256(
+                json.dumps(result, sort_keys=True, separators=(",", ":"), default=str).encode()
+            ).hexdigest()
             active_event_store.append(
                 self.task_id,
                 kind,
-                {**common, "status": status, "effect": effect, "artifact_refs": sorted(refs)},
+                {
+                    **common,
+                    "status": status,
+                    "effect": effect,
+                    "result_hash": result_hash,
+                    "artifact_refs": sorted(refs),
+                    "truncated": bool(result.get("truncated")),
+                    "omitted_bytes": max(0, int(result.get("omitted_bytes", 0))),
+                },
                 idempotency_key=f"capability:{operation_id}:terminal",
             )
             return result
@@ -462,7 +486,7 @@ def build_notebook_session(
                 return "changed"
             return "observed" if "observed" in self.effects else "none"
 
-    async def execute_code(
+    async def _execute_code(
         code: str,
         timeout_seconds: int = active_ptc_config.default_timeout_seconds,
         tool_context: ToolContext | None = None,
@@ -727,6 +751,16 @@ def build_notebook_session(
             "state_count": result.state_count,
             "state_delta": list(result.state_delta),
         }
+
+    async def execute_code(
+        code: str,
+        timeout_seconds: int = active_ptc_config.default_timeout_seconds,
+        tool_context: ToolContext | None = None,
+    ) -> dict[str, Any]:
+        return compact_tool_result(
+            await _execute_code(code, timeout_seconds, tool_context),
+            max_chars=active_ptc_config.max_output_bytes,
+        )
 
     def close() -> None:
         assert python_worker is not None

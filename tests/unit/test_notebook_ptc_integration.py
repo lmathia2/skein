@@ -500,7 +500,7 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert len(rich["artifact_uris"]) == 1
     assert second["effect"] == "changed"
     assert (workspace / "answer.txt").read_text(encoding="utf-8") == "42"
-    notebook_path = Path(str(second["notebook_path"]))
+    notebook_path = next((state_root / "notebooks").glob("*.ipynb"))
     assert notebook_path.exists()
     notebook_text = notebook_path.read_text(encoding="utf-8")
     assert notebook_text.count('"cell_type":"code"') == 3
@@ -512,10 +512,11 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     terminal = next(
         event for event in events.read("task-1")
         if event.kind == EventKind.REPL_CELL_COMPLETED
-        and event.payload["cell_id"] == second["cell_id"]
+        and event.payload["cell_id"] == second["attempt_id"]
     )
     assert terminal.payload["capability_count"] == 2
     assert terminal.payload["capability_operations"] == ["fs.write", "fs.read"]
+    assert "notebook_path" not in second and "state_delta" not in second
     assert kinds[-1] == EventKind.NOTEBOOK_SNAPSHOTTED
     assert '"tools":["execute_code"]' in settings.static_prefix
     assert "During verify, group already-selected" in settings.static_instruction
@@ -611,11 +612,16 @@ async def test_worker_close_snapshots_complete_notebook_once(tmp_path: Path) -> 
     assert len(snapshots) == 1
     payload = snapshots[0].payload
     assert payload["source_watermark"] == message.sequence
-    assert payload["kernel_epoch"] == result["kernel_epoch"]
+    terminal = next(
+        event for event in events.read("task-snapshot")
+        if event.kind == EventKind.REPL_CELL_COMPLETED
+        and event.payload["cell_id"] == result["attempt_id"]
+    )
+    assert payload["kernel_epoch"] == terminal.payload["kernel_epoch"]
     digest = payload["notebook_sha256"]
     assert payload["artifact_uri"] == f"artifact://sha256/{digest}"
     artifact = state_root / "artifacts" / "sha256" / digest
-    notebook = Path(result["notebook_path"])
+    notebook = next((state_root / "notebooks").glob("*.ipynb"))
     assert artifact.read_bytes() == notebook.read_bytes()
     assert hashlib.sha256(artifact.read_bytes()).hexdigest() == digest
     document = json.loads(artifact.read_bytes())

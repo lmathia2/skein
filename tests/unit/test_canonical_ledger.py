@@ -182,6 +182,34 @@ def test_source_namespaces_prevent_cross_store_idempotency_collisions(tmp_path: 
     assert len(ledger.read("task")) == 2
 
 
+@pytest.mark.parametrize(
+    ("kind", "payload", "status", "effect"),
+    [
+        ("repl.cell_completed", {"effect": "changed"}, "completed", "applied"),
+        ("repl.cell_timeout", {"effect": "unknown"}, "timeout", "unknown"),
+        ("capability.requested", {}, "started", "intended"),
+        ("capability.blocked", {"effect": "none"}, "blocked", "none"),
+        (
+            "prime.cell_terminal",
+            {"effect": "native_untracked", "result": {"status": "error"}},
+            "failed",
+            "unknown",
+        ),
+    ],
+)
+def test_harness_ptc_lifecycle_imports_canonical_semantics(
+    tmp_path: Path, kind: str, payload: dict, status: str, effect: str
+) -> None:
+    ledger = JsonlLedgerStore(tmp_path / "ledger.jsonl")
+    imported = import_harness_event(
+        ledger,
+        HarnessEvent(task_id="task", sequence=1, kind=kind, payload=payload),
+    )
+
+    assert imported.status == status
+    assert imported.effect == effect
+
+
 def test_approval_and_steering_transitions_are_replayable_evidence(tmp_path: Path) -> None:
     ledger = DuckDbLedgerStore(tmp_path / "ledger.duckdb")
     approvals = ApprovalStore(

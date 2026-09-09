@@ -109,7 +109,7 @@ def _normalize_result(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     if hasattr(value, "model_dump"):
-        return value.model_dump(mode="json")
+        return value.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
     return {"status": "ok", "model_text": str(value)}
 
 
@@ -119,6 +119,7 @@ class _ArtifactResolver:
     def __init__(self, *, workspace: Path, state_root: Path) -> None:
         self.workspace_artifact_root = (workspace / ".artifacts" / "tool-output").resolve()
         self.command_artifact_root = (state_root / "artifacts" / "commands").resolve()
+        self.sha_artifact_root = (state_root / "artifacts" / "sha256").resolve()
 
     @staticmethod
     def _confined_file(root: Path, candidate: Path) -> Path:
@@ -140,6 +141,13 @@ class _ArtifactResolver:
             raise ValueError("artifact URI cannot contain credentials, query, or fragment")
 
         if parsed.scheme == "artifact":
+            if parsed.netloc == "sha256":
+                digest = parsed.path.removeprefix("/")
+                if not re.fullmatch(r"[0-9a-f]{64}", digest) or parsed.path.count("/") != 1:
+                    raise ValueError("artifact URI must contain one SHA-256 digest")
+                return self._confined_file(
+                    self.sha_artifact_root, self.sha_artifact_root / digest
+                ), digest
             if parsed.netloc != "tool-output":
                 raise ValueError("unsupported artifact collection")
             match = _CONTENT_ARTIFACT_NAME.fullmatch(parsed.path.removeprefix("/"))

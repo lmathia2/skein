@@ -211,6 +211,8 @@ class ExecuteCodeTool(BaseTool):
         per_tool_timeout_seconds: float | None = None,
         session_idle_timeout_seconds: float = 600,
         on_artifacts_saved: ArtifactsSavedCallback | None = None,
+        result_transform: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        artifact_writer: Callable[[bytes], str] | None = None,
     ) -> None:
         """Initializes the ExecuteCodeTool.
 
@@ -259,6 +261,9 @@ class ExecuteCodeTool(BaseTool):
             produced new artifact versions. Receives the live
             ``InvocationContext`` and a ``{filename: version}`` dict. Hook
             errors are logged and swallowed — they must not break execution.
+          result_transform: Optional final projection for model-visible results.
+          artifact_writer: Optional content-addressed writer for output overflow
+            and files produced inside the sandbox.
         """
         super().__init__(
             name="execute_code",
@@ -295,6 +300,8 @@ class ExecuteCodeTool(BaseTool):
         self._per_tool_timeout_seconds = per_tool_timeout_seconds
         self._session_idle_timeout_seconds = session_idle_timeout_seconds
         self._on_artifacts_saved = on_artifacts_saved
+        self._result_transform = result_transform
+        self._artifact_writer = artifact_writer
 
         self._resolved_tools: _WeakContextCache[tuple[str, list[namespacing.NamespacedTool]]] = (
             _WeakContextCache()
@@ -373,14 +380,15 @@ class ExecuteCodeTool(BaseTool):
     async def _run_async_locked(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
         code = args["code"]
         if self._max_code_chars and len(code) > self._max_code_chars:
-            return {
+            return self._present({
+                "status": "error",
                 "stdout": "",
                 "stderr": (
                     f"Code exceeds maximum allowed length "
                     f"({len(code):,} > {self._max_code_chars:,} chars)."
                 ),
                 "output_files": [],
-            }
+            })
 
         invocation_context = tool_context._invocation_context
         invocation_id = tool_context.invocation_id
@@ -401,9 +409,9 @@ class ExecuteCodeTool(BaseTool):
                     invocation_id, turn, prepared, invocation_context, code, execution_id
                 )
             except TimeoutError:
-                return _timeout_result(self.timeout_seconds)
+                return self._present(_timeout_result(self.timeout_seconds))
             except _BlockConnectionLost as exc:
-                return _connection_lost_result(exc.state)
+                return self._present(_connection_lost_result(exc.state))
 
             output_files = turn.workspace.collect_outputs()
             await self._fire_artifacts_saved(invocation_context, dispatcher.artifact_delta)
@@ -416,6 +424,7 @@ class ExecuteCodeTool(BaseTool):
                     stream_name="stdout",
                     execution_id=execution_id,
                     invocation_context=invocation_context,
+                    artifact_writer=self._artifact_writer,
                 ),
                 truncate(
                     stderr,
@@ -423,18 +432,31 @@ class ExecuteCodeTool(BaseTool):
                     stream_name="stderr",
                     execution_id=execution_id,
                     invocation_context=invocation_context,
+                    artifact_writer=self._artifact_writer,
                 ),
             )
             saved_output_files = await self._save_output_files_as_artifacts(
                 output_files, tool_context
             )
-            return {
+            artifact_uris = [
+                uri for uri in (stdout_res.artifact_uri, stderr_res.artifact_uri) if uri
+            ]
+            artifact_uris.extend(saved_output_files)
+            return self._present({
+                "status": "ok" if result.exit_code == 0 else "error",
                 "stdout": stdout_res.text,
                 "stderr": stderr_res.text,
-                "output_files": saved_output_files,
-            }
+                "exit_code": result.exit_code,
+                "attempt_id": execution_id,
+                "artifact_uris": artifact_uris,
+                "truncated": bool(stdout_res.omitted_bytes or stderr_res.omitted_bytes),
+                "omitted_bytes": stdout_res.omitted_bytes + stderr_res.omitted_bytes,
+            })
         finally:
             turn.mark_idle()
+
+    def _present(self, result: dict[str, Any]) -> dict[str, Any]:
+        return self._result_transform(result) if self._result_transform else result
 
     async def release_invocation(self, invocation_id: str) -> None:
         """Release the turn's sandbox container as soon as the turn ends.
@@ -670,6 +692,9 @@ class ExecuteCodeTool(BaseTool):
             data = (
                 file.content if isinstance(file.content, bytes) else base64.b64decode(file.content)
             )
+            if self._artifact_writer is not None:
+                saved.append(self._artifact_writer(data))
+                continue
             await tool_context.save_artifact(
                 filename=file.name,
                 artifact=genai_types.Part(
@@ -766,6 +791,7 @@ class _TurnSession:
 
 def _timeout_result(timeout_seconds: int | None) -> dict[str, Any]:
     return {
+        "status": "timeout",
         "stdout": "",
         "stderr": (
             f"Execution exceeded timeout of {timeout_seconds}s and was terminated."
@@ -773,6 +799,7 @@ def _timeout_result(timeout_seconds: int | None) -> dict[str, Any]:
             else "Execution timed out and was terminated."
         ),
         "output_files": [],
+        "reconciliation_required": True,
     }
 
 
@@ -794,7 +821,14 @@ def _connection_lost_result(state: _BlockRunState) -> dict[str, Any]:
             "The sandbox connection was lost before your code ran, so it did not execute. "
             "You can run it again."
         )
-    return {"stdout": "", "stderr": stderr, "output_files": []}
+    uncertain = state is not _BlockRunState.NOT_RUN
+    return {
+        "status": "blocked" if uncertain else "error",
+        "stdout": "",
+        "stderr": stderr,
+        "output_files": [],
+        "reconciliation_required": uncertain,
+    }
 
 
 def _stderr_with_exit_code(stderr: str, exit_code: int) -> str:

@@ -11,6 +11,7 @@ name so it can ``load_artifact()`` the overflow if needed.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -35,6 +36,8 @@ class TruncationResult:
     artifact_filename: str | None
     """The artifact that stores the full content, if spillover happened."""
     artifact_version: int | None
+    artifact_uri: str | None = None
+    omitted_bytes: int = 0
 
 
 async def truncate(
@@ -44,15 +47,31 @@ async def truncate(
     stream_name: StreamName,
     execution_id: str,
     invocation_context: InvocationContext,
+    artifact_writer: Callable[[bytes], str] | None = None,
 ) -> TruncationResult:
     """Cap ``text`` at ``limit`` characters; spill the full content to an artifact."""
     if len(text) <= limit:
         return TruncationResult(text=text, artifact_filename=None, artifact_version=None)
 
+    selected = _head_tail(text, limit)
+    omitted_bytes = max(0, len(text.encode()) - len(selected.encode()))
+    if artifact_writer is not None:
+        uri = artifact_writer(text.encode())
+        return TruncationResult(
+            text=f"{selected}\n---\nFull {stream_name}: {uri}",
+            artifact_filename=None,
+            artifact_version=None,
+            artifact_uri=uri,
+            omitted_bytes=omitted_bytes,
+        )
+
     if invocation_context.artifact_service is None:
         marker = f"\n---\nOutput exceeded {limit:,} characters. Try again with less output."
         return TruncationResult(
-            text=_head_tail(text, limit) + marker, artifact_filename=None, artifact_version=None
+            text=_head_tail(text, limit) + marker,
+            artifact_filename=None,
+            artifact_version=None,
+            omitted_bytes=omitted_bytes,
         )
 
     filename = _overflow_filename(stream_name, execution_id)
@@ -79,6 +98,7 @@ async def truncate(
         text=_head_tail(text, limit) + marker,
         artifact_filename=filename,
         artifact_version=version,
+        omitted_bytes=omitted_bytes,
     )
 
 

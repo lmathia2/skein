@@ -50,6 +50,12 @@ async def test_prime_session_jsonl_restore_ownership_and_redaction(tmp_path: Pat
         result = await worker.execute_code("print('test-secret-value')\nvalue")
         assert "test-secret-value" not in str(result)
         assert "42" in result["model_text"]
+        assert result["effect"] == "native_untracked"
+        assert not {"stdout", "stderr", "displays", "runtime_epoch"} & set(result)
+        visual = await worker.execute_code("emit({'image/png': 'encoded-image'}); 'shown'")
+        assert len(visual["artifact_uris"]) == 1
+        digest = visual["artifact_uris"][0].rsplit("/", 1)[-1]
+        assert (tmp_path / "state" / "artifacts" / "sha256" / digest).is_file()
     finally:
         worker.close()
     replacement = build()

@@ -16,10 +16,12 @@ from google.adk.tools import ToolContext
 
 from harness.config import NotebookPtcConfig
 from harness.environment.async_call import run_managed_thread
+from harness.notebook import externalize_mime_bundle
 from harness.repl.prime import PrimeRuntime
 from harness.safety.redaction import SecretRedactor
 from harness.state import EventStore
 from harness.state.events import HarnessEvent
+from harness.tools.output import compact_tool_result
 
 from .config import HarnessSettings
 from .ptc import PtcSession
@@ -56,7 +58,7 @@ def build_prime_session(
     def append(kind: str, payload: dict[str, Any], key: str | None = None) -> None:
         events.append(task_id, kind, payload, idempotency_key=key)
 
-    async def execute_code(
+    async def _execute_code(
         code: str, timeout_seconds: int = config.default_timeout_seconds,
         tool_context: ToolContext | None = None,
     ) -> dict[str, Any]:
@@ -139,11 +141,33 @@ def build_prime_session(
                     "reconciliation_required": True,
                 }}, f"prime:{attempt}:terminal")
                 raise
+            display_text: list[str] = []
+            display_refs: list[str] = []
+            durable_displays: list[dict[str, Any]] = []
+            for frame in raw["displays"]:
+                bundle = dict(redactor.redact(dict(frame.get("data") or {})))
+                if "text/plain" in bundle:
+                    display_text.append(str(bundle["text/plain"]))
+                rendered, refs = externalize_mime_bundle(
+                    {key: value for key, value in bundle.items() if key != "text/plain"},
+                    artifact_root=settings.state_root / "artifacts" / "sha256",
+                    max_inline_bytes=0,
+                )
+                durable_displays.append({
+                    **({"text/plain": bundle["text/plain"]} if "text/plain" in bundle else {}),
+                    **rendered,
+                })
+                display_refs.extend(refs)
             result = redactor.redact({
                 "status": raw["status"], "stdout": raw["stdout"], "stderr": raw["stderr"],
-                "model_text": "\n".join(str(raw.get(key, "")) for key in ("stdout", "stderr", "result", "error", "background") if raw.get(key)),
-                "displays": raw["displays"], "truncated": raw.get("truncated", False),
-                "runtime_epoch": runtime.epoch, "capability_access": "native",
+                "model_text": "\n".join(
+                    [str(raw.get(key, "")) for key in ("stdout", "stderr", "result", "error", "background") if raw.get(key)]
+                    + display_text
+                ),
+                "displays": durable_displays, "artifact_uris": sorted(set(display_refs)),
+                "truncated": raw.get("truncated", False), "runtime_epoch": runtime.epoch,
+                "capability_access": "native", "effect": "native_untracked",
+                "attempt_id": attempt,
             })
             append("prime.cell_terminal", {"attempt_id": attempt, "effect": "native_untracked", "result": result}, f"prime:{attempt}:terminal")
             try:
@@ -156,6 +180,15 @@ def build_prime_session(
                 append("prime.snapshot_failed", {"attempt_id": attempt})
                 raise
             return result
+
+    async def execute_code(
+        code: str, timeout_seconds: int = config.default_timeout_seconds,
+        tool_context: ToolContext | None = None,
+    ) -> dict[str, Any]:
+        return compact_tool_result(
+            await _execute_code(code, timeout_seconds, tool_context),
+            max_chars=config.max_output_bytes,
+        )
 
     def close() -> None:
         nonlocal closed

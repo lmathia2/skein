@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field
 
@@ -37,9 +38,15 @@ class ToolEnvelope(StrictModel):
     truncated: bool = False
     omitted_bytes: int = Field(default=0, ge=0)
     artifact_uri: str | None = None
+    artifact_uris: list[str] = Field(default_factory=list)
     changed_paths: list[str] = Field(default_factory=list)
     content_hashes: dict[str, str] = Field(default_factory=dict)
     command_class: CommandClass | None = None
+    result_hash: str | None = None
+    effect: Literal["none", "observed", "changed", "unknown", "native_untracked"] | None = None
+    attempt_id: str | None = None
+    replayed: bool = False
+    reconciliation_required: bool = False
     data: dict[str, object] = Field(default_factory=dict)
 
 

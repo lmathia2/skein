@@ -2,7 +2,7 @@
 
 > Status: accepted architecture; composable PTC and canonical memory remain opt-in
 >
-> Updated: 2026-09-08
+> Updated: 2026-09-09
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -279,6 +279,45 @@ For each `execute_code` call, `PtcSession` performs this sequence:
 The terminal event is authoritative even if post-execution state persistence or document
 projection subsequently fails. Such a failure appends its own failure event and blocks
 or degrades recovery according to policy; it must not rewrite the execution outcome.
+
+### Model-visible results and tool accounting
+
+All PTC implementations project their richer terminal receipt into the same bounded
+model envelope:
+
+```json
+{
+  "status": "ok",
+  "model_text": "12 passed",
+  "artifact_uris": ["artifact://sha256/..."],
+  "result_hash": "...",
+  "effect": "observed",
+  "attempt_id": "..."
+}
+```
+
+Only applicable non-default fields are emitted. The envelope may additionally include
+`exit_code`, `truncated`, `omitted_bytes`, `replayed`, and
+`reconciliation_required`. It never repeats stdout, stderr, display bundles, notebook
+paths, runtime epochs, or internal state deltas already represented by `model_text`,
+artifacts, or the durable terminal event. The result hash identifies semantic output
+and is stable across replay and runtime-epoch changes. Full receipts remain in the
+canonical trace; bounded reads recover them when authorized.
+
+Images and other rich MIME results are content-addressed before presentation. Text may
+remain inline within the output budget; binary or oversized results become
+`artifact://sha256/...` references. Existing managed artifact reads enforce confinement,
+redaction, and byte limits, so a PTC implementation cannot create a second unbounded
+result channel.
+
+`tools.usage@1` is the code-owned trace-memory view for accounting. It reports bounded
+counts by name and terminal status for top-level calls and nested PTC capabilities,
+plus model-visible and omitted bytes. ADK nested tool metrics share the enclosing
+invocation identity; brokered notebook capabilities have explicit capability receipts.
+Prime native Python effects cannot be reconstructed as individual tool calls and are
+therefore counted only as `native_untracked_cells`, never mislabelled as brokered usage.
+The view accepts exact status and name-query filters and exposes hashes and aggregates,
+not raw arguments or full results.
 
 Existing histories are not rewritten. During the migration, reducers accept the current
 `notebook.cell_added` plus `repl.cell_submitted` pair and the normalized

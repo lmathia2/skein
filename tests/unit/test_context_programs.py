@@ -28,11 +28,15 @@ def test_configured_program_versions_restrict_the_live_service(tmp_path: Path):
     assert service.execute("memory query --program events.count")["status"] == "ok"
     assert service.execute("memory history")["status"] == "unavailable"
     assert service.execute("memory query --program events.count --version 2")["status"] == "unavailable"
-    for programs in ({"events.count": 2}, {"unknown": 1}, {"failures.by_kind": 1}):
+    for programs in (
+        {"events.count": 2}, {"tools.usage": 2}, {"unknown": 1},
+        {"failures.by_kind": 1},
+    ):
         with pytest.raises(NotImplementedError):
             ContextProgramConfig(mode="active", programs=programs)
     assert ContextProgramConfig().programs is None
     assert ContextProgramConfig(mode="active", reuse=True, programs={"failures.by_kind": 1})
+    assert ContextProgramConfig(mode="active", programs={"tools.usage": 1})
 
 
 def test_snapshot_paging_is_stable_and_erasure_invalidates(tmp_path: Path):
@@ -156,6 +160,70 @@ def test_duckdb_context_backend_equality(tmp_path: Path):
     a = MemoryProgramRuntime(jsonl, authorized_tasks=("task",)).compute(request)
     b = MemoryProgramRuntime(duck, authorized_tasks=("task",)).compute(request)
     assert a == b
+
+
+@pytest.mark.parametrize("backend", ["jsonl", "duckdb"])
+def test_tool_usage_view_separates_top_level_nested_and_native(tmp_path: Path, backend: str):
+    store = (
+        JsonlLedgerStore(tmp_path / "ledger.jsonl")
+        if backend == "jsonl"
+        else DuckDbLedgerStore(tmp_path / "ledger.duckdb")
+    )
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def append(source_id, kind, payload):
+        store.append(
+            task_id="task", source="metric" if kind == "metric.tool" else "harness_event",
+            source_id=source_id, kind=kind, payload=payload,
+            observed_at=timestamp, recorded_at=timestamp, idempotency_key=source_id,
+        )
+
+    append("execute", "metric.tool", {
+        "invocation_id": "ptc", "tool_name": "execute_code", "status": "ok",
+        "model_visible_bytes": 100, "omitted_bytes": 10,
+    })
+    append("nested-read", "metric.tool", {
+        "invocation_id": "ptc", "tool_name": "read", "status": "ok",
+        "model_visible_bytes": 50, "omitted_bytes": 0,
+    })
+    append("direct-bash", "metric.tool", {
+        "invocation_id": "direct", "tool_name": "bash", "status": "error",
+        "model_visible_bytes": 20, "omitted_bytes": 5, "raw_args": "secret-value",
+    })
+    append("notebook-write", "capability.completed", {
+        "operation": "fs.write", "status": "ok", "effect": "changed",
+        "omitted_bytes": 3,
+    })
+    append("prime", "prime.cell_terminal", {
+        "effect": "native_untracked", "result": {"status": "ok"},
+    })
+
+    runtime = MemoryProgramRuntime(store, authorized_tasks=("task",))
+    result = runtime.compute(ViewRequest(task_id="task", program="tools.usage"))
+
+    assert result.data["count"] == 4
+    assert result.data["top_level"] == {
+        "count": 2, "by_name": {"bash": 1, "execute_code": 1},
+        "by_status": {"error": 1, "ok": 1},
+    }
+    assert result.data["nested"] == {
+        "count": 2, "by_name": {"fs.write": 1, "read": 1},
+        "by_status": {"ok": 2},
+    }
+    assert result.data["native_untracked_cells"] == 1
+    assert result.data["model_visible_bytes"] == 170
+    assert result.data["omitted_bytes"] == 18
+    assert runtime.compute(
+        ViewRequest(task_id="task", program="tools.usage", query="write")
+    ).data["count"] == 1
+    failed = runtime.compute(
+        ViewRequest(task_id="task", program="tools.usage", statuses=("error",))
+    )
+    assert failed.data["top_level"]["by_name"] == {"bash": 1}
+    history = runtime.compute(
+        ViewRequest(task_id="task", program="history.page", kinds=("metric.tool",))
+    )
+    assert "secret-value" not in history.model_dump_json()
 
 
 def test_duckdb_count_projection_tracks_appends_restart_and_erasure(tmp_path: Path):

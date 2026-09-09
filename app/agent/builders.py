@@ -134,7 +134,10 @@ def build_coding_worker(
     def _model_result(result: dict[str, Any]) -> dict[str, Any]:
         """Keep program-only ingress out of direct model tool responses."""
 
-        return {key: value for key, value in result.items() if key != "data"}
+        return {
+            key: value for key, value in result.items()
+            if key not in {"data", "ui_details"}
+        }
 
     async def read(
         path: str,
@@ -252,7 +255,7 @@ def build_coding_worker(
         )
     elif active_ptc_config.enabled and active_ptc_config.implementation == "adk_code_mode":
         ptc_session = build_adk_session(
-            active_ptc_config, [read, bash, edit, write], ptc_backend
+            settings, active_ptc_config, [read, bash, edit, write], ptc_backend
         )
     elif active_ptc_config.enabled and active_ptc_config.implementation == "prime_repl":
         from .prime_ptc import build_prime_session

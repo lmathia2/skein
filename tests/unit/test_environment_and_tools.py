@@ -12,6 +12,7 @@ from harness.environment import (
 from harness.models import ToolStatus
 from harness.tools import (
     bound_output,
+    compact_tool_result,
     execute_edit,
     execute_read,
     execute_write,
@@ -84,3 +85,34 @@ def test_output_bounding_preserves_head_and_tail() -> None:
     assert bounded.truncated is True
     assert bounded.text.startswith("HEAD")
     assert bounded.text.endswith("TAIL")
+
+
+def test_compact_tool_result_has_one_bounded_stable_envelope() -> None:
+    raw = {
+        "status": "ok",
+        "stdout": "HEAD\n" + "x\n" * 1_000 + "TAIL",
+        "artifact_uris": ["artifact://sha256/b", "artifact://sha256/a"],
+        "effect": "changed",
+        "attempt_id": "cell-1",
+        "notebook_path": "/private/state/notebook.ipynb",
+        "runtime_epoch": "large-runtime-detail",
+    }
+    result = compact_tool_result(
+        raw,
+        max_chars=200,
+        max_lines=20,
+    )
+
+    assert set(result) == {
+        "status", "model_text", "truncated", "omitted_bytes", "artifact_uris",
+        "result_hash", "effect", "attempt_id",
+    }
+    assert result["artifact_uris"] == ["artifact://sha256/a", "artifact://sha256/b"]
+    assert result["model_text"].startswith("HEAD") and result["model_text"].endswith("TAIL")
+    assert "notebook_path" not in result and "runtime_epoch" not in result
+    replay = compact_tool_result(
+        {**raw, "attempt_id": "cell-2", "runtime_epoch": "new", "replayed": True},
+        max_chars=200,
+        max_lines=20,
+    )
+    assert replay["result_hash"] == result["result_hash"]
