@@ -109,6 +109,9 @@ and the implementation/evaluation rubric.
     `meta/muse-spark-1.3-contributor`; the 2026-09-09 task process did not inherit its
     intentionally unpersisted `OPENROUTER_API_KEY`. The matched model/revision contract
     also remains unfrozen. The pinned ADK image and its reset-isolation integration passed.
+  - [x] Run a one-task, four-mode matched OpenRouter smoke with memory disabled. Prime
+    used the fewest calls, wall time, and serialized request bytes; ADK Code Mode
+    exhausted the 200k input budget. See `docs/audits/ptc-matched-smoke-2026-09-09.md`.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
