@@ -259,12 +259,14 @@ Section and total budgets are in
 [`SkeinWorkflowDependencies`](../app/agent/workflow.py). Project instructions and
 skills require explicit trust. Recent events MUST be redacted and bounded.
 
-[`ContextWindowPlugin`](../harness/adk/context.py) selects the bounded dynamic suffix
-from canonical evidence while the static prefix remains byte-stable. Each handoff
-records its context epoch, source watermark, result hash, and retained evidence.
-`select_context_cut` is the pure selection policy; the plugin remains the sole renderer
-and publisher. Cuts MUST occur only after complete tool-call/result interactions, and
-a newly returned result MUST retain its matching call in the next provider request.
+[`ContextWindowPlugin`](../harness/adk/context.py) captures the public ADK request
+history into canonical evidence and derives its handoff from task events, memory-note
+metadata, and unresolved receipts. `select_context_cut` is the pure policy over the
+retained ADK contents, prior cut, reconstruction mode, and budgets; the plugin remains
+the sole renderer and publisher. A compaction event records the context epoch, selected
+cut, input hash, source watermark, reconstruction mode, token counts, frozen handoff,
+and note metadata. Cuts MUST occur only after complete tool-call/result interactions,
+and a newly returned result MUST retain its matching call in the next provider request.
 
 ## 9. Memory programs
 
@@ -396,11 +398,9 @@ This simulated sequence uses implemented events and views:
 
 2 Persist task.created(seq=1) and message.recorded(seq=2).
 
-3 Build prompt at watermark 2:
-    P0 stable instruction/tools
-    P1 history watermark
-    P2 evidence-backed handoff + optional memory.note
-    P3 current query + recent events 1..2
+3 Reuse the stable instruction/tool prefix and build the bounded dynamic work packet.
+  If trace-backed window management is active, capture public request history and
+  retain complete interactions after the selected cut.
 
 4 Model calls:
     python("source = agent.fs.read(...); test = agent.shell.run(...)")

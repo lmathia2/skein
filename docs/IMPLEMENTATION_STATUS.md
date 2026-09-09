@@ -21,8 +21,10 @@ precedes advisory note/PTC state within existing budgets. Default and shadow
 provider requests remain byte-equal in the offline tests; active profiles change
 only declared model-visible context behavior, not the four-tool default surface.
 
-The optional SQL catalog preserves exact source text and executes under time,
-memory, scan, output, and no-spill limits in a killable worker. Summary generation
+One finite Python-owned `PROGRAM_REGISTRY` now controls configuration and execution;
+the unused mutable SQL and duplicate prompt-program catalogs were removed. Requests
+execute under time, scan, and output bounds and return evidence and result hashes.
+Summary generation
 is an explicit injected async callback with evidence-bound recorded output and
 optional cache reuse; it is not an automatically configured extra model agent.
 
@@ -69,14 +71,17 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
 
 ## Retained and verified
 
-- Notebook cell execution, replay, broker receipts, projection, and work-batch control
-  are extracted into `app.agent.ptc`; notebook and ADK Code Mode share a `PtcSession`
-  assembly interface. Their tool declarations and lifecycle behavior are retained.
+- All three PTC implementations return a common `PtcSession` assembly result and expose
+  the same `execute_code` name. Skein notebook lifecycle remains in `app.agent.ptc`,
+  Prime lifecycle remains in `app.agent.prime_ptc`, and vendored ADK Code Mode owns its
+  turn-scoped container protocol; a shared cell coordinator/runtime/state/serializer
+  contract has not yet been extracted.
 
 - PTC configuration preserves implementation-native serialization and state policy
-  by default. Explicit Skein notebook/safe-replay and ADK native-history/no-restore
-  selections are accepted. Unsupported combinations and the not-yet-integrated
-  `prime_repl` fail at configuration loading with `NotImplementedError`.
+  by default. Explicit Skein notebook/safe-replay, ADK native-history/no-restore, and
+  trusted Prime JSONL/snapshot selections are accepted. Unsupported cross-pairings and
+  Prime combinations with conversation continuity, safe-auto recovery, or active
+  brokered memory commands fail during configuration loading.
 
 - The project identity is Skein: the Python distribution and primary CLI are `skein`,
   the runtime implementation key is `skein_v1`, launchers are `skein-start` and
@@ -118,11 +123,13 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   `start-ptc.sh` enables this
   path together with the dependency-free canonical JSONL ledger and an isolated state
   root; the ordinary launcher retains the four-tool default.
-- PTC selection is now explicit: `skein_notebook` exposes `execute_code`, while the vendored
-  ADK Code Mode 1.6.0 arm exposes `execute_code` using an explicitly pinned Docker
-  image. Both call the same four brokered capabilities. Memory is independently
-  optional: `trace_native` retains versioned ledger programs and `pi` uses native ADK
-  session compaction with a bounded raw tail. Defaults remain unchanged.
+- PTC selection is explicit: `skein_notebook`, vendored ADK Code Mode 1.6.0, and
+  `prime_repl` all expose `execute_code` through one `PtcSession` assembly seam and
+  compact result envelope. Skein and ADK call the same four brokered capabilities;
+  Prime is an explicitly trusted native profile whose direct effects are recorded as
+  `native_untracked`. Memory is independently optional: `trace_native` retains
+  versioned ledger programs and `pi` uses native ADK session compaction with a bounded
+  raw tail. Defaults remain unchanged.
 - Optional canonical memory now shadow-captures task events, tool-receipt transitions,
   checkpoints, approvals (including expiration), steering, metrics, public/run events,
   redacted ADK session lifecycle, and ADK trace spans into a configured JSONL or DuckDB
@@ -142,20 +149,19 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   `failures.by_kind` reads use that projection without loading event payloads into
   Python; temporal, searched, filtered, and cross-ledger reads retain the exact
   bounded event path. Projections rebuild deterministically from `ledger_events`.
-- Versioned deterministic memory programs provide model history, task progress,
-  open/unknown-effect execution, time, query-relevant task memory, and dream/failure
-  views. P0-P3 prompt manifests account for source view IDs and stable hashes. A
-  restricted relational catalog enforces candidate -> shadow -> active -> retired
-  promotion; only active programs may serve retrieval. Execution copies only the
-  requested task into an isolated DuckDB connection, disables external access, and
-  caps returned rows. DuckDB is in the optional `memory-duckdb` extra. The optional `memory-search`
-  extra adds immutable, content-addressed LanceDB projections for combined vector and
-  keyword retrieval. They contain canonical event IDs, are rebuilt from DuckDB ledger
-  evidence, and can serve `task.memory` without becoming a second authority or adding
-  Lance imports to the default startup path. Cached projections embed only the query.
-  The embedding implementation remains an explicit injected, versioned dependency;
-  changing it requires a new version. Live `retrieval: lance` configuration fails
-  closed until an embedding provider is wired.
+- Versioned deterministic memory programs provide bounded history pages, exact event
+  and artifact reads, complete event/failure counts, and top-level/nested tool-usage
+  accounting. One finite Python registry controls exact versions and exposure; active
+  mode exposes on-demand reserved `memory` commands, while shadow mode runs only the
+  fixed `events.count@1` probe. DuckDB is in the optional `memory-duckdb` extra and
+  accelerates the exact unfiltered count shapes it maintains transactionally. The
+  optional `memory-search` extra adds immutable, content-addressed LanceDB projections
+  for combined vector and keyword retrieval. They retain canonical event IDs and are
+  hydrated from ledger evidence without becoming a second authority or adding Lance
+  imports to default startup. Cached projections embed only the query. The embedding
+  implementation remains an explicit injected, versioned dependency; changing it
+  requires a new version. Live `retrieval: lance` configuration fails closed until an
+  embedding provider is wired.
 - Registered MCP capabilities can be invoked from Python through the same bounded,
   traced broker. Unknown capabilities fail closed without expanding the ADK tool list.
 - Trusted directory skills and redacted interaction traces.

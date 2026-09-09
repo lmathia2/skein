@@ -2,7 +2,7 @@
 
 > Status: core contracts implemented; safe automatic recovery remains opt-in
 >
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -12,7 +12,10 @@ Code-level requirements and test mappings are in the
 ## Decisions
 
 1. The model chooses tactics; deterministic reducers control task state.
-2. All effects use one broker and a write-ahead intent/terminal-receipt protocol.
+2. All brokered effects use one write-ahead intent/terminal-receipt protocol. The
+   trusted Prime-native profile is an explicit exception: its direct Python effects are
+   recorded only at cell granularity as `native_untracked` and never represented as
+   broker receipts.
 3. Recovery reconciles evidence before retrying; unknown effects are never assumed
    safe or successful.
 4. A checkpoint identifies evidence and environment state. It is not a filesystem
@@ -65,7 +68,7 @@ This keeps three questions separate:
 
 ## Effect protocol
 
-Every state-changing or externally observable operation follows:
+Every host-brokered state-changing or externally observable operation follows:
 
 ```text
 stable operation ID
@@ -83,6 +86,13 @@ Idempotency returns the same prior result only when identity and content match;
 reusing an idempotency key for different content is an error. File changes use
 atomic confined primitives where practical. Shell and MCP results are redacted and
 bounded. Large bodies become content-addressed artifacts.
+
+Skein notebook PTC and ADK Code Mode reach file, shell, and registered capabilities
+through this protocol. Prime-native code has direct trusted OS access instead. Skein
+therefore records the submitted source, terminal cell result, snapshot outcome, and
+`native_untracked` effect, refuses automatic replay of interrupted/unknown cells, and
+rejects Prime with safe-auto recovery or active brokered memory commands. This is a
+deliberate trust profile, not equivalent broker enforcement.
 
 The local adapter is intended for trusted workspaces and is not an OS security
 sandbox. Docker isolates configured commands, not every host-side Python/file path.
@@ -135,6 +145,8 @@ distributed coordination.
 
 - Real invocation-bound checkpoints and same-machine recovery validation exist.
 - Safe-auto recovery is opt-in and covered by deterministic subprocess scenarios.
+- Prime-native snapshot recovery is run-scoped, explicitly trusted, and separate from
+  safe-auto effect recovery; interrupted or unknown native effects require reconciliation.
 - Workspace fingerprints detect divergence but do not restore a workspace.
 - Conversation notebook continuity and prior-run memory are separately authorized.
 - Live model-quality, cost, and cache promotion gates remain pending.

@@ -13,8 +13,8 @@ current architecture decisions.
 
 ## Key features
 
-- **One-tool PTC:** optional notebook mode exposes one persistent `execute_code` tool that
-  composes guarded file, shell, CLI, and MCP capabilities.
+- **One-tool PTC:** optional Skein notebook, ADK Code Mode, and Prime-native profiles
+  expose the same `execute_code` tool under explicit trust and persistence contracts.
 - **Memory as programs:** versioned programs derive bounded, reproducible views from
   append-only traces; JSONL is dependency-free, with DuckDB and LanceDB optional.
 - **Replayable execution:** notebooks, events, receipts, approvals, steering, and
@@ -319,6 +319,8 @@ Complete annotated standard configurations are available for the supported profi
   plus the dependency-free canonical JSONL ledger.
 - [`notebook-ptc-duckdb.yaml`](harness/config/profiles/notebook-ptc-duckdb.yaml): PTC
   plus the optional analytical DuckDB ledger (`memory-duckdb` extra required).
+- [`prime-ptc-jsonl.yaml`](harness/config/profiles/prime-ptc-jsonl.yaml): trusted
+  Prime-native Python with JSONL lifecycle evidence and bounded snapshot recovery.
 
 Pass any profile directly to `serve --config` or `tuning-export --config`.
 
@@ -327,11 +329,54 @@ For notebook PTC with a canonical dependency-free ledger:
 ```yaml
 notebook_ptc:
   enabled: true
+  implementation: skein_notebook
+  serialization: notebook
+  state: replay_safe
 memory:
   enabled: true
   ledger: jsonl
   retrieval: lexical
 ```
+
+`serialization: native` and `state: native` preserve an implementation's supported
+pairing. Explicit current pairings are Skein `notebook`/`replay_safe`, ADK Code Mode
+implementation-native history/`none`, and Prime `jsonl`/`snapshot`. Unsupported
+cross-pairings fail with `NotImplementedError`; there is no fallback. ADK Code Mode
+also requires a pinned `adk_code_mode_image` and Docker Engine. Prime requires
+`prime_native_execution: true` plus `--trust-project`, supports run continuity only,
+and cannot be combined with safe-auto recovery or active memory commands.
+
+### Developer architecture and extension points
+
+Skein uses a closed composition with typed configuration and contracts. Configuration
+selects reviewed keys; it never imports user-provided Python implementations.
+
+| Concern | Developer seam | Current choices |
+| --- | --- | --- |
+| Harness | `HarnessFactory` / `HarnessRegistry` | `skein_v1`; server and TUI depend only on the common assembly/protocol |
+| Model provider | `AdkModelProvider` registry | Google ADK, Codex subscription, OpenRouter OpenResponses |
+| Workspace execution | `ExecutionRuntime`, `WorkspaceEnvironment`, `CommandSandbox`, `RepositoryRuntime` | Local or configured Docker commands; same workspace identity feeds verification |
+| PTC | `PtcSession` and closed `select_ptc_session` dispatch | Off, Skein notebook, vendored ADK Code Mode, trusted Prime-native |
+| PTC persistence | `NotebookPtcConfig.serialization` and `.state` | Validated implementation-native bundles today; serializer/state protocols are not yet extracted |
+| Trace storage | `LedgerStore` / `open_ledger` | Dependency-free JSONL or optional DuckDB |
+| Memory | `MemoryProgramSpec`, `MemoryProgramRuntime`, `ViewRequest`/`ViewResult` | Exact reviewed versions from `PROGRAM_REGISTRY`; active, fixed shadow probe, or off |
+| Context | pure `select_context_cut` plus `ContextWindowPlugin`; separate ADK Pi compaction | Exact history by default, trace-backed handoff/tail or fresh windows when enabled |
+| Presentation | `ToolEnvelope` and `compact_tool_result` | One bounded envelope for every PTC implementation; rich bodies spill to artifacts |
+
+The important invariants do not become plugins: the host owns authorization,
+redaction, deadlines, output bounds, event provenance, reconciliation, and completion
+verification. Turning PTC or memory off selects ordinary direct-tool/ADK behavior; it
+does not weaken those controls. PTC without active memory still records its lifecycle.
+Memory without PTC derives views from direct-tool and task events. Bounded trace-backed
+context requires trace-native memory, and unsupported Prime combinations fail during
+configuration loading.
+
+When adding an implementation, keep the change at the narrowest existing seam, add its
+closed registry key and configuration validation, and prove the relevant invariant with
+a deterministic contract test. Do not add a top-level model tool, a second ledger, or
+an execution path that bypasses the existing broker. The current runtime/persistence
+support matrix and remaining extraction work are maintained in the
+[trace-native harness ADR](docs/adr/trace-native-harness.md).
 
 Set `ledger: duckdb` for SQL-backed canonical history after installing the
 `memory-duckdb` extra. The base install and `install-ptc.sh` deliberately use the
@@ -411,22 +456,28 @@ old evaluation reports are not evidence for the simplified runtime.
 - Deterministic, cache-stable context compilation and bounded tool output.
 - Resumable local sessions, steering, approvals, replay, and independent completion
   verification.
-- Optional notebook-native PTC with persistent CPython state and a deterministic
+- Optional Skein notebook PTC with persistent CPython state and a deterministic
   nbformat workbench containing message, compaction, code, output, timestamp, and
   ledger-provenance cells; required `nb-cli` inspection replaces direct `.ipynb` JSON
   parsing.
+- Optional vendored ADK Code Mode in a pinned per-turn container, plus an eval-only
+  reusable container that resets interpreter, process, tool, and workspace state for
+  each sequential example.
+- Optional trusted Prime-native PTC with JSONL cell evidence and bounded snapshots;
+  its native effects are intentionally classified as untracked rather than brokered.
 - One append-only canonical event schema over JSONL or optional DuckDB, including
   incomplete, failed, blocked, retried, and timed-out work.
-- Deterministic history, progress, open-execution, time, task-memory, and dream/failure
-  views; optional immutable Lance hybrid-search projections retain canonical event IDs.
+- One finite registry for `history.page`, `event.read`, `events.count`, `artifact.read`,
+  `tools.usage`, and the reuse-gated `failures.by_kind`; optional immutable Lance
+  hybrid-search projections retain canonical event IDs.
 
 The remaining implementation gates are intentionally small and measurable:
 
 1. Wire an explicit versioned embedding provider before live Lance prompt retrieval.
 2. Ablate ledger-backed prompt/compaction readers for byte stability, cache behavior,
    and correctness before cutting them into the live path.
-3. Run the paired four-tool versus notebook-PTC quality, token, latency, and cache-hit
-   evaluation before considering PTC as the default.
+3. Clear the repository-wide typing baseline and run the matched modular PTC/provider
+   comparison before considering PTC as the default or enabling cross-pairings.
 
 Notebook PTC is for trusted local workspaces; its Python source guard is defense in
 depth, not a production sandbox. See [the implementation TODO](docs/TODO.md) for the

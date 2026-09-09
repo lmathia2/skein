@@ -3,7 +3,7 @@
 > Status: deterministic programs implemented; active retrieval and long-context
 > treatments remain opt-in with live quality gates pending
 >
-> Updated: 2026-09-07
+> Updated: 2026-09-09
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -17,33 +17,21 @@ Code-level requirements and test mappings are in the
    provider can reuse a byte-stable prefix.
 3. Memory is a versioned computation over authorized ledger evidence, not prose
    inserted into the system prompt and not a second database of truth.
-4. Factual, semantic, progress, failure, and handoff memory are different views over
-   the same evidence and share one request/result contract.
+4. Exact history, counts, failures, tool usage, and semantic ranking share one
+   request/result contract. Working notes and context handoffs are separate bounded
+   control views over the same evidence.
 5. Stored projections and caches are disposable, watermark-bound optimizations.
 6. Long context is handled by bounded views, artifact indirection, explicit
    compaction epochs, and a recent exact tail—not by replaying everything forever.
 
 ## How a prompt is constructed
 
-The checked-in memory prompt compiler uses four regions:
+The checked-in worker has one byte-stable provider prefix: model identity, stable
+instruction, tool declarations, and tool configuration. Before every model call it
+compares those canonical bytes with the first call and fails closed if they changed.
+Task, session, progress, time, and steering remain in the dynamic request.
 
-```text
-P0  stable worker instruction + stable tool declarations
- |
-P1  ledger watermark / history boundary
- |
-P2  derived progress + selected task memory
- |
-P3  current query + bounded recent exact events
- v
-provider request
-```
-
-`P0` is cache-oriented and excludes task/session state. `P1`–`P3` are the dynamic
-suffix. Each component records its content hash and source view IDs; the full prompt
-records a context epoch, watermark, and prompt hash.
-
-The live worker packet additionally budgets these named sections in a fixed order:
+The workflow budgets its work packet in this fixed order:
 
 ```text
 TASK
@@ -58,6 +46,15 @@ USER STEERING
 Skills and project instructions enter only after trust checks. Every section has a
 configured token/byte limit. Oversized tool bodies stay in artifacts and context
 contains a bounded excerpt/reference.
+
+With context windows off, the direct-tool worker receives the current work packet and
+PTC profiles retain normal ADK history. With trace-backed windows on,
+`ContextWindowPlugin` captures the public request history into canonical evidence,
+builds one bounded deterministic handoff, and asks the pure `select_context_cut`
+function for a complete-interaction suffix boundary. Only after the compaction epoch is
+durable does the plugin replace the provider contents with the handoff header, retained
+exact tail, and transient steering. The removed P0-P3 prompt-program layer is not a
+second live compiler.
 
 ### Example from trace to prompt
 
@@ -74,33 +71,26 @@ Assume the ledger contains this abbreviated sequence:
 48 steering.received           "preserve backoff behavior"
 ```
 
-The harness does not paste all eight raw records into the prompt. It may derive:
+The harness does not paste all eight raw records into a rewritten static instruction.
+At a context transition it derives a bounded handoff such as:
 
 ```text
-P1 {"history_watermark":48}
+Required continuation metadata:
+{"history_boundary":48,"unresolved_effects":{"count":0}}
 
-P2 {
-  "progress": {
-    "completed":["tool.read","tool.edit"],
-    "failed_or_blocked":["tool.bash"],
-    "last_event":"steering.received"
-  },
-  "memory": {
-    "query":"retry timeout",
-    "relevant":[{"seq":45,"kind":"memory.note",...}]
-  }
-}
+Advisory memory:
+{"note":{"version":1,"evidence_event_ids":[44]},
+ "note_excerpt":"failure occurs after timeout",
+ "retrieval":"memory history; memory query --program tools.usage"}
 
-P3 {
-  "query":"continue fixing the flaky retry",
-  "recent":[events 43..48 after allowlisting, redaction, and bounds]
-}
+Recent exact ADK tail:
+[complete tool-call/result interactions after the selected cut]
 ```
 
-The result is reproducible because the programs, parameters, source watermark,
-ordering, exposure policy, and serialization are identified. The model can request
-exact supporting evidence with `memory history`, `memory query`, or `memory read`;
-it never receives private reasoning or unbounded raw traces.
+The compaction event records the history watermark, selected cut, input hash,
+reconstruction strategy, token counts, frozen handoff, and note metadata. When active,
+the model can request exact supporting evidence with `memory history`, `memory query`,
+or `memory event`; it never receives private reasoning or unbounded raw traces.
 
 ## Memory-program contract
 
@@ -129,44 +119,50 @@ Three identities must remain separate:
 
 ### Configuration and registry
 
-Memory programs are selected independently of the PTC runtime, PTC serialization,
-runtime-state policy, ledger backend, and context-compaction strategy:
+Trace-native memory programs are selected separately from the PTC implementation and
+its native persistence pairing. Configuration uses one activation mode, shared budgets,
+and an optional exact name-to-version allowlist:
 
 ```yaml
 memory:
   enabled: true
   ledger: jsonl
-  programs:
-    - name: history.page
-      version: "1"
-      mode: active
-      parameters: {}
-    - name: failures.by_kind
-      version: "1"
-      mode: shadow
-      parameters:
-        statuses: [failed, timeout, blocked]
+  context_programs:
+    mode: active
+    programs:
+      history.page: 1
+      tools.usage: 1
+    max_result_bytes: 16000
+    max_scan_events: 10000
+    timeout_seconds: 2
 ```
 
 The loader resolves each exact `(name, version)` through a finite code-owned registry.
-Each registry entry declares its parameter model, allowed event/artifact sources,
-temporal semantics, default and maximum budgets, exposure policy, and implementation
-hash. YAML cannot provide an import path, callable, SQL body, or Python source.
+The current `MemoryProgramSpec` declares name, version, reuse eligibility, and
+model-visible eligibility. All programs share the typed `ViewRequest`/`ViewResult`
+contract; the executor owns the exposure allowlist, source authorization, temporal
+filtering, resource bounds, evidence manifests, and computed implementation hash. YAML
+cannot provide per-program parameters, an import path, callable, SQL body, or Python
+source.
 
-Assembly fails before model execution when a program or version is unavailable, its
-parameters are invalid, its ledger capability is missing, or requested budgets exceed
-the registered ceiling. Duplicate `(name, version)` selections are invalid. Registry
-iteration and execution order are canonical by configured list position followed by
-the program's own deterministic result ordering.
+Assembly fails before model execution when a configured program/version is unavailable
+or disallowed by its reuse/model-visible gate. Pydantic rejects invalid shared budgets,
+and backend assembly rejects unavailable ledger or embedding capabilities. The mapping
+shape makes duplicate program names impossible; configured insertion order is retained,
+while each program owns deterministic result ordering. Query-specific parameters are
+validated when `ViewRequest` is built.
 
-At runtime, `shadow` executes against the same frozen evidence boundary and records a
-receipt but contributes no prompt bytes. `active` may contribute its bounded result at
-its declared prompt region. Promotion changes configuration and therefore the behavior
-hash; it never occurs implicitly because a shadow result looked useful.
+At runtime, `shadow` executes the fixed `events.count@1` probe against the same frozen
+evidence boundary and records a receipt but contributes no prompt bytes. `active`
+enables the selected programs through the reserved `memory` command on Bash and
+brokered PTC implementations. Program results are fetched on demand; merely activating
+a program does not inject it into every prompt. Promotion changes configuration and
+therefore the behavior hash; it never occurs implicitly because a shadow result looked
+useful.
 
 The existing `pi` option is a context-compaction strategy over ADK session history, not
 a versioned program over canonical ledger evidence. It remains separately configurable
-and cannot be selected in `memory.programs`.
+and cannot be selected in `memory.context_programs.programs`.
 
 ## Types of memory
 
@@ -192,6 +188,11 @@ implicitly, and task erasure invalidates the corresponding projection.
 Reusable logic must be reviewed, typed, tested, and version-pinned before entering
 that finite library. Notebook code, YAML callables, and arbitrary SQL are never
 auto-promoted or executed as memory programs.
+
+The registry is deliberately small: it identifies reviewed programs, while the common
+executor supplies their request validation, bounds, provenance, and hashes. Move
+program-specific parameter schemas or source policies into the registry only when two
+programs actually require different configuration-time contracts.
 
 Program storage is distinct from result caching:
 

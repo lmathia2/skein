@@ -11,28 +11,36 @@ Code-level requirements and test mappings are in the
 
 ## Decisions
 
-1. One append-only canonical ledger is the historical source of truth.
+1. When trace-native memory is enabled, one append-only canonical ledger is the
+   historical source of truth. The default memory-off profile retains its operational
+   compatibility stores without claiming a cross-module canonical trace.
 2. The target model-facing interface is one `execute_code` tool; the current
    default remains `read`, `bash`, `edit`, and `write` until the PTC ablation passes.
 3. PTC execution, durable serialization, runtime-state recovery, and memory programs
-   are independent configuration axes with code-owned registries. A model-facing tool
-   name or document format must not select the other axes implicitly.
+   are separate architectural responsibilities. Memory programs are independently
+   selected today; PTC execution, serialization, and recovery currently resolve as
+   validated native bundles behind one session seam. A future split must not let a
+   model-facing tool name or document format select another responsibility implicitly.
 4. Brokered PTC composes capabilities through the same host-owned effect broker. A
    runtime with native OS access is a distinct, explicit trust profile and cannot claim
    broker enforcement for those effects.
-5. JSONL means the existing canonical ledger without another writer. A notebook is an
-   optional rebuildable projection of the same lifecycle events. Neither representation
-   is the live Python heap.
+5. JSONL persistence means lifecycle events already owned by the task event stream; it
+   does not add a runtime-specific transcript writer. When canonical memory is enabled,
+   those events are also represented in its JSONL or DuckDB ledger. A notebook is an
+   optional rebuildable projection. None of these representations is the live Python heap.
 6. Runtime-state recovery is explicit: `none`, conservative event replay, or bounded
    runtime snapshots. A serializer never decides which recovery policy applies.
 7. Every attempted operation is evidence, including failure, timeout, cancellation,
    blocking, and an unknown external effect.
 8. Memory is selected by exact program name and version over authorized evidence.
-   Configuration may select registered programs and bounded parameters, never import
-   paths or arbitrary executable source.
+   Configuration may select registered programs and shared resource bounds, never
+   import paths or arbitrary executable source.
 9. Deterministic code owns policy, budgets, recovery, verification, and completion.
 
 ## Architecture
+
+The diagram shows the checked-in assembly seam. The runtime/state/serialization split
+inside each session is still a target extraction, not a current plugin graph.
 
 ```text
 user / TUI / API
@@ -44,22 +52,24 @@ ADK Runner and Skein workflow
        |
        `---- PTC tool: execute_code
                          |
-                  PTC session coordinator
+                  closed session dispatch
                     |       |       |
-                 runtime  state   serializer
-                    |       |       |
-                    +-------+-------+
-                            |
-                  guarded capability broker
-                   |       |       |
-                 files    shell    MCP
-                   `-------+-------'
-                           |
-                    intents + receipts
-                           v
-                 canonical event ledger
-                    |       |       |
-                 reducers  views  optional notebook
+                 Skein     ADK    Prime-native
+                 bundle   bundle     bundle
+                    |       |          `--> cell-level native-untracked evidence
+                    +-------+
+                         |
+               guarded capability broker
+                 |       |       |
+               files    shell    MCP
+                 `-------+-------'
+                         |
+                  intents + receipts
+                         v
+             operational events and optional
+                  canonical event ledger
+                 |       |       |
+              reducers  views  notebook projection
 ```
 
 ADK supplies the runner, session service, streaming, provider integration, caching,
@@ -68,54 +78,53 @@ evidence capture, context construction, and independent verification.
 
 ## Configuration model
 
-The current `NotebookPtcConfig.implementation` field is a transitional bundle. The
-target shape names each independent decision:
+The checked-in schema is the source of truth. It exposes one closed PTC implementation
+selector plus persistence fields that validate supported native pairings:
 
 ```yaml
-ptc:
+notebook_ptc:
   enabled: true
-  execution:
-    implementation: skein_repl       # skein_repl | adk_code_mode | prime_repl
-    default_timeout_seconds: 120
-    max_timeout_seconds: 600
-    max_output_bytes: 16000
-    capability_access: brokered       # brokered | native
-  persistence:
-    serialization: notebook           # notebook | jsonl
-    state: replay_safe                 # none | replay_safe | snapshot
-    continuity: run                    # run | conversation
-  batching:
-    no_progress_cells: 24
-    max_cells: 48
-    max_parallel_reads: 4
+  implementation: skein_notebook     # skein_notebook | adk_code_mode | prime_repl
+  serialization: native              # native or the implementation's explicit format
+  state: native                      # native or the implementation's explicit policy
+  continuity: run                    # run | conversation when supported
+  default_timeout_seconds: 120
+  max_timeout_seconds: 600
+  max_output_bytes: 16000
+  no_progress_cells_per_batch: 24
+  max_cells_per_batch: 48
+  max_parallel_reads: 4
 
 memory:
   enabled: true
-  ledger: jsonl                        # jsonl | duckdb
-  programs:
-    - name: history.page
-      version: "1"
-      mode: active                     # shadow | active
-    - name: tools.usage
-      version: "1"
-      mode: active
+  implementation: trace_native       # trace_native | pi
+  ledger: jsonl                       # jsonl | duckdb
+  context_programs:
+    mode: active                      # off | shadow | active
+    programs:                         # omitted means all allowed reviewed programs
+      history.page: 1
+      tools.usage: 1
 ```
 
-This is a closed composition, not dependency injection from YAML. Each key resolves
-through a code-owned registry to a typed implementation. Configuration validation
-rejects an unknown key/version, unknown parameter, missing optional dependency, or
-unsupported combination before the ADK app is assembled.
+This is a closed composition, not dependency injection from YAML. Configuration
+validation rejects unknown values and unsupported combinations before the ADK app is
+assembled. PTC implementations resolve through `select_ptc_session`; memory programs
+resolve by exact `(name, version)` through `PROGRAM_REGISTRY`. The current program
+configuration has one mode and shared budgets; it does not accept per-program source,
+parameters, import paths, or executable code.
 
 The initial compatibility mapping is deterministic:
 
-| Legacy PTC value | Execution | Serialization | State | Continuity |
+| PTC value | Execution | Serialization | State | Continuity |
 | --- | --- | --- | --- | --- |
 | `skein_notebook` | `skein_repl` | `notebook` | `replay_safe` | existing value |
-| `adk_code_mode` | `adk_code_mode` | `jsonl` | `none` | `run` |
+| `adk_code_mode` | vendored ADK Code Mode | implementation-native turn history | `none` | `run` |
+| `prime_repl` | vendored Prime-native REPL | task JSONL lifecycle events | `snapshot` | `run` |
 
-Legacy input may be normalized at the configuration boundary for one migration
-window. The normalized configuration, not the legacy spelling, contributes to the
-behavior hash. New profiles use only the decomposed shape.
+`serialization: native` and `state: native` preserve these pairings. Their explicit
+equivalents are accepted where implemented. The complete validated configuration,
+including the selected implementation and persistence fields, contributes to the
+behavior hash.
 
 ### Supported combination rules
 
@@ -142,8 +151,8 @@ target, not a promise that all combinations are available now.
 - `snapshot` requires a runtime that implements bounded snapshot/restore and records
   snapshot manifests. It does not make opaque heap bytes historical evidence.
 - `serialization: notebook` requires a registered deterministic notebook projector.
-- `serialization: jsonl` adds no serializer or duplicate file: the canonical ledger
-  already is the durable representation.
+- `serialization: jsonl` adds no runtime-specific transcript writer: lifecycle events
+  remain in the operational task stream and, when enabled, the canonical ledger.
 - `capability_access: native` is allowed only by an explicit trusted execution profile.
   Its direct Python effects are not described as brokered, idempotent, or recoverable.
 - Conversation continuity requires server-owned conversation/workspace identity and a
@@ -153,17 +162,19 @@ target, not a promise that all combinations are available now.
 
 ### Required modular boundaries
 
-Every implementation in a row uses that module's common typed contract. Configuration
-may select the replaceable behavior; it may not disable or replace the invariant.
+The table separates current extension seams from intended replaceability. A row marked
+"native bundle" is a responsibility boundary enforced by validation, not yet a freely
+selectable plugin contract.
 
-| Module | Replaceable implementations | Host-owned invariant |
-| --- | --- | --- |
-| Environment lifecycle | Local process, fresh container, reusable evaluation worker | Exclusive ownership, clean setup/reset, cleanup verification |
-| PTC serialization | Notebook document, ledger-native JSONL representation | Stable cell identities and ledger provenance; serialization never executes code |
-| Runtime-state policy | Fresh state, safe replay, bounded snapshot | Explicit restore eligibility; uncertain effects are never automatically replayed |
-| Memory programs | Versioned history, progress, retrieval, summary, handoff | Authorized sources, watermarks, budgets, evidence and result hashes |
-| Context assembly | Recent history, handoff-plus-tail, fresh reconstruction, Pi compaction | Stable prefix, bounded dynamic suffix, complete tool-call/result boundaries |
-| Result presentation | Compact text, structured data, images, artifact references | Redaction, output bounds and links to authoritative evidence |
+| Module | Current code seam | Current status | Host-owned invariant |
+| --- | --- | --- | --- |
+| Environment lifecycle | `ExecutionRuntime`, `CommandSandbox`, ADK `SandboxBackend`; reusable eval backend | Typed implementations; reusable container is sequential eval-only | Exclusive ownership, clean setup/reset, cleanup verification |
+| PTC session | `PtcSession` returned by closed `select_ptc_session` dispatch | Common assembly/lifecycle result for three implementations | One model tool and explicit cleanup/reconciliation hooks |
+| PTC serialization | Implementation-owned notebook, ADK history, or ledger events | Native bundle | Stable attempt identity and provenance; serialization never grants execution authority |
+| Runtime-state policy | Implementation-owned safe replay, none, or bounded snapshot | Native bundle | Explicit restore eligibility; uncertain effects are never automatically replayed |
+| Memory programs | `MemoryProgramSpec`, `MemoryProgramRuntime`, `ViewRequest`/`ViewResult` | Exact version selection through one finite registry | Authorized scope, watermarks, bounds, evidence and result hashes |
+| Context assembly | Pure `select_context_cut` plus one `ContextWindowPlugin`; ADK Pi compaction is separate | Policy seam; strategies are not one plugin registry | Stable prefix, bounded dynamic suffix, complete tool-call/result boundaries |
+| Result presentation | `ToolEnvelope` and `compact_tool_result` | Shared by all PTC implementations; not configuration-selectable | Redaction, output bounds and links to authoritative evidence |
 
 Turning a replaceable module off selects its identity behavior; it does not bypass an
 invariant. PTC without memory still records its owned execution lifecycle and receives
@@ -204,9 +215,8 @@ header and suffix, publishes the epoch receipt, and mutates the provider request
 after durable publication succeeds. A newly returned tool result always retains its
 matching call; no policy may split that pair to satisfy a budget.
 
-The smallest useful split is one coordinator and three narrow implementation
-contracts. These are behavioral interfaces; exact Python names may change during
-implementation.
+The next smallest useful split is one coordinator and three narrow implementation
+contracts. These are target interfaces, not claims about current Python types:
 
 ```python
 class PtcRuntime(Protocol):
@@ -230,7 +240,7 @@ and runtime-epoch identities; exact code; deadline; and a capability broker refe
 runtime epoch, state metadata, effect classification, duration, and artifact references.
 It never declares task completion.
 
-`PtcSession` owns ordering and is the only caller used by `execute_code`. Runtimes do
+In the target split, `PtcSession` owns ordering and is the only caller used by `execute_code`. Runtimes do
 not append ledger events or materialize documents. State policies do not authorize
 effects. Serializers do not execute or restore code. This prevents a new runtime or
 document format from becoming a second authority path.
@@ -275,7 +285,12 @@ into competing sources of truth.
 
 ## Execution protocol
 
-For each `execute_code` call, `PtcSession` performs this sequence:
+The following is the target coordinator protocol. Current implementations preserve the
+same safety order internally, but the Skein notebook and Prime builders still own their
+event, restore, execution, and persistence sequences, while vendored ADK Code Mode owns
+its turn-scoped container session.
+
+For each `execute_code` call, the extracted coordinator will perform this sequence:
 
 1. Resolve and validate the configured runtime, state policy, serializer, and memory
    program versions before model execution.
@@ -343,11 +358,12 @@ therefore counted only as `native_untracked_cells`, never mislabelled as brokere
 The view accepts exact status and name-query filters and exposes hashes and aggregates,
 not raw arguments or full results.
 
-Existing histories are not rewritten. During the migration, reducers accept the current
-`notebook.cell_added` plus `repl.cell_submitted` pair and the normalized
-`ptc.cell_submitted` event. New writers emit only the normalized lifecycle vocabulary
-after replay-equality tests prove identical reduced state. A schema/program version in
-the receipt identifies which vocabulary was reduced.
+Existing histories are not rewritten. Current Skein notebook writers emit
+`notebook.cell_added` plus `repl.cell_submitted` and a `repl.cell_*` terminal event.
+Prime emits its separate `prime.cell_submitted`, `prime.cell_terminal`, and snapshot
+events. ADK Code Mode contributes its model/tool history, broker receipts, and metrics;
+there is no normalized `ptc.cell_*` writer yet. Any future vocabulary unification must
+retain import compatibility and prove replay equality before changing writers.
 
 ### State policies
 
@@ -379,7 +395,7 @@ choose notebook ID + cell/attempt/kernel IDs
         |
 restore prior replay-safe cells if this is a new kernel
         |
-append ptc.cell_submitted
+append repl.cell_submitted
         |
 reduce events ----------> atomically materialize .ipynb before execution
         |
@@ -478,12 +494,13 @@ Memory configuration selects exact programs independently of PTC execution,
 serialization, and state recovery. The program contract and evidence semantics remain
 defined in [Context, versioned memory programs, and long sessions](context-and-memory.md).
 
-At assembly, the registry resolves every `(name, version)` and validates its typed
-parameters, evidence sources, temporal policy, and budgets. At execution, the request
-adds authorized task scope, ledger watermark, and clock boundary. The receipt records
-program, execution, and result identities plus evidence addresses. Only configured
-`active` programs may contribute model-visible context; `shadow` programs execute and
-record receipts without changing the prompt.
+At assembly, the registry resolves every configured `(name, version)` and enforces the
+reviewed/model-visible and reuse gates. Shared scan, time, and output budgets live in
+`ContextProgramConfig`; typed query parameters and temporal boundaries are validated by
+`ViewRequest` at execution. The receipt records program, execution, and result
+identities plus evidence addresses. Active mode exposes selected programs through the
+reserved `memory` command handled by Bash or a brokered PTC capability. Shadow mode
+runs only the fixed `events.count@1` probe and never changes the prompt.
 
 The `pi` mechanism remains a context-compaction strategy over ADK session history. It
 must not be registered as a trace-native memory program because it does not satisfy the
@@ -492,25 +509,23 @@ remain separate configuration axes.
 
 ## Implementation and migration plan
 
-Each step is independently testable and lands in its own commit:
+This delivery ledger distinguishes landed seams from the remaining extraction:
 
-1. **Extract runtime:** adapt `PersistentPythonWorker` and vendored ADK Code Mode to a
-   shared `PtcRuntime`; keep generated tool declarations and behavior hashes unchanged.
-2. **Extract coordinator:** move `execute_code` lifecycle logic from
-   `build_coding_worker` into `PtcSession`; prove existing notebook PTC event bytes,
-   receipts, outputs, and failure behavior remain equal.
-3. **Extract serializer and state policy:** adapt the current notebook reducer and safe
-   replay logic; add ledger-only JSONL and `none` implementations without another store.
-4. **Normalize configuration:** introduce the decomposed schema and compatibility
-   translation; update standard profiles and reject invalid combinations at load time.
-5. **Register memory programs:** replace implementation-wide selection with exact
-   code-owned `(name, version)` resolution while retaining current program hashes and
-   result bytes.
-6. **Add Prime runtime and snapshots:** vendor the minimum MIT-licensed REPL source at a
-   pinned upstream commit, implement its host protocol adapter, and keep native OS access
-   in a separate explicit trust profile.
-7. **Run the matrix:** compare supported runtime/serializer/state combinations with the
-   same model, tasks, budgets, broker, and verifier before changing any default.
+1. **Landed:** all three PTC implementations return a shared `PtcSession` assembly
+   result and the same compact result envelope; selection is centralized.
+2. **Landed:** unsupported serialization/state/continuity/module combinations fail at
+   configuration loading with specific errors.
+3. **Landed:** exact memory program versions resolve through one finite registry; the
+   prior mutable SQL and duplicate prompt-program catalogs were removed.
+4. **Landed:** Prime runtime, JSONL lifecycle evidence, bounded snapshots, trust gate,
+   and native-untracked effect classification are bundled from pinned source.
+5. **Landed:** ADK Code Mode has a pinned image build and an eval-only reusable worker
+   that resets processes, filesystem state, tools, and interpreter state per example.
+6. **Remaining:** extract a common cell coordinator, runtime, serializer, and state
+   policy without changing event bytes, tool declarations, provider prefixes, or
+   failure behavior.
+7. **Remaining:** run the deterministic composition matrix and matched live provider
+   comparison before adding cross-pairings or changing the four-tool default.
 
 Canonical runtime/persistence matrix after implementation audit:
 
@@ -540,9 +555,11 @@ duplicate or unknown effects, snapshot bytes/failures, and terminal reason.
   migration above lands.
 - Notebook PTC is implemented and disabled by default.
 - Skein and Prime local adapters require project trust and are not production security
-  sandboxes. ADK Code Mode uses the pinned reusable container lifecycle.
-- Registered MCP calls, direct tools, PTC calls, and verification share policy,
-  receipts, redaction, output limits, and task identity.
+  sandboxes. ADK Code Mode uses a pinned per-turn container; its reusable resettable
+  container backend is limited to sequential batch evaluation.
+- Registered MCP calls, direct tools, brokered PTC calls, and verification share policy,
+  receipts, redaction, output limits, and task identity. Prime-native effects are the
+  explicit cell-level `native_untracked` exception.
 - Canonical JSONL and DuckDB ledgers are implemented and optional.
 - One code-owned memory-program registry controls configuration, execution, and model
   exposure; legacy prompt/reducer and mutable SQL catalogs were removed.

@@ -72,10 +72,12 @@ injection. Traces remain useful for manual investigation and future measured wor
 
 ## Execution boundary
 
-The experimental `notebook_ptc.enabled` path selects either Skein.s `execute_code` tool or
-vendored ADK Code Mode's `execute_code` tool. Both receive the same brokered coding
-capabilities; see [the comparison design](design/pluggable-ptc-and-memory.md).
-Skein.s `execute_code` tool is backed by a
+The experimental `notebook_ptc.enabled` path selects Skein's notebook tool, vendored
+ADK Code Mode, or the trusted Prime-native REPL behind the same `execute_code` name and
+`PtcSession` assembly seam. Skein and ADK receive the same brokered coding capabilities;
+Prime has explicit native OS access and records its effects at cell granularity as
+`native_untracked`. See [the trace-native harness ADR](adr/trace-native-harness.md).
+Skein's notebook `execute_code` tool is backed by a
 persistent CPython worker and parent-owned capability broker. Registered MCP, file,
 and shell capabilities traverse that broker and its lifecycle trace. This path
 supports trusted local workspaces. Production or adversarial execution is outside

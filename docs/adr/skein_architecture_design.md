@@ -2,8 +2,8 @@
 
 Skein explores a simple idea: give a capable model one programmable way to act,
 retain the evidence of its work, and compute the context it needs from that evidence.
-The agent's working document is a notebook containing code, selected results, and
-narrative. Its memory consists of versioned programs that turn an append-only trace
+In the notebook profile, the agent's working document contains code, selected results,
+and narrative. Its memory consists of versioned programs that turn an append-only trace
 into useful views. Google ADK supplies the surrounding model execution and session
 machinery.
 
@@ -13,9 +13,33 @@ calls consume turns; raw results consume tokens; summaries can lose the details 
 later. Skein asks whether an agent can work more precisely by keeping computation and
 data outside the prompt, then deliberately selecting what to bring back into it.
 
-The architecture separates execution, document format, runtime-state recovery, and
-memory programs. Each has a distinct purpose and can evolve without silently changing
-the responsibilities of the others.
+The architecture distinguishes execution, document format, runtime-state recovery,
+memory programs, context selection, and result presentation. The current code has
+stable seams for selecting a PTC session, a ledger backend, reviewed memory programs,
+and context policy. PTC execution, serialization, and recovery are still shipped as
+validated implementation-native bundles; they are not yet freely cross-composable.
+That distinction keeps the design direction explicit without claiming abstractions the
+runtime does not have.
+
+## Current modular shape
+
+The code currently composes these layers:
+
+| Layer | Current implementations | Selection boundary |
+| --- | --- | --- |
+| Model-facing tools | Four direct tools, or one `execute_code` | `notebook_ptc.enabled` |
+| PTC session | Skein notebook, ADK Code Mode, Prime-native REPL | Closed `implementation` dispatch to a shared `PtcSession` assembly result |
+| PTC persistence | Notebook + safe replay, ADK-native turn history + no restore, Prime JSONL events + bounded snapshots | Validated native pairing; cross-pairing is rejected |
+| Execution environment | Local command adapter, Docker command adapter, ADK Code Mode container, reusable sequential eval container | Typed host/runtime seams; the reusable container is eval-only |
+| Canonical trace | JSONL or optional DuckDB | `memory.enabled` and `memory.ledger` |
+| Memory programs | Finite `(name, version)` registry with a shared request/result contract | `memory.context_programs`; active, shadow, or off |
+| Context | Exact ADK history, Pi compaction, or trace-backed bounded windows | Memory implementation plus `context.window_management` |
+| Result presentation | Compact text plus hashes, structured metadata, and artifact references | One normalizer for all PTC implementations; not independently configurable |
+
+The default remains the four direct tools with canonical trace memory disabled. A
+disabled module selects the ordinary behavior; it never disables authorization,
+redaction, output bounds, or independent verification. Invalid combinations fail while
+loading configuration instead of silently falling back.
 
 ## One code-mode tool gives the model a language for acting
 
@@ -44,10 +68,15 @@ for judgment. The host continues to own authorization, deadlines, effects, and v
 
 ## An append-only trace lets the agent revisit its evidence
 
-Skein retains attempts and observations as events: what was requested, what was
+When canonical memory is enabled, Skein retains attempts and observations in one
+JSONL or DuckDB ledger: what was requested, what was
 authorized, which code ran, which capability calls completed, what failed, and what
 remains uncertain. Large outputs live in referenced artifacts. A later correction
 adds evidence to the history instead of silently replacing the earlier account.
+
+With canonical memory disabled, the default compatibility profile continues to use its
+operational JSONL and SQLite stores. Those stores are not described as the canonical
+cross-module trace, and trace-backed programs and bounded reconstruction remain off.
 
 This gives the agent more than a transcript to summarize. It can ask which operations
 were still open at a particular point, what changed after a test passed, or which
@@ -63,8 +92,8 @@ reduction the only surviving account of the work.
 
 ## A notebook makes code and its results a durable document
 
-The notebook is Skein's chosen workbench document: exact submitted code alongside
-selected output, explanatory Markdown, and provenance. It persists the record of code
+The Skein notebook implementation uses a notebook as its workbench document: exact
+submitted code alongside selected output, explanatory Markdown, and provenance. It persists the record of code
 state and its evolution. The live Python heap has a separate lifetime; an `.ipynb`
 alone does not preserve every object, background task, or external resource.
 
@@ -155,10 +184,12 @@ or a task has been verified.
 ## From premise to execution contracts
 
 The pieces work together: code mode performs computations and selects observations;
-the trace preserves what happened; the notebook organizes code and multimodal results;
-versioned programs construct the bounded views used as memory and prompts. Execution,
-document serialization, runtime-state recovery, and memory selection can then be
-configured independently and evaluated with the same tasks and model.
+the trace preserves what happened; the notebook profile organizes code and multimodal
+results; versioned programs construct bounded memory views. The design keeps execution,
+document serialization, runtime-state recovery, memory selection, context policy, and
+presentation as separate responsibilities. Today, some are independent selectors and
+some remain implementation-native bundles, so evaluations compare only combinations
+that configuration validation and deterministic contracts actually support.
 
 The companion ADRs turn that premise into execution contracts:
 
