@@ -179,6 +179,23 @@ class NotebookPtcConfig(FrozenModel):
     max_cells_per_batch: int = Field(default=48, ge=1, le=256)
     max_parallel_reads: int = Field(default=4, ge=1, le=16)
     max_capability_calls_per_cell: int = Field(default=256, ge=1, le=1_024)
+    batching_instruction: str = Field(
+        default=(
+            "Use the task phase in the current work packet to compose cells. During understand "
+            "and plan, put independent bounded reads and searches with already-known inputs in "
+            "one cell, then filter and print a compact summary. During implement, group independent "
+            "reads that support one selected change; an already-decided edit and its already-selected "
+            "targeted check may share a cell when code stops on failure. Return to the model before "
+            "any result-dependent repair or semantic choice. During review, collect evidence for "
+            "independent weak acceptance criteria together; test both sides of state transitions, "
+            "including histories where a prerequisite never occurred, and stop exploring when every "
+            "criterion has evidence or a concrete blocker. During verify, group already-selected "
+            "formatter, type, and targeted-test commands in one program but run commands serially "
+            "unless the broker explicitly certifies them parallel-safe; preserve every exit status."
+        ),
+        min_length=1,
+        max_length=8_000,
+    )
 
     @model_validator(mode="before")
     @classmethod

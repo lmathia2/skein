@@ -768,12 +768,6 @@ def build_notebook_session(
         timeout_seconds: int = active_ptc_config.default_timeout_seconds,
         tool_context: ToolContext | None = None,
     ) -> dict[str, Any]:
-        """Execute one cell in persistent Python and return its bounded final expression.
-
-        The prebound ``agent`` object provides brokered capabilities. Capability calls
-        return mappings with ``status``, ``data``, and ``model_text``; use ``agent.help()``
-        for exact contracts. Variables persist after successful cells.
-        """
         result = await _execute_code(code, timeout_seconds, tool_context)
         compact = compact_tool_result(
             result,
@@ -891,10 +885,7 @@ def build_notebook_session(
 
     return PtcSession(
         tool=execute_code,
-        description=(
-            "Execute one cell in persistent Python. Use the prebound agent capabilities; "
-            "return a compact final expression and keep intermediate values in Python."
-        ),
+        description="Executes Skein notebook PTC in one persistent CPython tool.",
         execute_code=execute_code,
         close=close,
         before_model=before_model,

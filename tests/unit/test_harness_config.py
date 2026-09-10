@@ -401,15 +401,16 @@ def test_notebook_ptc_configuration_changes_behavior_hash() -> None:
     assert parse_harness_composition(payload).behavior_sha256 != disabled.behavior_sha256
 
 
-def test_notebook_ptc_rejects_removed_batching_instruction() -> None:
+def test_notebook_ptc_batching_instruction_changes_behavior_hash() -> None:
     payload = _composition_payload()
+    baseline = parse_harness_composition(payload)
     payload["harness"]["config"]["notebook_ptc"] = {
         "enabled": True,
         "batching_instruction": "Batch independent reads only.",
     }
 
-    with pytest.raises(ValidationError, match="batching_instruction"):
-        parse_harness_composition(payload)
+    configured = parse_harness_composition(payload)
+    assert configured.behavior_sha256 != baseline.behavior_sha256
 
 
 def test_lance_retrieval_requires_duckdb() -> None:
