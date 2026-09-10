@@ -119,6 +119,11 @@ and the implementation/evaluation rubric.
   - [x] Make matched DeepSWE runs benchmark-selectable and single-attempt by default;
     preserve official reward, latency, token usage, and separate Skein reliability
     status in each append-only run record.
+  - [x] Rerun four tools, Skein notebook PTC, and Prime JSONL PTC on the exact six
+    historical reference tasks at one clean revision. Four tools scored 3/6,
+    notebook 2/6, and Prime 1/6; notebook reduced raw latency, tokens, and cost but
+    missed one Koota transition edge. See
+    `docs/audits/ptc-deepswe-reference-six-2026-09-10.md`.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
