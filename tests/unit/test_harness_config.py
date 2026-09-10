@@ -382,6 +382,17 @@ def test_notebook_ptc_default_timeout_cannot_exceed_maximum() -> None:
         parse_harness_composition(payload)
 
 
+def test_notebook_ptc_capability_limit_must_be_positive() -> None:
+    payload = _composition_payload()
+    payload["harness"]["config"]["notebook_ptc"] = {
+        "enabled": True,
+        "max_capability_calls_per_cell": 0,
+    }
+
+    with pytest.raises(ValidationError, match="max_capability_calls_per_cell"):
+        parse_harness_composition(payload)
+
+
 def test_notebook_ptc_configuration_changes_behavior_hash() -> None:
     payload = _composition_payload()
     disabled = parse_harness_composition(payload)

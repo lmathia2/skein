@@ -186,6 +186,54 @@ async def test_parallel_rejects_effects_before_dispatch(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_capability_call_limit_stops_before_dispatch(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    ptc_config = config.notebook_ptc.model_copy(
+        update={"max_capability_calls_per_cell": 2}
+    )
+    events = JsonlEventStore(tmp_path / "state" / "events")
+    calls: list[str] = []
+
+    def read(*, path: str, **_kwargs):
+        calls.append(path)
+        return {"status": "ok", "model_text": path, "data": {"text": path}}
+
+    def unused(**_kwargs):
+        raise AssertionError("unexpected capability")
+
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=read, bash=unused, edit=unused, write=unused),
+        ptc_config=ptc_config,
+        event_store=events,
+    )
+    assert worker.execute_code is not None
+    try:
+        result = await worker.execute_code(
+            "[agent.fs.read(name) for name in ['a', 'b', 'c']]",
+            tool_context=SimpleNamespace(
+                state={"task_id": "task"}, invocation_id="inv", function_call_id="call"
+            ),
+        )
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert result["status"] == "error"
+    assert calls == ["a", "b"]
+    requested = [
+        event for event in events.read("task")
+        if event.kind == EventKind.CAPABILITY_REQUESTED
+    ]
+    assert len(requested) == 2
+
+
+@pytest.mark.asyncio
 async def test_failed_read_does_not_require_effect_reconciliation(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)

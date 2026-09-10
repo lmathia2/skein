@@ -150,6 +150,11 @@ def build_notebook_session(
             self.artifact_refs: set[str] = set()
 
         def _reserve(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+            if self.call_index >= active_ptc_config.max_capability_calls_per_cell:
+                raise RuntimeError(
+                    "capability call limit exceeded "
+                    f"({active_ptc_config.max_capability_calls_per_cell} per cell)"
+                )
             self.call_index += 1
             self.operations.append(operation)
             operation_id = f"{self.attempt_id}:{self.call_index}"
@@ -266,6 +271,15 @@ def build_notebook_session(
                 if unexpected or not isinstance(arguments.get("path"), str):
                     raise ValueError("invalid fs.read arguments in parallel batch")
                 normalized.append(arguments)
+
+            if (
+                self.call_index + len(normalized)
+                > active_ptc_config.max_capability_calls_per_cell
+            ):
+                raise RuntimeError(
+                    "capability call limit exceeded "
+                    f"({active_ptc_config.max_capability_calls_per_cell} per cell)"
+                )
 
             def invoke(arguments: dict[str, Any]) -> dict[str, Any]:
                 return active_tools.read(

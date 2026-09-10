@@ -178,6 +178,7 @@ class NotebookPtcConfig(FrozenModel):
     no_progress_cells_per_batch: int = Field(default=24, ge=1, le=256)
     max_cells_per_batch: int = Field(default=48, ge=1, le=256)
     max_parallel_reads: int = Field(default=4, ge=1, le=16)
+    max_capability_calls_per_cell: int = Field(default=256, ge=1, le=1_024)
 
     @model_validator(mode="before")
     @classmethod
