@@ -57,7 +57,6 @@ from harness.ledger.importers import (
     import_trace_span,
 )
 from harness.memory.lance import LanceMemorySearch
-from harness.repl.prime import PrimeRuntime
 from harness.repo import discover_instruction_files
 from harness.safety import ApprovalPolicy, SecretRedactor
 from harness.sandbox import create_configured_command_sandbox
@@ -90,7 +89,6 @@ LOGGER = logging.getLogger(__name__)
 ExecutionRuntimeFactory = Callable[
     [HarnessSettings, SkeinConfig, Sequence[str]], ExecutionRuntime
 ]
-PrimeRuntimeFactory = Callable[[Path, int], PrimeRuntime]
 
 
 class _SkeinControlHooks:
@@ -169,13 +167,11 @@ class SkeinHarnessFactory:
         pricing: Mapping[str, ModelPricing] | None = None,
         model_providers: AdkModelProviderRegistry | None = None,
         execution_runtime_factory: ExecutionRuntimeFactory | None = None,
-        prime_runtime_factory: PrimeRuntimeFactory | None = None,
         semantic_search_factory: Callable[[Path], LanceMemorySearch] | None = None,
     ) -> None:
         self._pricing = dict(pricing or {})
         self._model_providers = model_providers or default_adk_model_provider_registry()
         self._execution_runtime_factory = execution_runtime_factory
-        self._prime_runtime_factory = prime_runtime_factory
         self._semantic_search_factory = semantic_search_factory
         self._descriptor = HarnessDescriptor(
             implementation="skein_v1",
@@ -493,7 +489,6 @@ class SkeinHarnessFactory:
             replies=replies,
             workspace_fingerprint=execution.repository.fingerprint,
             redactor=SecretRedactor(known_secrets=known_secrets),
-            prime_runtime_factory=self._prime_runtime_factory,
             **notebook_options,
         )
         steering = SteeringQueue(
@@ -709,7 +704,6 @@ def default_harness_registry(
     *,
     model_providers: AdkModelProviderRegistry | None = None,
     execution_runtime_factory: ExecutionRuntimeFactory | None = None,
-    prime_runtime_factory: PrimeRuntimeFactory | None = None,
     semantic_search_factory: Callable[[Path], LanceMemorySearch] | None = None,
 ) -> HarnessRegistry:
     registry = HarnessRegistry()
@@ -718,7 +712,6 @@ def default_harness_registry(
             model_providers=model_providers,
             pricing=pricing_from_env(),
             execution_runtime_factory=execution_runtime_factory,
-            prime_runtime_factory=prime_runtime_factory,
             semantic_search_factory=semantic_search_factory,
         )
     )

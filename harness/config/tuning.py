@@ -179,14 +179,6 @@ def tuning_spec(composition: HarnessComposition) -> TuningSpec:
         experimental=True,
     )
     add(
-        "notebook_ptc.implementation",
-        config.notebook_ptc.implementation,
-        "categorical",
-        "PTC worker implementation used by matched ablations",
-        choices=("skein_notebook", "prime_repl"),
-        experimental=True,
-    )
-    add(
         "notebook_ptc.batching_instruction",
         config.notebook_ptc.batching_instruction,
         "text",

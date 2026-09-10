@@ -22,14 +22,13 @@ from harness.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfi
 from harness.environment.async_call import run_managed_thread
 from harness.environment.runtime import LocalRepositoryRuntime
 from harness.models.agent_step import StructuredAgentStep
-from harness.repl.prime import PrimeRuntime
 from harness.safety.redaction import SecretRedactor
 from harness.state import EventStore, JsonlEventStore
 from harness.state.events import HarnessEvent
 from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
 from .config import HarnessSettings
-from .ptc import build_notebook_session, select_ptc_session
+from .ptc import build_notebook_session
 from .streaming import PublicReplies
 
 LOGGER = logging.getLogger(__name__)
@@ -65,7 +64,6 @@ def build_coding_worker(
     notebook_root: Path | None = None,
     workspace_fingerprint: Callable[[], str] | None = None,
     redactor: SecretRedactor | None = None,
-    prime_runtime_factory: Callable[[Path, int], PrimeRuntime] | None = None,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -237,21 +235,8 @@ def build_coding_worker(
             ),
         ))
 
-    def build_prime():
-        from .prime_ptc import build_prime_session
-
-        return build_prime_session(
-            settings, config=active_ptc_config, events=active_event_store,
-            runtime_identity=_runtime_identity, require_verification=_require_verification,
-            replies=replies, redactor=redactor or SecretRedactor(),
-            conversation_id=conversation_notebook_id, prior_events=prior_notebook_events,
-            state_root=notebook_root,
-            runtime_factory=prime_runtime_factory,
-        )
-
-    ptc_session = select_ptc_session(
-        active_ptc_config,
-        skein_notebook=lambda: build_notebook_session(
+    ptc_session = (
+        build_notebook_session(
             settings, active_ptc_config=active_ptc_config,
             active_event_store=active_event_store, active_tools=active_tools,
             approvals=approvals, replies=replies, capability_handlers=capability_handlers,
@@ -260,8 +245,9 @@ def build_coding_worker(
             fingerprint_workspace=fingerprint_workspace,
             read_default_lines=read_default_lines, bash_default_timeout=bash_default_timeout,
             runtime_identity=_runtime_identity, require_verification=_require_verification,
-        ),
-        prime_repl=build_prime,
+        )
+        if active_ptc_config.enabled
+        else None
     )
 
     model_tools: list[Any] = [ptc_session.tool] if ptc_session else [read, bash, edit, write]

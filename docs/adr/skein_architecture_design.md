@@ -14,12 +14,10 @@ later. Skein asks whether an agent can work more precisely by keeping computatio
 data outside the prompt, then deliberately selecting what to bring back into it.
 
 The architecture distinguishes execution, document format, runtime-state recovery,
-memory programs, context selection, and result presentation. The current code has
-stable seams for selecting a PTC session, a ledger backend, reviewed memory programs,
-and context policy. PTC execution, serialization, and recovery are still shipped as
-validated implementation-native bundles; they are not yet freely cross-composable.
-That distinction keeps the design direction explicit without claiming abstractions the
-runtime does not have.
+memory programs, context selection, and result presentation. The current code has one
+PTC implementation, plus stable seams for selecting a ledger backend, reviewed memory
+programs, and context policy. Keeping one implementation makes those boundaries serve
+today's product instead of preserving experimental alternatives.
 
 ## Current modular shape
 
@@ -28,9 +26,9 @@ The code currently composes these layers:
 | Layer | Current implementations | Selection boundary |
 | --- | --- | --- |
 | Model-facing tools | Four direct tools, or one `execute_code` | `notebook_ptc.enabled` |
-| PTC session | Skein notebook, Prime-native REPL | Closed `implementation` dispatch to a shared `PtcSession` assembly result |
-| PTC persistence | Notebook + safe replay, or Prime JSONL events + bounded snapshots | Validated native pairing; cross-pairing is rejected |
-| Execution environment | Local command adapter, Docker command adapter, trusted Prime-native process | Typed host/runtime seams and explicit trust boundaries |
+| PTC session | Skein notebook | `notebook_ptc.enabled` |
+| PTC persistence | Notebook + safe replay | Explicit serialization and recovery policy |
+| Execution environment | Local or Docker command adapter | Typed host/runtime seams and explicit trust boundaries |
 | Canonical trace | JSONL or optional DuckDB | `memory.enabled` and `memory.ledger` |
 | Memory programs | Finite `(name, version)` registry with a shared request/result contract | `memory.context_programs`; active, shadow, or off |
 | Context | Exact ADK history, Pi compaction, or trace-backed bounded windows | Memory implementation plus `context.window_management` |

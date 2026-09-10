@@ -186,12 +186,10 @@ The simplified implementation matters more than the aspirational design:
 
 - Four direct tools remain the default because the completed PTC comparison did not
   clear the quality gate.
-- Skein notebook PTC and Prime PTC are validated native bundles; serialization and
-  recovery policies are not freely cross-composable.
+- Skein ships one notebook PTC implementation; discarded experiment adapters are not
+  retained as product surface.
 - JSONL is sufficient for the default path. DuckDB is optional, and semantic retrieval
   is not active without an explicit embedding provider.
-- Prime's native interpreter is trusted and records its direct effects as untracked;
-  it does not satisfy the brokered notebook profile's authority claim.
 - The local environment adapter is not a production security sandbox.
 - Deterministic contract tests establish behavior, not superiority over Codex,
   OpenCode, or Pi. Product-quality and live-task claims require matched evaluations.

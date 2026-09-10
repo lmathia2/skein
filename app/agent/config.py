@@ -190,26 +190,13 @@ def settings_from_composition(
 
     tool_names = ("read", "bash", "edit", "write")
     if config.notebook_ptc.enabled:
-        if config.notebook_ptc.implementation == "skein_notebook":
-            instruction += (
-                "\n\n"
-                + NOTEBOOK_PTC_INSTRUCTION
-                + "\n\nPhase-aware cell composition:\n"
-                + config.notebook_ptc.batching_instruction.strip()
-            )
-            tool_names = ("execute_code",)
-        elif config.notebook_ptc.implementation == "prime_repl":
-            instruction += (
-                "\n\nPrime-native code mode is enabled. Your only tool is execute_code(code). "
-                "Python is a persistent control environment with native OS access in this trusted profile. "
-                "Use await bash(command) for project commands; use the project's own environment for tests. "
-                "asyncio, bash, and emit are prebound. Top-level await works. "
-                "Select concise printed results; emit accepts MIME bundles. "
-                "A failed cell retains earlier assignments. Serializable values are snapshotted after cells; "
-                "open resources and background tasks may not restore. Execution history is JSONL. "
-                "Skein's independent verifier owns completion."
-            )
-            tool_names = ("execute_code",)
+        instruction += (
+            "\n\n"
+            + NOTEBOOK_PTC_INSTRUCTION
+            + "\n\nPhase-aware cell composition:\n"
+            + config.notebook_ptc.batching_instruction.strip()
+        )
+        tool_names = ("execute_code",)
     coding_model = config.models[worker_config.model].name
     skill_roots: list[Path] = []
     if config.skills.project_root_enabled and bindings.project_trusted:

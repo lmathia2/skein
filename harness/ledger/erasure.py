@@ -119,7 +119,6 @@ def erase_task_state(
     candidates = [
         root / "events" / f"{digest}.jsonl",
         root / "notebooks" / f"{digest[:32]}.ipynb",
-        root / "prime" / digest,
         root / "memory-search" / digest,
         root / "memory" / "lance" / digest,
     ]

@@ -1,6 +1,8 @@
 # Trace-native harness and composable PTC
 
-> Status: accepted architecture; composable PTC and canonical memory remain opt-in
+> Status: historical implementation record; Prime sections were superseded when the
+> experimental adapter was removed. The current core architecture is
+> [Skein architecture design](skein_architecture_design.md).
 >
 > Updated: 2026-09-09
 

@@ -23,7 +23,6 @@ dependencies = [
 eval = ["harbor==0.22.0; python_version >= '3.12'"]
 memory-duckdb = ["duckdb>=1.4,<2.0"]
 memory-search = ["duckdb>=1.4,<2.0", "lancedb>=0.38,<1.0"]
-ptc-prime = [] # Compatibility alias; serializer is vendored.
 
 [dependency-groups]
 dev = [
@@ -45,7 +44,6 @@ norecursedirs = ["tests/fixtures"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-exclude = ["harness/repl/prime_runtime", "harness/_vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
@@ -55,4 +53,4 @@ ignore = ["E501"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
 include = ["app", "harness"]
-exclude = ["tests/fixtures", "harness/repl/prime_runtime", "harness/_vendor"]
+exclude = ["tests/fixtures"]

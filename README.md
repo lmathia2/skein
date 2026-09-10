@@ -47,8 +47,6 @@ The profile passed to `--config` selects the model interface and memory policy:
 |---|---|---|
 | `four-tool.yaml` | `read`, `bash`, `edit`, `write` | bounded task log |
 | `notebook-ptc-jsonl.yaml` | persistent Skein `execute_code` notebook | canonical JSONL |
-| `notebook-ptc-duckdb.yaml` | persistent Skein `execute_code` notebook | DuckDB |
-| `prime-ptc-jsonl.yaml` | trusted Prime `execute_code` REPL | canonical JSONL |
 
 Provider, model, reasoning effort, token limits, concurrency, and attempts are
 runner flags. Tool topology, safety, verification, and evidence authority remain

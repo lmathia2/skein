@@ -7,8 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from harness.config import load_harness_composition
-
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/run_harbor_eval.py"
 
@@ -155,39 +153,6 @@ def test_plan_can_select_only_deepswe_tasks() -> None:
     assert plan["benchmark"] == "deep_swe"
     assert plan["tasks"] == ["textual-kitty-key-phases", "wazero-multi-module-snapshots"]
     assert plan["retries"] == 0
-
-
-def test_harbor_runner_accepts_prime_with_container_runtime_bridge() -> None:
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--suite",
-            "smoke",
-            "--plan",
-            "--config",
-            "harness/config/profiles/prime-ptc-jsonl.yaml",
-        ],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert completed.returncode == 0
-    assert json.loads(completed.stdout)["suite"] == "smoke"
-
-
-def test_ptc_eval_profiles_differ_only_in_ptc_implementation() -> None:
-    notebook = load_harness_composition(
-        ROOT / "harness/config/profiles/notebook-ptc-jsonl.yaml"
-    ).harness.config
-    prime = load_harness_composition(
-        ROOT / "harness/config/profiles/prime-ptc-jsonl.yaml"
-    ).harness.config
-
-    assert notebook.model_copy(update={"notebook_ptc": prime.notebook_ptc}) == prime
-    assert notebook.notebook_ptc.implementation == "skein_notebook"
-    assert prime.notebook_ptc.implementation == "prime_repl"
 
 
 def test_deepswe_verifier_image_is_built_once_and_pinned(monkeypatch, tmp_path: Path) -> None:

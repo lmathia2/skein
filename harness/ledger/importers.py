@@ -30,19 +30,12 @@ def import_harness_event(store: LedgerStore, event: HarnessEvent) -> LedgerEvent
         "repl.cell_completed": "completed",
         "repl.cell_failed": "failed",
         "repl.cell_timeout": "timeout",
-        "prime.cell_submitted": "started",
         "capability.requested": "started",
         "capability.completed": "completed",
         "capability.failed": "failed",
         "capability.blocked": "blocked",
     }
     status = statuses.get(event.kind, "observed")
-    if event.kind == "prime.cell_terminal":
-        candidate = str((event.payload.get("result") or {}).get("status", "observed"))
-        terminal_statuses: dict[str, EventStatus] = {
-            "ok": "completed", "error": "failed", "blocked": "blocked", "timeout": "timeout"
-        }
-        status = terminal_statuses.get(candidate, "observed")
     effects: dict[str, EffectStatus] = {
         "changed": "applied", "unknown": "unknown", "native_untracked": "unknown"
     }

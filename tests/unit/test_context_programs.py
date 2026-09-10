@@ -208,10 +208,6 @@ def test_tool_usage_view_separates_top_level_nested_and_native(tmp_path: Path, b
         "operation": "fs.write", "status": "ok", "effect": "changed",
         "omitted_bytes": 3,
     })
-    append("prime", "prime.cell_terminal", {
-        "effect": "native_untracked", "result": {"status": "ok"},
-    })
-
     runtime = MemoryProgramRuntime(store, authorized_tasks=("task",))
     result = runtime.compute(ViewRequest(task_id="task", program="tools.usage"))
 
@@ -224,7 +220,6 @@ def test_tool_usage_view_separates_top_level_nested_and_native(tmp_path: Path, b
         "count": 2, "by_name": {"fs.write": 1, "read": 1},
         "by_status": {"ok": 2},
     }
-    assert result.data["native_untracked_cells"] == 1
     assert result.data["model_visible_bytes"] == 170
     assert result.data["omitted_bytes"] == 18
     assert runtime.compute(

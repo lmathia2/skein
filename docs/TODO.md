@@ -4,7 +4,7 @@
 
 - [x] Preserve the pre-simplification repository on a backup branch.
 - [x] Remove the TUI, WebSocket app, interactive CLI, and launch surface.
-- [x] Retain and verify four-tool, Skein notebook PTC, and Prime PTC eval profiles.
+- [x] Retain and verify four-tool and Skein notebook PTC eval profiles.
 - [x] Document developer setup, eval commands, modes, and visual architecture.
 - [ ] Run the selected live Harbor campaigns; deterministic local checks do not
   replace provider-backed benchmark evidence.

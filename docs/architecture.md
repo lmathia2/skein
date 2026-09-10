@@ -31,7 +31,7 @@ flowchart LR
         direction TB
         MODEL["Model provider<br/><small>Gemini · Codex · OpenRouter</small>"]
         WORKER["ADK coding worker<br/><small>one model/tool loop</small>"]
-        MODE["Programmable action surface<br/><small>four tools · Skein PTC · Prime PTC</small>"]
+        MODE["Programmable action surface<br/><small>four tools · Skein notebook PTC</small>"]
         MODEL --> WORKER
         WORKER --> MODE
     end
@@ -125,7 +125,7 @@ tool round trips without asking the model to guess several dependent decisions a
 once.
 
 The compatibility mode retains `read`, `bash`, `edit`, and `write` as the measured
-baseline. Skein notebook PTC and Prime PTC expose `execute_code`. These modes change
+baseline. Skein notebook PTC exposes `execute_code`. These modes change
 how the model composes work, not what it is allowed to do; all routes meet again at
 the same effect boundary.
 
@@ -135,10 +135,6 @@ selected results, narrative, and provenance in one durable working document. It 
 deterministic projection over trace evidence, not the historical authority, and it is
 not the live heap. Failed cells discard their dirty kernel epoch; restoration replays
 only explicitly safe cells.
-
-Prime PTC supplies an alternative persistent REPL and bounded snapshot policy. Its
-native effects are classified explicitly rather than being mistaken for brokered
-operations. Both PTC implementations expose the same model-facing tool name.
 
 ## Effect broker and runtime
 
