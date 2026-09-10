@@ -237,6 +237,30 @@ and separate ledger.
    notebook to recover the Koota pass without losing Ofetch/Wazero and without
    increasing median uncached input or cost per pass before expanding the suite.
 
+### Trace-derived execution plan
+
+The first change should strengthen enforcement, not add more general prompt advice.
+Skein already runs one durable counterexample review in `app/agent/workflow.py`, and
+both that review and the notebook batching instruction explicitly mention histories
+where a prerequisite was never reached. Koota still missed exactly that case. The
+current verifier also assigns the same successful behavioral command references to
+every acceptance criterion in `harness/verification/runner.py`, so a broad repository
+test can make every row appear satisfied without proving clause-level coverage.
+
+Land and measure the following units independently:
+
+| Order | Unit and smallest implementation | Deterministic evidence | Promotion gate |
+| --- | --- | --- | --- |
+| N1 | **Criterion-bound acceptance evidence.** Reuse the existing counterexample-review turn, `completion_claims`, task ledger, and validation receipts; do not add a tool or another state store. Require the review to enumerate each behavioral clause and its positive, negative, boundary, and transition counterexamples where applicable. Change verification so a successful command reference is attached only to the criterion it was selected to prove, and leave unmatched rows unsatisfied. Start as a notebook-profile experiment; promote the contract to shared verification only after it helps. | Add a verifier regression with two criteria and two targeted commands proving that one passing command cannot satisfy both rows. Add a Koota-shaped fixture in which complete→incomplete passes but “never complete” remains unresolved and blocks completion. Confirm the acceptance view stays in the dynamic suffix/notebook projection and does not change stable-prefix bytes. | Across three paired Koota attempts, notebook pass rate must match or exceed four tools. Internal `done` must never coexist with an unresolved fixture row. |
+| N2 | **Preserve the kernel after proven pre-execution rejection.** Have the worker report whether failure occurred during parse/source validation, Python execution, or transport. In `app/agent/ptc.py`, retain the epoch only for parse/source failures with no broker call and `effect: none`; keep discard, safe restore, and reconciliation for runtime or unknown effects. | Extend `tests/unit/test_repl.py` and `tests/unit/test_notebook_ptc_integration.py`: syntax and source-policy rejection preserve prior values and epoch; a runtime failure after assignment discards the epoch and restores only committed replay-safe cells; event/notebook identities remain stable. | Replay the six traces or equivalent fixtures with zero safety-contract regressions and five avoidable resets removed. No paid run is needed for this gate. |
+| N3 | **Normalize nested capability results.** Make every `agent.fs.*`, `agent.shell.*`, parallel-read, and failure result expose the same compact top-level fields plus a `data` mapping, empty when no typed detail exists. Keep `model_text` as the bounded rendering and update the existing `agent.help()` example; do not add a model-visible tool. | Table-test success, blocked, error, truncated, and parallel results through the real broker adapter. Assert stable field presence, redaction, output bounds, artifact references, and unchanged capability receipts. | Zero result-shape exceptions in deterministic scenarios and in the next live trace; no increase in serialized top-level tool output. |
+| N4 | **Tune work-batch yielding only after N1-N3.** Compare the current `24/48` no-change/max-cell policy with `12/36`; keep the existing counters and yielded event rather than adding a scheduler. A yield should return the unresolved acceptance rows and most recent validation failure, not restart exploration. | Add boundary tests for read-only cell 12/24, changed work, and maximum-cell yield. Prove the same event stream makes the same decision and complete tool-call/result pairs remain in context. | On paired Koota and Testem attempts, reduce median cells or active time without lowering reward or increasing uncached input. Otherwise retain `24/48`. |
+| N5 | **Run a staged confirmation.** First run Koota for three paired notebook/four-tool attempts. If N1 clears that gate, run Testem and Textual for three attempts per mode; use Prime's successful Textual trace as diagnostic evidence, not as another implementation target. Finally rerun Ofetch and Wazero as regression sentinels before changing defaults. | Preserve the exact commit, profile hashes, task images, provider settings, attempt count, no-retry policy, and per-task traces in a new audit. Fail fast on infrastructure or configuration errors, but do not discard model failures. | Notebook must match or exceed four-tool pass rate on the staged set, retain Ofetch/Wazero, and not regress median uncached input or recorded cost per accepted task. Only then consider changing the default. |
+
+N1 is the quality fix. N2 and N3 remove notebook-specific friction that wastes cells
+and continuity but is not, by itself, evidence of the lost Koota pass. N4 is optional
+and should be skipped if N1-N3 recover quality without Testem-style churn.
+
 Do not change container isolation, notebook serialization, or the memory backend
 from this result. The traces show no leakage or persistence corruption, and changing
 those variables would confound the next test.
