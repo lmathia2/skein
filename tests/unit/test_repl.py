@@ -138,6 +138,25 @@ def test_worker_reports_errors_without_losing_prior_state() -> None:
     assert restored.value_repr == "9"
 
 
+def test_worker_classifies_and_compacts_failures() -> None:
+    with PersistentPythonWorker() as worker:
+        syntax = worker.execute("value =", _Broker(), 5)
+        policy = worker.execute("open('x')", _Broker(), 5)
+        runtime = worker.execute("value = 1\n1 / 0", _Broker(), 5)
+
+    assert (syntax.failure_stage, syntax.error_line) == ("parse", 1)
+    assert (policy.failure_stage, policy.error_source) == (
+        "source_validation",
+        "open('x')",
+    )
+    assert (runtime.failure_stage, runtime.error_line, runtime.error_source) == (
+        "execution",
+        2,
+        "1 / 0",
+    )
+    assert all("_execute_cell" not in line for line in runtime.traceback)
+
+
 def test_timeout_discards_worker_state_and_marks_effect_unknown() -> None:
     broker = _Broker()
     with PersistentPythonWorker() as worker:

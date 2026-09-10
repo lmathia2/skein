@@ -63,6 +63,9 @@ class PythonExecutionResult:
     display_data: dict[str, Any] | None = None
     error_type: str | None = None
     error_message: str | None = None
+    failure_stage: Literal["parse", "source_validation", "execution", "transport"] | None = None
+    error_line: int | None = None
+    error_source: str | None = None
     traceback: tuple[str, ...] = ()
     duration_ms: int = 0
     effect_unknown: bool = False
@@ -141,22 +144,36 @@ _BLOCKED_CALLS = frozenset(
 def _validate_source(tree: ast.AST) -> None:
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id.startswith("__"):
-            raise PermissionError("dunder namespace access is blocked")
+            error = PermissionError("dunder namespace access is blocked")
+            error.lineno = node.lineno  # type: ignore[attr-defined]
+            raise error
         if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
-            raise PermissionError("dunder attribute access is blocked")
+            error = PermissionError("dunder attribute access is blocked")
+            error.lineno = node.lineno  # type: ignore[attr-defined]
+            raise error
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            names = [item.name for item in node.names] if isinstance(node, ast.Import) else [node.module or ""]
+            names = (
+                [item.name for item in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+            )
             for name in names:
                 if name.split(".", 1)[0] in _BLOCKED_MODULES:
-                    raise PermissionError(f"direct import of {name!r} is blocked; use agent capabilities")
+                    error = PermissionError(
+                        f"direct import of {name!r} is blocked; use agent capabilities"
+                    )
+                    error.lineno = node.lineno  # type: ignore[attr-defined]
+                    raise error
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id in _BLOCKED_CALLS
         ):
-            raise PermissionError(
+            error = PermissionError(
                 f"direct call to {node.func.id!r} is blocked; use agent capabilities"
             )
+            error.lineno = node.lineno  # type: ignore[attr-defined]
+            raise error
 
 
 def _safe_builtins() -> dict[str, Any]:
@@ -202,9 +219,7 @@ class _RemoteOperation:
 _RESERVED_NAMES = frozenset({"agent"})
 _AGENT_HELP = {
     "fs.read": "agent.fs.read(path, offset=1, limit=400)",
-    "fs.write": (
-        "agent.fs.write(path, content, expected_sha256=None, expected_absent=False)"
-    ),
+    "fs.write": ("agent.fs.write(path, content, expected_sha256=None, expected_absent=False)"),
     "fs.edit": "agent.fs.edit(path, old_text, new_text, expected_sha256=None)",
     "shell.run": "agent.shell.run(command, timeout_seconds=120)",
     "mcp.call": "agent.mcp.call(capability, arguments)",
@@ -359,9 +374,12 @@ def _execute_cell(
 ) -> dict[str, Any]:
     stdout = _BoundedText(max_output_bytes)
     stderr = _BoundedText(max_output_bytes)
+    failure_stage: Literal["parse", "source_validation", "execution"] = "parse"
     try:
         tree = ast.parse(code, filename="<agent-cell>", mode="exec")
+        failure_stage = "source_validation"
         _validate_source(tree)
+        failure_stage = "execution"
         touched_names = _bound_names(tree)
         final_expression: ast.expr | None = None
         if tree.body:
@@ -407,13 +425,29 @@ def _execute_cell(
             "state_manifest": manifest[:64],
         }
     except BaseException as error:
+        error_line = getattr(error, "lineno", None) or next(
+            (
+                frame.lineno
+                for frame in reversed(traceback.extract_tb(error.__traceback__))
+                if frame.filename == "<agent-cell>"
+            ),
+            None,
+        )
+        lines = code.splitlines()
         return {
             "status": "error",
             "stdout": stdout.getvalue(),
             "stderr": stderr.getvalue(),
             "error_type": type(error).__name__,
             "error_message": str(error),
-            "traceback": tuple(traceback.format_exception(error)),
+            "failure_stage": failure_stage,
+            "error_line": error_line,
+            "error_source": (
+                lines[error_line - 1].strip()
+                if error_line is not None and 0 < error_line <= len(lines)
+                else None
+            ),
+            "traceback": tuple(traceback.format_exception_only(error)),
             "output_truncated": stdout.truncated or stderr.truncated,
         }
 
@@ -555,6 +589,7 @@ class PersistentPythonWorker:
                             error_message="Python execution timed out; worker state was discarded",
                             duration_ms=int((time.monotonic() - started) * 1_000),
                             effect_unknown=True,
+                            failure_stage="execution",
                         )
                     response = self._connection.recv()
                     if response.get("type") == "broker_call":
@@ -572,19 +607,23 @@ class PersistentPythonWorker:
                                     *tuple(request.get("args", ())),
                                     **dict(request.get("kwargs", {})),
                                 )
-                                output.put({
-                                    "type": "broker_result",
-                                    "id": request.get("id"),
-                                    "ok": True,
-                                    "result": result,
-                                })
+                                output.put(
+                                    {
+                                        "type": "broker_result",
+                                        "id": request.get("id"),
+                                        "ok": True,
+                                        "result": result,
+                                    }
+                                )
                             except BaseException as error:
-                                output.put({
-                                    "type": "broker_result",
-                                    "id": request.get("id"),
-                                    "ok": False,
-                                    "error": f"{type(error).__name__}: {error}",
-                                })
+                                output.put(
+                                    {
+                                        "type": "broker_result",
+                                        "id": request.get("id"),
+                                        "ok": False,
+                                        "error": f"{type(error).__name__}: {error}",
+                                    }
+                                )
 
                         threading.Thread(
                             target=invoke_broker,
@@ -604,10 +643,14 @@ class PersistentPythonWorker:
                                 ),
                                 duration_ms=int((time.monotonic() - started) * 1_000),
                                 effect_unknown=True,
+                                failure_stage="execution",
                             )
                         self._connection.send(reply)
                         continue
-                    if response.get("type") != "execution_result" or response.get("id") != request_id:
+                    if (
+                        response.get("type") != "execution_result"
+                        or response.get("id") != request_id
+                    ):
                         raise RuntimeError("invalid worker response")
                     return PythonExecutionResult(
                         status=response["status"],
@@ -617,6 +660,9 @@ class PersistentPythonWorker:
                         display_data=response.get("display_data"),
                         error_type=response.get("error_type"),
                         error_message=response.get("error_message"),
+                        failure_stage=response.get("failure_stage"),
+                        error_line=response.get("error_line"),
+                        error_source=response.get("error_source"),
                         traceback=tuple(response.get("traceback", ())),
                         duration_ms=int((time.monotonic() - started) * 1_000),
                         output_truncated=bool(response.get("output_truncated", False)),
@@ -632,6 +678,7 @@ class PersistentPythonWorker:
                     error_message="Python worker exited unexpectedly; worker state was discarded",
                     duration_ms=int((time.monotonic() - started) * 1_000),
                     effect_unknown=True,
+                    failure_stage="transport",
                 )
 
     def close(self) -> None:

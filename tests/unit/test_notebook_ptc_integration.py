@@ -189,9 +189,7 @@ async def test_parallel_rejects_effects_before_dispatch(tmp_path: Path) -> None:
 async def test_capability_call_limit_stops_before_dispatch(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
-    ptc_config = config.notebook_ptc.model_copy(
-        update={"max_capability_calls_per_cell": 2}
-    )
+    ptc_config = config.notebook_ptc.model_copy(update={"max_capability_calls_per_cell": 2})
     events = JsonlEventStore(tmp_path / "state" / "events")
     calls: list[str] = []
 
@@ -227,8 +225,7 @@ async def test_capability_call_limit_stops_before_dispatch(tmp_path: Path) -> No
     assert result["status"] == "error"
     assert calls == ["a", "b"]
     requested = [
-        event for event in events.read("task")
-        if event.kind == EventKind.CAPABILITY_REQUESTED
+        event for event in events.read("task") if event.kind == EventKind.CAPABILITY_REQUESTED
     ]
     assert len(requested) == 2
 
@@ -275,6 +272,66 @@ async def test_failed_read_does_not_require_effect_reconciliation(tmp_path: Path
         event for event in events.read("task") if event.kind == EventKind.CAPABILITY_FAILED
     )
     assert capability.payload["effect"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_nested_failure_has_uniform_data_envelope(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+
+    def read(**_kwargs):
+        return {"status": "error", "model_text": "missing"}
+
+    def unused(**_kwargs):
+        raise AssertionError("unexpected capability")
+
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=read, bash=unused, edit=unused, write=unused),
+        ptc_config=config.notebook_ptc,
+    )
+    assert worker.execute_code is not None
+    try:
+        result = await worker.execute_code(
+            "failed = agent.fs.read('missing')\nfailed['status'], failed['data']"
+        )
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert result["status"] == "ok"
+    assert result["model_text"] == "('error', {})"
+
+
+@pytest.mark.asyncio
+async def test_pre_execution_failure_preserves_kernel_state(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        ptc_config=config.notebook_ptc,
+    )
+    assert worker.execute_code is not None
+    try:
+        await worker.execute_code("value = 42")
+        failed = await worker.execute_code("value =")
+        restored = await worker.execute_code("value")
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert failed["failure_stage"] == "parse"
+    assert failed["state_preserved"] is True
+    assert failed["error_line"] == 1
+    assert restored["model_text"] == "42"
 
 
 @pytest.mark.asyncio

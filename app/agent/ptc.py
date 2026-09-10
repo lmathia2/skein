@@ -195,9 +195,11 @@ def build_notebook_session(
             )
             self.effects.append(effect)
 
-        def _record_result(
-            self, common: dict[str, Any], result: dict[str, Any]
-        ) -> dict[str, Any]:
+        def _record_result(self, common: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+            result = {
+                **result,
+                "data": result.get("data") if isinstance(result.get("data"), dict) else {},
+            }
             operation_id = str(common["operation_id"])
             status = str(result.get("status", "error"))
             if status == "blocked":
@@ -212,9 +214,7 @@ def build_notebook_session(
                 str(value)
                 for key in ("artifact_uri", "artifact_uris")
                 for value in (
-                    result.get(key, [])
-                    if isinstance(result.get(key), list)
-                    else [result.get(key)]
+                    result.get(key, []) if isinstance(result.get(key), list) else [result.get(key)]
                 )
                 if isinstance(value, str) and value.startswith(("artifact://", "file://"))
             }
@@ -250,7 +250,11 @@ def build_notebook_session(
                 result = invoke()
             except Exception as error:
                 self._record_error(common, error)
-                raise
+                return {
+                    "status": "error",
+                    "data": {},
+                    "model_text": f"{type(error).__name__}: {error}",
+                }
             return self._record_result(common, result)
 
         def parallel(self, operations: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -272,10 +276,7 @@ def build_notebook_session(
                     raise ValueError("invalid fs.read arguments in parallel batch")
                 normalized.append(arguments)
 
-            if (
-                self.call_index + len(normalized)
-                > active_ptc_config.max_capability_calls_per_cell
-            ):
+            if self.call_index + len(normalized) > active_ptc_config.max_capability_calls_per_cell:
                 raise RuntimeError(
                     "capability call limit exceeded "
                     f"({active_ptc_config.max_capability_calls_per_cell} per cell)"
@@ -297,13 +298,18 @@ def build_notebook_session(
                         results.append(self._record_result(common, future.result()))
                     except Exception as error:
                         self._record_error(common, error)
-                        results.append({
-                            "status": "error",
-                            "model_text": f"fs.read failed: {type(error).__name__}: {error}",
-                        })
+                        results.append(
+                            {
+                                "status": "error",
+                                "data": {},
+                                "model_text": f"fs.read failed: {type(error).__name__}: {error}",
+                            }
+                        )
                 return results
 
-        def read(self, path: str, offset: int = 1, limit: int = read_default_lines) -> dict[str, Any]:
+        def read(
+            self, path: str, offset: int = 1, limit: int = read_default_lines
+        ) -> dict[str, Any]:
             return self._call(
                 "fs.read",
                 {"path": path, "offset": offset, "limit": limit},
@@ -347,9 +353,7 @@ def build_notebook_session(
                 {"command": command, "timeout_seconds": timeout_seconds},
                 invoke,
             )
-            workspace_after = (
-                fingerprint_workspace() if reusable else None
-            )
+            workspace_after = fingerprint_workspace() if reusable else None
             if (
                 workspace_before is not None
                 and result.get("status") == "ok"
@@ -484,8 +488,7 @@ def build_notebook_session(
             return {
                 "status": "error",
                 "model_text": (
-                    "timeout_seconds must be between 1 and "
-                    f"{active_ptc_config.max_timeout_seconds}"
+                    f"timeout_seconds must be between 1 and {active_ptc_config.max_timeout_seconds}"
                 ),
             }
         if len(code.encode()) > 128_000:
@@ -502,12 +505,11 @@ def build_notebook_session(
         function_call_id = getattr(tool_context, "function_call_id", None)
         attempt_id = (
             hashlib.sha256(f"{invocation_id}\0{function_call_id}".encode()).hexdigest()
-            if function_call_id else uuid4().hex
+            if function_call_id
+            else uuid4().hex
         )
         cell_id = attempt_id
-        work_batch_id = (
-            str(tool_context.state.get("ptc_work_batch_id", "")) if tool_context else ""
-        )
+        work_batch_id = str(tool_context.state.get("ptc_work_batch_id", "")) if tool_context else ""
         kernel_epoch = await asyncio.to_thread(lambda: worker.kernel_epoch)
         if restored_kernel_epoch != kernel_epoch:
             previous = reduce_notebook(notebook_events(task_id), notebook_id)
@@ -545,10 +547,14 @@ def build_notebook_session(
                     idempotency_key=f"repl-restore:{kernel_epoch}",
                 )
             restored_kernel_epoch = kernel_epoch
-        previous_attempt = next((
-            cell for cell in reduce_notebook(notebook_events(task_id), notebook_id).cells
-            if isinstance(cell, NotebookCell) and cell.attempt_id == attempt_id
-        ), None)
+        previous_attempt = next(
+            (
+                cell
+                for cell in reduce_notebook(notebook_events(task_id), notebook_id).cells
+                if isinstance(cell, NotebookCell) and cell.attempt_id == attempt_id
+            ),
+            None,
+        )
         unresolved = next(
             (
                 cell
@@ -568,14 +574,25 @@ def build_notebook_session(
             }
         if previous_attempt is not None:
             if previous_attempt.source != code:
-                return {"status": "blocked", "model_text": "Python operation identity reused with different source"}
+                return {
+                    "status": "blocked",
+                    "model_text": "Python operation identity reused with different source",
+                }
             if previous_attempt.status != "completed":
-                return {"status": "blocked", "reconciliation_required": True,
-                        "model_text": "Interrupted Python cell requires reconciliation; automatic replay refused"}
-            return {"status": "ok", "replayed": True, "cell_id": cell_id,
-                    "attempt_id": attempt_id, "kernel_epoch": kernel_epoch,
-                    "model_text": "Cell already completed; effects were not repeated. Inspect durable history for its outputs.",
-                    "state_available": previous_attempt.replay_policy == "safe"}
+                return {
+                    "status": "blocked",
+                    "reconciliation_required": True,
+                    "model_text": "Interrupted Python cell requires reconciliation; automatic replay refused",
+                }
+            return {
+                "status": "ok",
+                "replayed": True,
+                "cell_id": cell_id,
+                "attempt_id": attempt_id,
+                "kernel_epoch": kernel_epoch,
+                "model_text": "Cell already completed; effects were not repeated. Inspect durable history for its outputs.",
+                "state_available": previous_attempt.replay_policy == "safe",
+            }
         replay_policy = _replay_policy(code)
         cell_payload = {
             "notebook_id": notebook_id,
@@ -599,7 +616,9 @@ def build_notebook_session(
             cell_payload,
             idempotency_key=f"repl-cell:{attempt_id}:submitted",
         )
-        notebook_path = (notebook_root or settings.state_root / "notebooks") / f"{notebook_id}.ipynb"
+        notebook_path = (
+            notebook_root or settings.state_root / "notebooks"
+        ) / f"{notebook_id}.ipynb"
         await asyncio.to_thread(
             materialize_notebook,
             reduce_notebook(notebook_events(task_id), notebook_id),
@@ -622,7 +641,8 @@ def build_notebook_session(
             cell_id=cell_id,
             replay_policy=replay_policy,
         )
-        if result.status == "error":
+        state_preserved = result.failure_stage in {"parse", "source_validation"}
+        if result.status == "error" and not state_preserved:
             # A Python exception may follow successful assignments. Discard the
             # epoch so the next cell restores only previously committed safe cells.
             await asyncio.to_thread(worker.reset)
@@ -668,6 +688,10 @@ def build_notebook_session(
                 "ename": result.error_type,
                 "evalue": result.error_message or "",
                 "traceback": list(result.traceback),
+                "stage": result.failure_stage,
+                "line": result.error_line,
+                "source": result.error_source,
+                "state_preserved": state_preserved,
             }
         active_event_store.append(
             task_id,
@@ -732,6 +756,11 @@ def build_notebook_session(
             "omitted_bytes": bounded.omitted_bytes,
             "state_count": result.state_count,
             "state_delta": list(result.state_delta),
+            "failure_stage": result.failure_stage,
+            "error_type": result.error_type,
+            "error_line": result.error_line,
+            "error_source": result.error_source,
+            "state_preserved": state_preserved,
         }
 
     async def execute_code(
@@ -745,17 +774,30 @@ def build_notebook_session(
         return mappings with ``status``, ``data``, and ``model_text``; use ``agent.help()``
         for exact contracts. Variables persist after successful cells.
         """
-        return compact_tool_result(
-            await _execute_code(code, timeout_seconds, tool_context),
+        result = await _execute_code(code, timeout_seconds, tool_context)
+        compact = compact_tool_result(
+            result,
             max_chars=active_ptc_config.max_output_bytes,
         )
+        for key in (
+            "failure_stage",
+            "error_type",
+            "error_line",
+            "error_source",
+            "state_preserved",
+        ):
+            if result.get(key) is not None:
+                compact[key] = result[key]
+        return compact
 
     def close() -> None:
         assert python_worker is not None
         try:
             for task_id, notebook_id in sorted(active_notebooks.items()):
                 notebook_state = reduce_notebook(notebook_events(task_id), notebook_id)
-                notebook_path = (notebook_root or settings.state_root / "notebooks") / f"{notebook_id}.ipynb"
+                notebook_path = (
+                    notebook_root or settings.state_root / "notebooks"
+                ) / f"{notebook_id}.ipynb"
                 notebook_bytes = materialize_notebook(notebook_state, notebook_path)
                 artifact_uri = put_artifact(
                     settings.state_root / "artifacts" / "sha256", notebook_bytes
