@@ -1,98 +1,117 @@
 # Skein architecture
 
-Skein is an evaluation harness, not an interactive coding product. Pier owns the
-benchmark lifecycle and disposable task environment; Skein owns one bounded model
-loop, its effects, evidence, and completion decision.
+Skein is a coding-agent control plane built around one Google ADK worker. The model
+chooses tactics; deterministic host code owns context, effects, history, recovery,
+budgets, and completion.
 
 ```mermaid
-flowchart LR
-    P[Pier runner] --> A[Harbor adapter]
-    A --> C[Evaluation coordinator]
-    C --> F[Harness factory]
-    F --> W[ADK coding worker]
+flowchart TB
+    I[Task + project instructions] --> C[Context compiler]
+    C --> W[ADK coding worker]
 
-    M{Provider plugin} --> W
-    M1[OpenRouter] --> M
-    M2[Codex] --> M
+    P{Model provider} --> W
+    P1[Native ADK / Gemini] --> P
+    P2[Codex] --> P
+    P3[OpenRouter] --> P
 
     X{Execution mode} --> W
-    X1[Four tools] --> X
+    X1[read · bash · edit · write] --> X
     X2[Skein notebook PTC] --> X
     X3[Prime REPL PTC] --> X
 
     W --> B[Effect broker]
-    B --> E[Harbor task environment]
-    B --> V[Deterministic verifier]
+    B --> E[Workspace + command runtime]
+    B --> Q[Policy · approvals · redaction]
 
-    W --> L{Ledger plugin}
-    L1[JSONL] --> L
-    L2[DuckDB] --> L
-    L --> R[Traces, metrics, artifacts]
-    V --> R
-    R --> P
+    W --> T[Append-only trace]
+    B --> T
+    T --> M{Memory programs}
+    M --> C
+    T --> N[Notebook / artifacts / metrics]
+
+    W --> V[Independent verifier]
+    E --> V
+    V --> D{Complete · retry · blocked}
+    V --> T
 ```
 
-## Why these boundaries exist
+## Context compiler
 
-### Pier runner and Harbor adapter
+`harness/context` turns the task, repository map, selected skills, recent evidence,
+and any compaction handoff into a bounded work packet. Stable instructions and tool
+declarations remain byte-stable for provider caching; volatile task state stays in
+the dynamic suffix. Context is compiled deterministically so the same inputs and
+watermark produce the same bytes.
 
-`scripts/run_harbor_eval.py` selects frozen tasks, starts or resumes Pier jobs,
-and records task-level results. `harness/evals/harbor.py` translates Skein's file,
-shell, repository, and Prime runtime operations into Harbor environment calls. This
-keeps credentials and the model loop on the host while every coding effect lands in
-the disposable benchmark workspace.
+## Harness factory and ADK worker
 
-### Evaluation coordinator
+`app/agent/factory.py` is the composition boundary. It validates configuration and
+wires one ADK worker to a provider, execution mode, context policy, effect broker,
+state stores, and verifier. The topology is code-owned: configuration selects known
+implementations and budgets but cannot invent tools or bypass safety.
 
-`harness/evals/runner.py` prepares an immutable per-trial configuration and invokes
-the internal run coordinator. The coordinator exists for deterministic lifecycle,
-timeouts, event ordering, and shutdown—not to serve a UI. There is no WebSocket or
-terminal layer in the minimal build.
+The worker owns the model/tool loop. It may explore, modify code, request checks, or
+claim completion. Those are proposals; host state and verification decide what
+actually happens next.
 
-### Harness factory and ADK worker
+## Model providers
 
-`app/agent/factory.py` is the composition boundary. It validates the selected YAML,
-builds exactly one Google ADK worker, and wires the chosen provider, execution mode,
-memory backend, policy, and verifier. Topology stays code-owned so a benchmark flag
-cannot silently weaken safety or completion rules.
+`harness/ai` adapts supported providers to one ADK-facing contract. Provider choice,
+model name, reasoning effort, and generation limits are configurable. Request-shape
+hashing, retry bounds, usage accounting, and secret handling stay consistent so a
+provider swap does not change harness authority.
 
-The worker owns the model/tool loop. Stable instructions and tool declarations form
-a cacheable prefix; task state is a bounded dynamic suffix. A model may request
-completion, but only the verifier can accept it.
+## Execution modes
 
-### Provider plugins
+The compatibility mode exposes `read`, `bash`, `edit`, and `write`. Skein notebook
+PTC and Prime PTC expose one programmable `execute_code` tool instead. These modes
+change how the model composes work, not what it is allowed to do.
 
-`harness/ai` adapts Codex and OpenRouter to ADK's model interface. Provider choice is
-configurable because experiments compare fixed model identities, but retries,
-reasoning, token accounting, and serialized request identity remain normalized.
+Skein notebook PTC uses a persistent CPython worker and routes nested capabilities
+through the same broker as direct tools. Its notebook is a deterministic workbench
+projection over trace evidence, not the historical authority. Failed cells discard
+their dirty kernel epoch; restoration replays only explicitly safe cells.
 
-### Execution-mode plugins
+Prime PTC supplies an alternative persistent REPL and bounded snapshot policy. Its
+native effects are classified explicitly rather than being mistaken for brokered
+operations. Both PTC implementations expose the same model-facing tool name.
 
-The default mode exposes `read`, `bash`, `edit`, and `write`. Skein notebook PTC and
-Prime PTC instead expose one `execute_code` tool. All three modes reuse the same task,
-policy, evidence, and verification contracts; only the model's composition surface
-changes. This makes mode comparisons meaningful rather than comparisons of different
-harnesses.
+## Effect broker and runtime
 
-### Effect broker and verifier
+`harness/tools`, `harness/environment`, and `harness/sandbox` form one effect path.
+They confine file paths, classify commands, enforce policy and approvals, redact
+secrets, bound output, and issue mutation receipts. Direct tools, nested PTC calls,
+and verification reuse these primitives so syntax never changes authority.
 
-`harness/environment`, `harness/sandbox`, and `harness/tools` confine paths, classify
-commands, redact and bound output, and record mutation receipts. In Pier runs the
-broker targets Harbor's environment API. `harness/verification` independently checks
-the requested behavior against that same workspace. Unknown effects and missing
-evidence fail closed.
+The runtime is injected at assembly time. Local and isolated workspace adapters may
+implement execution, but neither can weaken the broker contract.
 
-### Ledger plugins and artifacts
+## Trace, state, and memory
 
-`harness/state`, `harness/ledger`, `harness/telemetry`, and `harness/tracing` retain
-append-only evidence. JSONL is the dependency-free canonical option; DuckDB is the
-optional analytical backend. Notebooks and Prime snapshots are projections or runtime
-state, never competing historical authorities. Pier receives the final result plus
-paths to the preserved evidence.
+`harness/state` and `harness/ledger` retain the canonical append-only account of
+task events and effects, including failures, timeouts, cancellation, and unknown
+outcomes. JSONL is the dependency-free ledger; DuckDB is an optional analytical
+implementation. Content-addressed artifacts hold large bodies without inflating
+model context.
 
-## Configuration rule
+`harness/memory` contains versioned programs over that evidence. History pages,
+counts, retrieval, summaries, and compaction views carry their source watermark and
+hash. They advise context selection but do not become a second authority. Notebooks,
+indexes, caches, metrics, and live Python values are disposable projections or
+runtime state.
 
-Profiles may select a provider, execution mode, and ledger backend. They may tune
-bounded generation and context settings. They may not add model-visible tools, bypass
-the effect broker, replace deterministic verification, or move volatile task state
-into the stable instruction prefix without a measured ablation.
+## Independent verification
+
+`harness/verification` evaluates the task's acceptance criteria against the actual
+workspace and reconciled effect history. A model completion claim is insufficient:
+required checks must pass, scope must be respected, and no effect may remain unknown.
+The verifier returns the deterministic terminal decision: complete, retry, or
+blocked.
+
+## Configuration boundary
+
+Profiles may select a provider, execution mode, ledger implementation, and bounded
+context or generation settings. They may not expand the model-visible tool surface,
+bypass the effect broker, replace trace authority, weaken independent verification,
+or move volatile state into the stable prompt prefix without an explicit measured
+ablation.
