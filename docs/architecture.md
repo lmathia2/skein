@@ -5,34 +5,66 @@ chooses tactics; deterministic host code owns context, effects, history, recover
 budgets, and completion.
 
 ```mermaid
-flowchart TB
-    I[Task + project instructions] --> C[Context compiler]
-    C --> W[ADK coding worker]
+flowchart LR
+    subgraph INPUT["① Assemble"]
+        direction TB
+        TASK["Task + project context"]
+        CFG["Validated profile"]
+        CTX["Bounded context compiler"]
+        TASK --> CTX
+        CFG --> CTX
+    end
 
-    P{Model provider} --> W
-    P1[Native ADK / Gemini] --> P
-    P2[Codex] --> P
-    P3[OpenRouter] --> P
+    subgraph CORE["② Reason"]
+        direction TB
+        MODEL["Model provider<br/><small>Gemini · Codex · OpenRouter</small>"]
+        WORKER["ADK coding worker<br/><small>one model/tool loop</small>"]
+        MODE["Execution mode<br/><small>four tools · Skein PTC · Prime PTC</small>"]
+        MODEL --> WORKER
+        WORKER --> MODE
+    end
 
-    X{Execution mode} --> W
-    X1[read · bash · edit · write] --> X
-    X2[Skein notebook PTC] --> X
-    X3[Prime REPL PTC] --> X
+    subgraph CONTROL["③ Act under host authority"]
+        direction TB
+        BROKER["Effect broker"]
+        POLICY["Policy + approvals<br/><small>confinement · redaction · receipts</small>"]
+        RUNTIME["Workspace + command runtime"]
+        MODE --> BROKER
+        BROKER --> POLICY
+        POLICY --> RUNTIME
+    end
 
-    W --> B[Effect broker]
-    B --> E[Workspace + command runtime]
-    B --> Q[Policy · approvals · redaction]
+    subgraph EVIDENCE["④ Record + decide"]
+        direction TB
+        TRACE[("Canonical append-only trace")]
+        MEMORY["Versioned memory programs"]
+        VIEWS["Notebook · artifacts · metrics"]
+        VERIFY["Independent verifier"]
+        RESULT{"Complete · retry · blocked"}
+        TRACE --> MEMORY
+        TRACE --> VIEWS
+        RUNTIME --> VERIFY
+        VERIFY --> RESULT
+        VERIFY --> TRACE
+    end
 
-    W --> T[Append-only trace]
-    B --> T
-    T --> M{Memory programs}
-    M --> C
-    T --> N[Notebook / artifacts / metrics]
+    CTX --> WORKER
+    BROKER --> TRACE
+    MEMORY -. "bounded evidence" .-> CTX
 
-    W --> V[Independent verifier]
-    E --> V
-    V --> D{Complete · retry · blocked}
-    V --> T
+    classDef input fill:#eef2ff,stroke:#6366f1,color:#1e1b4b,stroke-width:1.5px;
+    classDef core fill:#ecfeff,stroke:#0891b2,color:#164e63,stroke-width:1.5px;
+    classDef control fill:#fff7ed,stroke:#ea580c,color:#7c2d12,stroke-width:1.5px;
+    classDef evidence fill:#f0fdf4,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
+    class TASK,CFG,CTX input;
+    class MODEL,WORKER,MODE core;
+    class BROKER,POLICY,RUNTIME control;
+    class TRACE,MEMORY,VIEWS,VERIFY,RESULT evidence;
+
+    style INPUT fill:#fafafa,stroke:#c7d2fe,stroke-width:1px
+    style CORE fill:#fafafa,stroke:#a5f3fc,stroke-width:1px
+    style CONTROL fill:#fafafa,stroke:#fed7aa,stroke-width:1px
+    style EVIDENCE fill:#fafafa,stroke:#bbf7d0,stroke-width:1px
 ```
 
 ## Context compiler
