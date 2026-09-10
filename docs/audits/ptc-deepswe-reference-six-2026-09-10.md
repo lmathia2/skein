@@ -6,13 +6,20 @@ REPL ergonomics before buying a larger quality run.
 ## Result
 
 On the exact six tasks from the earlier `remaining-6` notebook experiment, the
-current matched run scored:
+current matched run scored as follows. Each task cell is **official reward
+(verifier partial score)**, then active latency, recorded cost, and input tokens.
+The aggregate row reports means per task and, on its second line, quality-normalized
+cost and input tokens per accepted task.
 
-| Mode | Official reward | Active time, total | Active time, median | Input tokens | Output tokens | Reasoning tokens | Recorded cost |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Four tools | **3/6** | 4,920.7 s | 807.0 s | 30,834,085 | 311,255 | 136,118 | $0.2351 |
-| Skein notebook PTC | 2/6 | **4,430.4 s** | **592.1 s** | 28,114,358 | **232,413** | **112,834** | **$0.1686** |
-| Prime JSONL PTC | 1/6 | 4,908.9 s | 676.8 s | **24,651,955** | 263,889 | 124,731 | $0.1856 |
+| Use case | Four tools | Skein notebook PTC | Prime JSONL PTC |
+| --- | --- | --- | --- |
+| **Aggregate mean** | **3/6 (50%)**<br>820.1 s · $0.0392 · 5.14M input / task<br>$0.0784 · 10.28M input / pass | **2/6 (33%)**<br>738.4 s · $0.0281 · 4.69M input / task<br>$0.0843 · 14.06M input / pass | **1/6 (17%)**<br>818.2 s · $0.0309 · 4.11M input / task<br>$0.1856 · 24.65M input / pass |
+| Kombu dead lettering | 0 (.9940)<br>914.8 s · $0.0587 · 7.76M input | 0 (.9940)<br>692.0 s · $0.0324 · 5.87M input | 0 (.9913)<br>497.6 s · $0.0232 · 2.95M input |
+| Koota composite aspects | **1 (1.0)**<br>1,151.3 s · $0.0616 · 11.79M input | 0 (.9955)<br>863.1 s · $0.0509 · 11.06M input | 0 (.9865)<br>1,481.5 s · $0.0606 · 11.59M input |
+| Ofetch circuit breaker | **1 (1.0)**<br>693.2 s · $0.0272 · 1.70M input | **1 (1.0)**<br>416.0 s · $0.0140 · 1.26M input | 0 (.2167)<br>543.0 s · $0.0112 · 0.85M input |
+| Testem bail on failure | 0 (.9896)<br>1,103.1 s · $0.0463 · 5.78M input | 0 (.9931)<br>1,535.9 s · $0.0374 · 6.53M input | 0 (.9879)<br>1,033.3 s · $0.0447 · 4.88M input |
+| Textual Kitty key phases | 0 (.9000)<br>699.1 s · $0.0282 · 2.82M input | 0 (.8875)<br>431.2 s · $0.0200 · 2.49M input | 0 (.9875)<br>793.6 s · $0.0274 · 3.23M input |
+| Wazero snapshots | **1 (1.0)**<br>359.0 s · $0.0130 · 0.99M input | **1 (1.0)**<br>492.1 s · $0.0138 · 0.91M input | **1 (1.0)**<br>559.9 s · $0.0185 · 1.15M input |
 
 Notebook PTC used 10.0% less total active time, 26.6% less median active time,
 8.8% fewer input tokens, 25.3% fewer output tokens, 17.1% fewer reasoning tokens,
@@ -87,16 +94,8 @@ Provider conditions can still drift over their several-hour wall-clock span.
 ## Quality by task
 
 Official Harbor verifier reward, not Skein terminal status, is the quality result.
-The parenthesized value is the verifier's partial score.
-
-| Task | Four tools | Notebook PTC | Prime PTC | Paired interpretation |
-| --- | ---: | ---: | ---: | --- |
-| Kombu virtual-queue dead lettering | 0 (.9940) | 0 (.9940) | 0 (.9913) | Same nine feature-test misses in four tools and notebook; no notebook-specific loss |
-| Koota composite trait aspects | **1 (1.0)** | 0 (.9955) | 0 (.9865) | The only notebook loss relative to four tools |
-| Ofetch per-origin circuit breaker | **1 (1.0)** | **1 (1.0)** | 0 (.2167) | Notebook preserved quality with lower latency and tokens; Prime timed out without a patch |
-| Testem bail on failure | 0 (.9896) | 0 (.9931) | 0 (.9879) | All missed the same four requested bail semantics; notebook avoided the baseline's two unrelated regressions |
-| Textual Kitty key phases | 0 (.9000) | 0 (.8875) | 0 (.9875) | All failed; Prime's near-pass shows strong strategy variance, not a uniform PTC penalty |
-| Wazero multi-module snapshots | **1 (1.0)** | **1 (1.0)** | **1 (1.0)** | Quality invariant across all surfaces |
+The consolidated table under **Result** includes the verifier's partial score in
+parentheses and the paired efficiency measurements for every task.
 
 Skein's own terminal state is diagnostic only. For example, four-tool Wazero had
 `runtime_failed` while Harbor awarded 1, and notebook Koota was internally
