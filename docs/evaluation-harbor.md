@@ -46,6 +46,9 @@ python scripts/run_harbor_eval.py --suite broader
 python scripts/run_harbor_eval.py --suite full
 ```
 
+On macOS, keep `--jobs-dir` under the home directory. Docker Desktop does not
+reliably propagate verifier reward files through `/private` bind mounts.
+
 For every DeepSWE task, this runner builds the task's frozen `tests/` context
 once as `linux/amd64`, resolves the resulting immutable `sha256:` image ID, and
 passes that ID through Pier's supported `verifier.environment.docker_image`

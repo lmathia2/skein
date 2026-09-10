@@ -198,7 +198,7 @@ def test_deepswe_verifier_image_is_built_once_and_pinned(monkeypatch, tmp_path: 
     (source / "task.toml").write_text(
         '[verifier]\nenvironment_mode = "separate"\n\n[verifier.environment]\n'
     )
-    task = {"benchmark": "deep-swe", "artifact_sha256": "a" * 64}
+    task = {"benchmark": "deep_swe", "artifact_sha256": "a" * 64}
     calls = []
 
     def run(command, **kwargs):
@@ -225,6 +225,14 @@ def test_deepswe_verifier_image_is_built_once_and_pinned(monkeypatch, tmp_path: 
         tag,
     ]
     assert "docker_image" not in (source / "task.toml").read_text()
+
+
+def test_macos_rejects_private_jobs_dir(monkeypatch) -> None:
+    runner = load_runner()
+    monkeypatch.setattr(runner.sys, "platform", "darwin")
+
+    with pytest.raises(SystemExit, match="not a reliable Docker Desktop bind mount"):
+        runner.validate_jobs_dir(Path("/private/tmp/skein-evals"))
 
 
 def test_provider_default_reasoning_keeps_explicit_output_limit() -> None:

@@ -236,6 +236,14 @@ def docker_ready() -> None:
         raise SystemExit("Docker Buildx is required by Harbor")
 
 
+def validate_jobs_dir(path: Path) -> None:
+    if sys.platform == "darwin" and path.is_relative_to("/private"):
+        raise SystemExit(
+            f"{path} is not a reliable Docker Desktop bind mount; "
+            "use a path under your home directory, such as ~/skein-eval-results"
+        )
+
+
 def execute(
     command: list[str],
     *,
@@ -312,7 +320,7 @@ def prepared_task(task: dict[str, Any], source: Path, root: Path) -> tuple[Path,
     root.mkdir(parents=True, exist_ok=True)
     config = tomllib.loads((source / "task.toml").read_text(encoding="utf-8"))
     verifier_environment = config.get("verifier", {}).get("environment", {})
-    if task["benchmark"] != "deep-swe" or verifier_environment.get("docker_image"):
+    if task["benchmark"] != "deep_swe" or verifier_environment.get("docker_image"):
         return source, verifier_environment.get("docker_image")
 
     image = f"skein-deepswe-verifier:{task['artifact_sha256']}"
@@ -637,6 +645,10 @@ def main() -> int:
         )
         return 0
 
+    output = (
+        (args.jobs_dir or Path.home() / "skein-eval-results" / args.suite).expanduser().resolve()
+    )
+    validate_jobs_dir(output)
     docker_ready()
     env = pier_environment(os.environ.copy())
     if args.provider == "openrouter" and not env.get(args.api_key_env):
@@ -650,9 +662,6 @@ def main() -> int:
             raise SystemExit(f"{args.api_key_env} is missing or empty in {dotenv}")
         env[args.api_key_env] = value
 
-    output = (
-        (args.jobs_dir or Path.home() / "skein-eval-results" / args.suite).expanduser().resolve()
-    )
     output.mkdir(parents=True, exist_ok=True)
     ledger = output / "runs.jsonl"
     complete = {
