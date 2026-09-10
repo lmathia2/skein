@@ -64,7 +64,6 @@ harness:
 
     notebook_ptc:
       enabled: false
-      implementation: skein_notebook
       default_timeout_seconds: 120
       max_timeout_seconds: 600
       max_output_bytes: 16000

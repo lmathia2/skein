@@ -5,30 +5,24 @@ build-backend = "hatchling.build"
 [project]
 name = "skein"
 version = "0.1.0"
-description = "Trace-native coding intelligence with one-tool PTC and program memory"
+description = "Minimal Skein coding harness for Harbor evaluations with Pier"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Lambert Mathias" }]
 dependencies = [
-  "fastapi>=0.141,<1.0",
   "fff-search==0.10.5",
   "google-adk>=2.7.1,<2.8.0",
   "httpx>=0.28,<1.0",
   "pynb-cli==0.0.10",
   "pydantic>=2.10,<3.0",
   "PyYAML>=6.0,<7.0",
-  "uvicorn>=0.52,<1.0",
 ]
 
 [project.optional-dependencies]
 eval = ["harbor==0.22.0; python_version >= '3.12'"]
 memory-duckdb = ["duckdb>=1.4,<2.0"]
 memory-search = ["duckdb>=1.4,<2.0", "lancedb>=0.38,<1.0"]
-ptc-prime = [] # Compatibility alias; serializer is vendored.
-
-[project.scripts]
-skein = "harness.cli:main"
 
 [dependency-groups]
 dev = [
@@ -50,7 +44,6 @@ norecursedirs = ["tests/fixtures"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-exclude = ["harness/repl/prime_runtime", "harness/_vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
@@ -60,4 +53,4 @@ ignore = ["E501"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
 include = ["app", "harness"]
-exclude = ["tests/fixtures", "harness/repl/prime_runtime", "harness/_vendor"]
+exclude = ["tests/fixtures"]

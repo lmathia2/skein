@@ -36,26 +36,6 @@ def _composition_payload() -> dict[str, Any]:
     }
 
 
-@pytest.mark.parametrize("unsupported", ["conversation", "safe_auto", "memory_bridge"])
-def test_prime_rejects_unimplemented_integrations(unsupported: str) -> None:
-    payload = _composition_payload()
-    config = payload["harness"]["config"]
-    config["notebook_ptc"] = {"enabled": True, "implementation": "prime_repl", "prime_native_execution": True}
-    if unsupported == "conversation":
-        config["notebook_ptc"]["continuity"] = "conversation"
-    elif unsupported == "safe_auto":
-        config["adk"] = {"recovery": "safe_auto"}
-    else:
-        config["memory"] = {"enabled": True, "context_programs": {"mode": "active"}}
-    expected = {
-        "conversation": "conversation snapshot lineage",
-        "safe_auto": "safe-auto effect recovery",
-        "memory_bridge": "brokered memory command bridge",
-    }[unsupported]
-    with pytest.raises(NotImplementedError, match=expected):
-        parse_harness_composition(payload)
-
-
 @pytest.mark.parametrize("ptc_enabled", [False, True])
 @pytest.mark.parametrize("memory_enabled", [False, True])
 @pytest.mark.parametrize("programs_active", [False, True])
@@ -106,7 +86,6 @@ def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:
     assert config.workflow.progress.block_after_no_progress == 4
     assert config.agents["coding_worker"].generation.temperature is None
     assert config.notebook_ptc.enabled is False
-    assert config.notebook_ptc.implementation == "skein_notebook"
     assert config.notebook_ptc.default_timeout_seconds == 120
     assert config.notebook_ptc.max_timeout_seconds == 600
     assert config.notebook_ptc.max_output_bytes == 16_000
@@ -124,7 +103,6 @@ def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:
     [
         ("four-tool.yaml", False, False, "jsonl"),
         ("notebook-ptc-jsonl.yaml", True, True, "jsonl"),
-        ("notebook-ptc-duckdb.yaml", True, True, "duckdb"),
     ],
 )
 def test_annotated_standard_profiles_are_complete_and_strict(
@@ -146,16 +124,6 @@ def test_annotated_standard_profiles_are_complete_and_strict(
     assert "Primary learnable" in annotations
     assert "optimizer-owned" in annotations
     assert "verification" in annotations
-
-
-def test_prime_opt_in_profile_loads() -> None:
-    path = Path(__file__).parents[2] / "harness/config/profiles/prime-ptc-jsonl.yaml"
-    config = load_harness_composition(path).harness.config
-    assert isinstance(config, SkeinConfig)
-    assert config.notebook_ptc.implementation == "prime_repl"
-    assert config.notebook_ptc.prime_native_execution
-    assert config.notebook_ptc.serialization == "jsonl"
-    assert config.notebook_ptc.state == "snapshot"
 
 
 @pytest.mark.parametrize("removed_field", ["inbound_queue_size", "heartbeat_seconds"])
@@ -201,44 +169,42 @@ def test_task_input_budget_cannot_be_smaller_than_one_work_packet() -> None:
         parse_harness_composition(payload)
 
 
-def test_removed_adk_code_mode_has_a_helpful_migration_error() -> None:
+@pytest.mark.parametrize("implementation", ["adk_code_mode", "prime_repl"])
+def test_removed_ptc_implementations_have_a_helpful_migration_error(
+    implementation: str,
+) -> None:
     payload = _composition_payload()
     payload["harness"]["config"]["notebook_ptc"] = {
         "enabled": True,
-        "implementation": "adk_code_mode",
+        "implementation": implementation,
     }
 
     with pytest.raises(
         NotImplementedError,
-        match="adk_code_mode was removed; use skein_notebook or prime_repl",
+        match=rf"{implementation} was removed; use Skein notebook PTC",
     ):
         parse_harness_composition(payload)
 
 
 @pytest.mark.parametrize(
-    ("implementation", "serialization", "state", "supported"),
+    ("serialization", "state", "supported"),
     [
-        ("skein_notebook", "native", "native", True),
-        ("skein_notebook", "notebook", "replay_safe", True),
-        ("skein_notebook", "jsonl", "native", False),
-        ("skein_notebook", "native", "snapshot", False),
-        ("prime_repl", "jsonl", "snapshot", True),
-        ("prime_repl", "notebook", "snapshot", False),
-        ("prime_repl", "jsonl", "replay_safe", False),
+        ("native", "native", True),
+        ("notebook", "replay_safe", True),
+        ("jsonl", "native", False),
+        ("native", "snapshot", False),
     ],
 )
 def test_ptc_native_configuration_support_matrix(
-    implementation: str, serialization: str, state: str, supported: bool,
+    serialization: str, state: str, supported: bool,
 ) -> None:
     payload = _composition_payload()
     payload["harness"]["config"]["notebook_ptc"] = {
-        "enabled": True, "implementation": implementation,
+        "enabled": True,
         "serialization": serialization, "state": state,
-        "prime_native_execution": implementation == "prime_repl",
     }
     if supported:
         config = parse_harness_composition(payload).harness.config
-        assert config.notebook_ptc.implementation == implementation
         assert config.notebook_ptc.serialization == serialization
         assert config.notebook_ptc.state == state
     else:

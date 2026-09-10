@@ -89,21 +89,6 @@ class PtcSession:
     after_agent: Callable[[CallbackContext], Awaitable[None]] | None = None
 
 
-def select_ptc_session(
-    config: NotebookPtcConfig,
-    *,
-    skein_notebook: Callable[[], PtcSession],
-    prime_repl: Callable[[], PtcSession],
-) -> PtcSession | None:
-    """Resolve the closed PTC implementation set, or identity when disabled."""
-    if not config.enabled:
-        return None
-    return {
-        "skein_notebook": skein_notebook,
-        "prime_repl": prime_repl,
-    }[config.implementation]()
-
-
 def build_notebook_session(
     settings: HarnessSettings,
     *,

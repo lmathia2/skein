@@ -1,5 +1,20 @@
 # Skein implementation status
 
+## Supported minimal boundary
+
+Skein is now a one-shot Harbor/Pier evaluation harness. The retained runtime is the
+ADK coding worker, Harbor environment adapter, Pier campaign runner, effect policy,
+append-only evidence, and deterministic verifier. Supported profiles are four-tool
+and Skein notebook PTC with JSONL.
+
+The Bubble Tea client, WebSocket app, interactive CLI, launcher scripts, provider
+control UI, and their dedicated tests are removed. Internal run/event modules remain
+because the evaluation coordinator uses them for ordered lifecycle, timeouts, replay,
+and result extraction; they are not a supported server API.
+
+The sections below are historical implementation detail unless they describe one of
+the retained evaluation modes.
+
 The supported capability boundary is the simplified local harness, not the
 historical feature checklist or book-rubric score.
 
@@ -71,16 +86,11 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
 
 ## Retained and verified
 
-- Both PTC implementations return a common `PtcSession` assembly result and expose the
-  same `execute_code` name. Skein notebook lifecycle remains in `app.agent.ptc` and
-  Prime lifecycle remains in `app.agent.prime_ptc`; a shared cell
-  coordinator/runtime/state/serializer contract has not yet been extracted.
+- Skein notebook PTC returns a `PtcSession` assembly result and exposes the
+  `execute_code` name. Its lifecycle remains in `app.agent.ptc`.
 
-- PTC configuration preserves implementation-native serialization and state policy
-  by default. Explicit Skein notebook/safe-replay and trusted Prime JSONL/snapshot
-  selections are accepted. Unsupported cross-pairings and
-  Prime combinations with conversation continuity, safe-auto recovery, or active
-  brokered memory commands fail during configuration loading.
+- PTC configuration preserves notebook serialization and safe-replay state policy
+  by default. Unsupported cross-pairings fail during configuration loading.
 
 - The project identity is Skein: the Python distribution and primary CLI are `skein`,
   the runtime implementation key is `skein_v1`, launchers are `skein-start` and
@@ -122,10 +132,9 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   `start-ptc.sh` enables this
   path together with the dependency-free canonical JSONL ledger and an isolated state
   root; the ordinary launcher retains the four-tool default.
-- PTC selection is explicit: `skein_notebook` and `prime_repl` expose `execute_code`
-  through one `PtcSession` assembly seam and compact result envelope. Skein calls the
-  four brokered capabilities; Prime is an explicitly trusted native profile whose direct effects are recorded as
-  `native_untracked`. Memory is independently optional: `trace_native` retains
+- Skein notebook PTC exposes `execute_code` through a `PtcSession` assembly seam and
+  compact result envelope. It calls the four brokered capabilities. Memory is
+  independently optional: `trace_native` retains
   versioned ledger programs and `pi` uses native ADK session compaction with a bounded
   raw tail. Defaults remain unchanged.
 - Optional canonical memory now shadow-captures task events, tool-receipt transitions,
@@ -235,11 +244,7 @@ on an unchanged workspace can satisfy an identical deterministic validation comm
   provider-reported cost/cache usage, and exposes the concrete routed model.
 - A pinned Harbor 0.22 host-side adapter, immutable public benchmark manifests,
   sequential fixed-intelligence matrices, official-reward import, and paired
-  analysis. Prime PTC is installed into each disposable task container and reached
-  through short environment calls to a persistent Unix-socket worker; its heap and
-  native effects remain in the authoritative workspace, with trial-local snapshots
-  and no provider credentials copied into the container. A live six-task Muse Spark
-  1.3 Contributor four-tool/PTC comparison
+  analysis. A live six-task Muse Spark 1.3 Contributor four-tool/PTC comparison
   has run; the broader Luna/max matrix remains pending.
 - Fresh uv checkout installation and default TUI build; no Magnitude requirement.
 
@@ -291,18 +296,8 @@ operational stores, its JSONL/notebook, uniquely referenced local artifacts, and
 segments carrying a task manifest, including that task's derived Lance projections. It
 is not invoked automatically.
 
-Native PTC profiles now share the `PtcSession` lifecycle adapter. The optional pinned
-Prime Python runtime supports trusted run-scoped JSONL receipts and per-cell dill
-snapshots, with ownership, restart integrity, redaction and uncertain-attempt guards.
-It does not implement conversation snapshot lineage, safe-auto native effect recovery,
-or the brokered memory command bridge; those configurations fail explicitly.
-The existing reviewed context program service also supports optional name/version
+The existing reviewed context program service supports optional name/version
 selection while preserving its default allowlist and existing view identities.
-See [native profile configuration and limitations](design/ptc-native-profiles.md).
-
-The PTC-specific dill 0.4.0 dependency is bundled for Prime snapshots. Its empty
-compatibility extra remains. Prime snapshots are tested with site-packages disabled
-in the child; source hashes and the license are retained under `harness/_vendor`.
 
 ADK Code Mode, its reusable eval container, image package, and vendored Docker SDK were
 removed after the 2026-09-09 matched smoke exhausted the 200k input budget. Stale

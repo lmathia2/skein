@@ -195,11 +195,6 @@ def _tool_usage(
         "count": len(rows),
         "top_level": aggregate([row for row in rows if row["level"] == "top_level"]),
         "nested": aggregate([row for row in rows if row["level"] == "nested"]),
-        "native_untracked_cells": sum(
-            1 for event in events
-            if event.kind == "prime.cell_terminal"
-            and event.payload.get("effect") == "native_untracked"
-        ),
         "model_visible_bytes": sum(row["model_visible_bytes"] for row in rows),
         "omitted_bytes": sum(row["omitted_bytes"] for row in rows),
         "complete": True,

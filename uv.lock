@@ -2855,7 +2855,6 @@ name = "skein"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "fastapi" },
     { name = "fff-search" },
     { name = "google-adk" },
     { name = "httpx" },
@@ -2863,7 +2862,6 @@ dependencies = [
     { name = "pydantic", version = "2.13.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "pynb-cli" },
     { name = "pyyaml" },
-    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -2891,7 +2889,6 @@ dev = [
 requires-dist = [
     { name = "duckdb", marker = "extra == 'memory-duckdb'", specifier = ">=1.4,<2.0" },
     { name = "duckdb", marker = "extra == 'memory-search'", specifier = ">=1.4,<2.0" },
-    { name = "fastapi", specifier = ">=0.141,<1.0" },
     { name = "fff-search", specifier = "==0.10.5" },
     { name = "google-adk", specifier = ">=2.7.1,<2.8.0" },
     { name = "harbor", marker = "python_full_version >= '3.12' and extra == 'eval'", specifier = "==0.22.0" },
@@ -2900,7 +2897,6 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10,<3.0" },
     { name = "pynb-cli", specifier = "==0.0.10" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
-    { name = "uvicorn", specifier = ">=0.52,<1.0" },
 ]
 provides-extras = ["eval", "memory-duckdb", "memory-search", "ptc-prime"]
 

@@ -189,12 +189,6 @@ def test_source_namespaces_prevent_cross_store_idempotency_collisions(tmp_path: 
         ("repl.cell_timeout", {"effect": "unknown"}, "timeout", "unknown"),
         ("capability.requested", {}, "started", "intended"),
         ("capability.blocked", {"effect": "none"}, "blocked", "none"),
-        (
-            "prime.cell_terminal",
-            {"effect": "native_untracked", "result": {"status": "error"}},
-            "failed",
-            "unknown",
-        ),
     ],
 )
 def test_harness_ptc_lifecycle_imports_canonical_semantics(

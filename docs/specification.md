@@ -59,8 +59,6 @@ configuration.
 | --- | --- |
 | [`default.yaml`](../harness/config/default.yaml) / [`four-tool.yaml`](../harness/config/profiles/four-tool.yaml) | Supported default; four tools; canonical memory off |
 | [`notebook-ptc-jsonl.yaml`](../harness/config/profiles/notebook-ptc-jsonl.yaml) | Opt-in one-tool PTC and canonical JSONL |
-| [`notebook-ptc-duckdb.yaml`](../harness/config/profiles/notebook-ptc-duckdb.yaml) | Opt-in PTC, DuckDB ledger, incremental counts |
-| `context-*.yaml` profiles | Opt-in treatments for capture, windows, retrieval, notes, recovery, reuse, prior runs, and continuity |
 
 Unsupported combinations MUST fail rather than silently downgrade. Conversation
 notebook continuity requires PTC. Live semantic retrieval requires an explicitly

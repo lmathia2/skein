@@ -169,10 +169,8 @@ class ToolSurfaceConfig(FrozenModel):
 
 class NotebookPtcConfig(FrozenModel):
     enabled: bool = False
-    implementation: Literal["skein_notebook", "prime_repl"] = "skein_notebook"
     serialization: Literal["native", "notebook", "jsonl"] = "native"
     state: Literal["native", "none", "replay_safe", "snapshot"] = "native"
-    prime_native_execution: bool = False
     continuity: Literal["run", "conversation"] = "run"
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
     max_timeout_seconds: int = Field(default=600, ge=1, le=3_600)
@@ -201,34 +199,27 @@ class NotebookPtcConfig(FrozenModel):
     @model_validator(mode="before")
     @classmethod
     def reject_removed_implementation(cls, data: object) -> object:
-        if isinstance(data, Mapping) and data.get("implementation") == "adk_code_mode":
+        if isinstance(data, Mapping) and data.get("implementation") in {
+            "adk_code_mode",
+            "prime_repl",
+        }:
             raise NotImplementedError(
-                "adk_code_mode was removed; use skein_notebook or prime_repl"
+                f"{data['implementation']} was removed; use Skein notebook PTC"
             )
         return data
 
     @model_validator(mode="after")
     def validate_timeouts(self) -> NotebookPtcConfig:
-        native_serialization, native_state = (
-            ("notebook", "replay_safe") if self.implementation == "skein_notebook"
-            else ("jsonl", "snapshot")
-        )
-        if self.prime_native_execution and self.implementation != "prime_repl":
-            raise ValueError("prime_native_execution is exclusive to prime_repl")
-        if self.enabled and self.implementation == "prime_repl" and not self.prime_native_execution:
-            raise ValueError("prime_repl requires explicit prime_native_execution=true")
-        if self.serialization not in {"native", native_serialization}:
+        if self.serialization not in {"native", "notebook"}:
             raise NotImplementedError(
-                f"{self.implementation} does not implement serialization={self.serialization}; "
+                f"Skein notebook PTC does not implement serialization={self.serialization}; "
                 "use serialization=native to preserve its existing persistence"
             )
-        if self.state not in {"native", native_state}:
+        if self.state not in {"native", "replay_safe"}:
             raise NotImplementedError(
-                f"{self.implementation} does not implement state={self.state}; "
-                f"its native state policy is {native_state}"
+                f"Skein notebook PTC does not implement state={self.state}; "
+                "its native state policy is replay_safe"
             )
-        if self.implementation == "prime_repl" and self.continuity != "run":
-            raise NotImplementedError("prime_repl conversation snapshot lineage is not implemented")
         if self.continuity == "conversation" and not self.enabled:
             raise ValueError("conversation continuity requires notebook PTC")
         if self.default_timeout_seconds > self.max_timeout_seconds:
@@ -415,11 +406,6 @@ class SkeinConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_references(self) -> SkeinConfig:
-        if self.notebook_ptc.enabled and self.notebook_ptc.implementation == "prime_repl":
-            if self.adk.recovery == "safe_auto":
-                raise NotImplementedError("prime_repl does not implement safe-auto effect recovery")
-            if self.memory.context_programs.mode == "active":
-                raise NotImplementedError("prime_repl does not implement the brokered memory command bridge")
         if self.context.window_management and not (
             self.memory.enabled and self.memory.implementation == "trace_native"
         ):

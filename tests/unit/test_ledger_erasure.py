@@ -47,9 +47,6 @@ def test_erasure_removes_task_ledger_operational_notebook_artifact_and_segment(
     search_projection = state / "memory-search" / hashlib.sha256(b"task").hexdigest()
     search_projection.mkdir(parents=True)
     (search_projection / "data.lance").write_text("derived secret", encoding="utf-8")
-    prime_state = state / "prime" / hashlib.sha256(b"task").hexdigest()
-    prime_state.mkdir(parents=True)
-    (prime_state / "state.dill").write_bytes(b"private runtime state")
 
     result = erase_task_state(state, task_id="task", ledger=ledger)
 
@@ -62,4 +59,3 @@ def test_erasure_removes_task_ledger_operational_notebook_artifact_and_segment(
     assert not segment.path.exists()
     assert not segment.path.with_suffix(".parquet.manifest.json").exists()
     assert not search_projection.exists()
-    assert not prime_state.exists()
