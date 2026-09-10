@@ -90,6 +90,9 @@ and the implementation/evaluation rubric.
 
 ## PTC execution refinement
 
+The current quality-first implementation sequence and promotion gates are in
+[PTC improvements](ptc_improvements.md).
+
 ### Modular architecture execution checklist
 
 - [x] U1: Prebuild the pinned ADK sandbox image and verify its package contents.
