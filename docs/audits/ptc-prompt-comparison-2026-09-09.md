@@ -1,6 +1,6 @@
 # PTC prompt comparison: Skein, Prime Agent, pi, pi-ptc
 
-Status: analysis and proposed text. Nothing here is landed. Pair with
+Status: analysis and proposed text. Nothing here is landed. The canonical follow-up list and prompt text now live in `ptc-follow-ups-2026-09-09.md`. Pair with
 `ptc-deepswe-reference-six-2026-09-10.md`, whose N1-N5 units this note sequences
 against.
 
