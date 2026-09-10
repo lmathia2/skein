@@ -92,7 +92,7 @@ Use the checked-in external-agent import path and pass no provider secret to
 ```bash
 pier run \
   --path "$HOME/.cache/harbor/tasks/packages/terminal-bench/TASK_ID/TASK_ARTIFACT_SHA256" \
-  --agent-import-path harness.evals.harbor:SkeinPierAgent \
+  --agent-import-path harness.adapters.pier:SkeinPierAgent \
   --model gpt-5.6-luna \
   --agent-kwarg provider=openai_codex \
   --agent-kwarg reasoning=max \
@@ -108,7 +108,7 @@ and reference its name only:
 ```bash
 pier run \
   --path "$HOME/.cache/harbor/tasks/packages/terminal-bench/TASK_ID/TASK_ARTIFACT_SHA256" \
-  --agent-import-path harness.evals.harbor:SkeinPierAgent \
+  --agent-import-path harness.adapters.pier:SkeinPierAgent \
   --model meta/muse-spark-1.2-contributor \
   --agent-kwarg provider=openrouter \
   --agent-kwarg reasoning=xhigh \

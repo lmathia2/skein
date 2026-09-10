@@ -7,7 +7,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from harness.config import (
+from harness.core.config import (
     FOUR_CODING_TOOLS,
     RuntimeBindings,
     SkeinConfig,
@@ -111,7 +111,7 @@ def test_annotated_standard_profiles_are_complete_and_strict(
     memory_enabled: bool,
     ledger: str,
 ) -> None:
-    path = Path(__file__).parents[2] / "harness" / "config" / "profiles" / filename
+    path = Path(__file__).parents[2] / "harness" / "core" / "config" / "profiles" / filename
     composition = load_harness_composition(path)
     config = composition.harness.config
 

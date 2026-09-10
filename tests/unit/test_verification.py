@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals import ApprovalStore
-from harness.repo.discovery import BuildCommand, RepositoryManifest
-from harness.sandbox import SandboxRequest, SandboxResult
+from harness.execution.approvals import ApprovalStore
+from harness.execution.repo.discovery import BuildCommand, RepositoryManifest
+from harness.execution.sandbox import SandboxRequest, SandboxResult
 from harness.verification import (
     CommandResult,
     ManagedValidationExecutor,

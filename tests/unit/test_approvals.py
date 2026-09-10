@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals import ApprovalStore
-from harness.safety import ApprovalPolicy
-from harness.tools.adk_adapter import _canonical_hash, create_adk_tools
+from harness.execution.approvals import ApprovalStore
+from harness.execution.safety import ApprovalPolicy
+from harness.execution.tools.adk_adapter import _canonical_hash, create_adk_tools
 
 
 def test_approval_store_is_idempotent_and_decisions_are_final(tmp_path: Path) -> None:

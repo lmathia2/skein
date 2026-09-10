@@ -17,15 +17,15 @@ from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 from google.genai import types
 
-from harness.approvals.waiting import ApprovalWaiter
-from harness.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
-from harness.environment.async_call import run_managed_thread
-from harness.environment.runtime import LocalRepositoryRuntime
-from harness.models.agent_step import StructuredAgentStep
-from harness.safety.redaction import SecretRedactor
-from harness.state import EventStore, JsonlEventStore
-from harness.state.events import HarnessEvent
-from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
+from harness.core.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
+from harness.core.models.agent_step import StructuredAgentStep
+from harness.evidence.state import EventStore, JsonlEventStore
+from harness.evidence.state.events import HarnessEvent
+from harness.execution.approvals.waiting import ApprovalWaiter
+from harness.execution.environment.async_call import run_managed_thread
+from harness.execution.environment.runtime import LocalRepositoryRuntime
+from harness.execution.safety.redaction import SecretRedactor
+from harness.execution.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
 from .config import HarnessSettings
 from .ptc import build_notebook_session

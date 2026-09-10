@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from harness.evals.manifests import (
+from evals.manifests import (
     BENCHMARKS,
     Benchmark,
     EvaluationManifest,

@@ -3,8 +3,8 @@ from __future__ import annotations
 from google.adk.events import Event, EventActions
 from google.genai import types
 
-from harness.server import AgUiEventType
-from harness.server.adk_mapper import AdkAgUiNormalizer, map_adk_event
+from harness.adapters.adk.runtime import AgUiEventType
+from harness.adapters.adk.runtime.adk_mapper import AdkAgUiNormalizer, map_adk_event
 
 
 def test_selected_skill_names_are_public_but_skill_bodies_remain_private() -> None:

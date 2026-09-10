@@ -5,13 +5,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from harness.agent import (
-    HarnessDescriptor,
-    ModelReadiness,
-    PublicModelStatus,
-    RuntimeCapability,
-)
-from harness.server import (
+from harness.adapters.adk.runtime import (
     PROTOCOL_VERSION,
     AckMessage,
     AgUiEvent,
@@ -24,7 +18,7 @@ from harness.server import (
     SteerTaskMessage,
     parse_client_message,
 )
-from harness.server.protocol import (
+from harness.adapters.adk.runtime.protocol import (
     ControlResultMessage,
     PongMessage,
     ServerErrorMessage,
@@ -32,6 +26,12 @@ from harness.server.protocol import (
     SessionResultMessage,
     TaskAcceptedMessage,
     parse_server_message,
+)
+from harness.core.agent import (
+    HarnessDescriptor,
+    ModelReadiness,
+    PublicModelStatus,
+    RuntimeCapability,
 )
 
 

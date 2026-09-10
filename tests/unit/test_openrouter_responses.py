@@ -10,7 +10,7 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
-from harness.ai.openrouter_responses import (
+from harness.adapters.providers.openrouter_responses import (
     OpenRouterResponsesLlm,
     build_openrouter_request_body,
 )

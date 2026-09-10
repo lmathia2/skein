@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from harness.models.agent_step import AgentStep, CompletionClaim
-from harness.models.task import TaskRequest
-from harness.orchestration.runtime import can_answer_directly, parse_task_request
+from harness.core.models.agent_step import AgentStep, CompletionClaim
+from harness.core.models.task import TaskRequest
+from harness.core.orchestration.runtime import can_answer_directly, parse_task_request
 
 
 def test_plain_conversation_does_not_invent_coding_acceptance_criteria() -> None:

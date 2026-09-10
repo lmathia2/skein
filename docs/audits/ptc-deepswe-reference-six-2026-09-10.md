@@ -61,9 +61,9 @@ Only the checked-in profile changed:
 
 | Mode | Exact profile | SHA-256 | Effective module choice |
 | --- | --- | --- | --- |
-| Four tools | `harness/config/profiles/four-tool.yaml` | `c386f00a6de88be5503ba206f0952ece766d488f53dbd568345b3e6b34921b91` | PTC off; memory off; direct `read`, `bash`, `edit`, `write` |
-| Notebook PTC | `harness/config/profiles/notebook-ptc-jsonl.yaml` | `d033dd726416357cf2769c6ccdf49366357c8a5fd7a90d16bdf66fb03e329d25` | `skein_notebook`; canonical JSONL memory; exact PTC history |
-| Prime PTC | `harness/config/profiles/prime-ptc-jsonl.yaml` | `914a91ba77704827ea5b0ee1dce1c854d5fe9e8ea3b5e01873ead36ed9d1b642` | `prime_repl`; JSONL cells; snapshot state; canonical JSONL memory |
+| Four tools | `harness/core/config/profiles/four-tool.yaml` | `c386f00a6de88be5503ba206f0952ece766d488f53dbd568345b3e6b34921b91` | PTC off; memory off; direct `read`, `bash`, `edit`, `write` |
+| Notebook PTC | `harness/core/config/profiles/notebook-ptc-jsonl.yaml` | `d033dd726416357cf2769c6ccdf49366357c8a5fd7a90d16bdf66fb03e329d25` | `skein_notebook`; canonical JSONL memory; exact PTC history |
+| Prime PTC | `harness/core/config/profiles/prime-ptc-jsonl.yaml` | `914a91ba77704827ea5b0ee1dce1c854d5fe9e8ea3b5e01873ead36ed9d1b642` | `prime_repl`; JSONL cells; snapshot state; canonical JSONL memory |
 
 The authoritative resolved configuration for every trial is retained at
 `<trial>/agent/skein-state/evaluation/config.yaml`. The exact Pier argv is retained

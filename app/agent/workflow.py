@@ -16,16 +16,12 @@ from google.adk.agents import BaseAgent
 from google.adk.events import EventActions
 from google.adk.workflow import BaseNode, node
 
-from harness.approvals.waiting import ApprovalWaiter
-from harness.context import estimate_tokens
-from harness.environment import RepositoryRuntime
-from harness.environment.async_call import run_managed_thread
-from harness.models.agent_step import AgentStep
-from harness.models.checkpoint import Checkpoint
-from harness.models.ledger import TaskLedger
-from harness.models.task import TaskPhase, TaskRequest
-from harness.notebook import materialize_notebook, reduce_notebook
-from harness.orchestration import (
+from harness.core.context import estimate_tokens
+from harness.core.models.agent_step import AgentStep
+from harness.core.models.checkpoint import Checkpoint
+from harness.core.models.ledger import TaskLedger
+from harness.core.models.task import TaskPhase, TaskRequest
+from harness.core.orchestration import (
     HarnessRoute,
     build_work_packet,
     create_initial_ledger,
@@ -37,9 +33,8 @@ from harness.orchestration import (
     resume_for_steering,
     task_id_for,
 )
-from harness.orchestration.runtime import can_answer_directly
-from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT
-from harness.state import (
+from harness.core.orchestration.runtime import can_answer_directly
+from harness.evidence.state import (
     CheckpointStore,
     EventKind,
     EventStore,
@@ -49,8 +44,14 @@ from harness.state import (
     register_action_batch,
     verification_fingerprint,
 )
-from harness.state.recovery import validate_recovery_evidence
-from harness.telemetry import MetricsStore, TaskOutcomeSample
+from harness.evidence.state.recovery import validate_recovery_evidence
+from harness.evidence.telemetry import MetricsStore, TaskOutcomeSample
+from harness.execution.approvals.waiting import ApprovalWaiter
+from harness.execution.environment import RepositoryRuntime
+from harness.execution.environment.async_call import run_managed_thread
+from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT
+from harness.execution.workspace import GitWorktreeManager
+from harness.ptc.notebook import materialize_notebook, reduce_notebook
 from harness.verification import (
     CommandResult,
     ManagedValidationExecutor,
@@ -61,7 +62,6 @@ from harness.verification import (
     enforce_test_count,
     passes_recorded_baseline,
 )
-from harness.workspace import GitWorktreeManager
 
 from .config import HarnessSettings
 from .presentation import conversation_history, message_event, result_events

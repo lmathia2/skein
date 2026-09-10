@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 from google.adk.models.llm_request import LlmRequest
 
-from harness.adk import SteeringPlugin
-from harness.state import EventKind, JsonlEventStore, SteeringQueue
+from harness.adapters.adk import SteeringPlugin
+from harness.evidence.state import EventKind, JsonlEventStore, SteeringQueue
 
 
 def _context(*, agent_name: str = "coding_worker") -> SimpleNamespace:

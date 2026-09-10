@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from harness.safety import (
+from harness.execution.safety import (
     ApprovalAction,
     ApprovalPolicy,
     CommandRisk,

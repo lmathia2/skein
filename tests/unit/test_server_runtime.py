@@ -20,26 +20,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from app.agent.factory import default_harness_registry
-from harness.agent import (
-    AgentSnapshot,
-    ControlCommand,
-    ControlReceipt,
-    HarnessDescriptor,
-    ModelReadiness,
-    PublicModelStatus,
-    RuntimeCapability,
-    SteeringCommand,
-)
-from harness.ai import ClosedAdkModelProviderRegistry
-from harness.config import (
-    ModelConfig,
-    RuntimeBindings,
-    SecretRef,
-    SkeinConfig,
-    load_harness_composition,
-)
-from harness.safety import SecretRedactor
-from harness.server import (
+from harness.adapters.adk.runtime import (
     AgUiEvent,
     AgUiEventType,
     CancelTaskMessage,
@@ -49,9 +30,9 @@ from harness.server import (
     StartTaskMessage,
     SteerTaskMessage,
 )
-from harness.server.protocol import SessionRequestMessage
-from harness.server.registry import RunRecord
-from harness.server.runtime import (
+from harness.adapters.adk.runtime.protocol import SessionRequestMessage
+from harness.adapters.adk.runtime.registry import RunRecord
+from harness.adapters.adk.runtime.runtime import (
     AdkRunExecution,
     PublicEventBatch,
     RunCoordinator,
@@ -59,6 +40,25 @@ from harness.server.runtime import (
     RunInitializationError,
     RunLivenessPolicy,
 )
+from harness.adapters.providers import ClosedAdkModelProviderRegistry
+from harness.core.agent import (
+    AgentSnapshot,
+    ControlCommand,
+    ControlReceipt,
+    HarnessDescriptor,
+    ModelReadiness,
+    PublicModelStatus,
+    RuntimeCapability,
+    SteeringCommand,
+)
+from harness.core.config import (
+    ModelConfig,
+    RuntimeBindings,
+    SecretRef,
+    SkeinConfig,
+    load_harness_composition,
+)
+from harness.execution.safety import SecretRedactor
 
 
 def _start(
@@ -233,7 +233,7 @@ async def test_followups_are_durable_ordered_and_idempotent(tmp_path: Path) -> N
     await coordinator.session_request(_session_request("follow_up", first.thread_id, "followup-two", content="third turn"), user_id="user")
     assert len(factory.created) == 1
     # A fresh handle to the same DB sees both pending messages; no TUI owns them.
-    from harness.server.sessions import ConversationStore
+    from harness.adapters.adk.runtime.sessions import ConversationStore
     assert len(ConversationStore(coordinator.store).pending("user", first.thread_id)) == 2
     with pytest.raises(ValueError, match="retry key"):
         await coordinator.session_request(request.model_copy(update={"content": "changed"}), user_id="user")

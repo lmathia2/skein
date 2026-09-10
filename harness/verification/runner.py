@@ -8,8 +8,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, Protocol
 
-from harness.models.task import ValidationResult
-from harness.models.verification import (
+from harness.core.models.task import ValidationResult
+from harness.core.models.verification import (
     CriterionEvidence,
     EvidenceReference,
     VerificationReport,

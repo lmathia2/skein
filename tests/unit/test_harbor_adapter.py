@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from harness.environment import WorkspaceViolationError
-from harness.evals.harbor import (
+from harness.adapters.pier import (
     HarborCommandSandbox,
     HarborRepositoryRuntime,
     HarborWorkspaceEnvironment,
     _AsyncBridge,
 )
-from harness.sandbox import SandboxRequest
+from harness.execution.environment import WorkspaceViolationError
+from harness.execution.sandbox import SandboxRequest
 
 
 class _Result:

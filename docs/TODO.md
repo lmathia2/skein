@@ -194,6 +194,9 @@ See `docs/design/pi-terminal-migration.md` for delivery gates.
 
 ## Minimal-harness simplification
 
+- [x] Reorganize `harness/` by authority boundary, move Harbor campaign support to
+  `evals/`, and delete unreachable legacy eval, tuning, backfill, and summary modules.
+
 - [x] Remove Magnitude, LiteLLM integration, and installer/launcher branches; retain Codex and native ADK provider seams.
 - [x] Replace shadowed legacy tools with the tested atomic file primitives and remove unwired adapters.
 - [x] Reduce fixed-graph configuration and optional orchestration layers without weakening verification or approvals.

@@ -85,7 +85,7 @@ the next depends on it; one combined live screen follows the completed bundle.
 
 ### 1. Give programs data, not rendered tool transcripts
 
-Current seam: `harness/tools/coding.py:execute_read` renders numbered lines and
+Current seam: `harness/execution/tools/coding.py:execute_read` renders numbered lines and
 returns only `model_text`; `app/agent/builders.py:_CellBroker` forwards this
 model-oriented result into Python. Reads are limited to 400 lines, and shell
 conversion also collapses structured stdout/stderr into display text. Existing
@@ -236,7 +236,7 @@ at a fixed watermark. Record exact blocking check and reason for diagnosis.
 ### 5. Bound history at cache-stable epochs
 
 Use the existing context program and compaction machinery in
-`harness/adk/context.py`. It currently rebuilds handoff details for each request;
+`harness/adapters/adk/context.py`. It currently rebuilds handoff details for each request;
 after a cut this can change the header before the retained history.
 
 - Freeze the compacted handoff at its recorded epoch/watermark. Append new

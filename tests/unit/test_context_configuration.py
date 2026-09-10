@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from harness.config import RuntimeBindings, SkeinConfig, load_harness_composition
-from harness.config.models import ContextProgramConfig, MemoryConfig, NotebookPtcConfig
+from harness.core.config import RuntimeBindings, SkeinConfig, load_harness_composition
+from harness.core.config.models import ContextProgramConfig, MemoryConfig, NotebookPtcConfig
 
 
 @pytest.mark.parametrize("payload", [
@@ -39,7 +39,7 @@ def test_recovery_requires_durable_substrate_and_fresh_requires_notes():
     config["memory"]["context_programs"]["mode"] = "active"
     config["adk"]["recovery"] = "safe_auto"
     candidate = SkeinConfig.model_validate(config)
-    from harness.config.models import HarnessComposition, PersistenceConfig
+    from harness.core.config.models import HarnessComposition, PersistenceConfig
     with pytest.raises(ValidationError, match="SQLite sessions"):
         HarnessComposition(
             app=base.app, harness=base.harness.model_copy(update={"config": candidate}),

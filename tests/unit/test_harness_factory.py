@@ -25,8 +25,10 @@ from app.agent.factory import (
     build_harness,
     default_harness_registry,
 )
-from harness.adk import SteeringPlugin
-from harness.agent import (
+from harness.adapters.adk import SteeringPlugin
+from harness.adapters.adk.runtime import PROTOCOL_VERSION, ServerHello
+from harness.adapters.providers.openrouter_responses import OpenRouterResponsesLlm
+from harness.core.agent import (
     AdkHarnessAssembly,
     HarnessBuildInfo,
     HarnessDescriptor,
@@ -35,8 +37,7 @@ from harness.agent import (
     RuntimeCapability,
     SteeringCommand,
 )
-from harness.ai.openrouter_responses import OpenRouterResponsesLlm
-from harness.config import (
+from harness.core.config import (
     GenerationConfig,
     HarnessComposition,
     NotebookPtcConfig,
@@ -45,10 +46,9 @@ from harness.config import (
     load_harness_composition,
     parse_harness_composition,
 )
-from harness.models.agent_step import StructuredAgentStep
-from harness.server import PROTOCOL_VERSION, ServerHello
-from harness.state import EventKind, JsonlEventStore
-from harness.tools.adk_adapter import AdkCodingTools
+from harness.core.models.agent_step import StructuredAgentStep
+from harness.evidence.state import EventKind, JsonlEventStore
+from harness.execution.tools.adk_adapter import AdkCodingTools
 
 
 class _FakeHarnessConfig(BaseModel):
@@ -248,7 +248,7 @@ def test_verification_shares_yaml_sandbox_and_task_scoped_approvals(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.agent import factory
-    from harness.sandbox import DockerSandbox
+    from harness.execution.sandbox import DockerSandbox
     from harness.verification import ValidationCommand
 
     captured: dict[str, Any] = {}

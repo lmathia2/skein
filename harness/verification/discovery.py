@@ -6,7 +6,7 @@ import shlex
 from collections.abc import Iterable
 from pathlib import Path
 
-from harness.repo.discovery import RepositoryManifest
+from harness.execution.repo.discovery import RepositoryManifest
 
 from .models import ValidationCommand, ValidationPlan
 

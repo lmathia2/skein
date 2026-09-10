@@ -23,5 +23,5 @@ This repository is an Agents CLI-compatible Google ADK 2.x project.
 
 - Python 3.11+ and Pydantic v2.
 - Type public interfaces.
-- Keep ADK-specific wiring in `app/` or `harness/adk/`; keep core logic importable without cloud credentials.
+- Keep ADK-specific wiring in `app/` or `harness/adapters/adk/`; keep core logic importable without cloud credentials.
 - Do not assert on natural-language model output in pytest.

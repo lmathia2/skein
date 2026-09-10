@@ -1,9 +1,9 @@
 import time
 from pathlib import Path
 
-from harness.ledger import JsonlLedgerStore
-from harness.memory import MemoryProgramRuntime, ViewRequest
-from harness.memory.lance import LanceMemorySearch
+from harness.evidence.ledger import JsonlLedgerStore
+from harness.evidence.memory import MemoryProgramRuntime, ViewRequest
+from harness.evidence.memory.lance import LanceMemorySearch
 
 
 def _vector(text: str) -> list[float]:

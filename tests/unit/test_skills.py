@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.skills import (
+from harness.core.skills import (
     DuplicateSkillError,
     SkillPathError,
     SkillRegistry,

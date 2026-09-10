@@ -11,7 +11,7 @@ pytest.importorskip("google.adk")
 
 from google.adk.sessions.state import State
 
-from harness.telemetry.adk_plugin import (
+from harness.evidence.telemetry.adk_plugin import (
     HarnessMetricsPlugin,
     ModelPricing,
     estimate_cost,

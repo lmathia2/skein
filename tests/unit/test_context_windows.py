@@ -6,17 +6,17 @@ import pytest
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 
-from harness.adk.context import (
+from harness.adapters.adk.context import (
     ContextWindowPlugin,
     _complete_cuts,
     _serialized,
     select_context_cut,
 )
-from harness.config.models import ContextConfig
-from harness.context import estimate_tokens
-from harness.ledger import JsonlLedgerStore
-from harness.models import TaskLedger, TaskRequest
-from harness.state import EventKind, JsonlEventStore
+from harness.core.config.models import ContextConfig
+from harness.core.context import estimate_tokens
+from harness.core.models import TaskLedger, TaskRequest
+from harness.evidence.ledger import JsonlLedgerStore
+from harness.evidence.state import EventKind, JsonlEventStore
 
 
 def text(value):

@@ -9,7 +9,7 @@ from typing import Any
 from google.adk.events import Event
 from google.genai import types
 
-from harness.context import estimate_tokens, truncate_to_tokens
+from harness.core.context import estimate_tokens, truncate_to_tokens
 
 
 def conversation_history(

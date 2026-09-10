@@ -17,16 +17,19 @@ from google.genai import types
 from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.factory import default_harness_registry
-from harness.agent import SteeringCommand
-from harness.ai.codex_responses import build_codex_request_body, provider_request_profile
-from harness.config import (
+from harness.adapters.providers.codex_responses import (
+    build_codex_request_body,
+    provider_request_profile,
+)
+from harness.core.agent import SteeringCommand
+from harness.core.config import (
     RuntimeBindings,
     SkeinConfig,
     load_harness_composition,
     parse_harness_composition,
 )
-from harness.state import EventKind, JsonlEventStore
-from harness.tools.adk_adapter import AdkCodingTools, create_adk_tools
+from harness.evidence.state import EventKind, JsonlEventStore
+from harness.execution.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
 
 def _enabled_composition():
@@ -377,11 +380,11 @@ async def test_configured_memory_backend_captures_the_same_runtime_event(
     )
     assert receipt.accepted
     if ledger_backend == "jsonl":
-        from harness.ledger import JsonlLedgerStore
+        from harness.evidence.ledger import JsonlLedgerStore
 
         events = JsonlLedgerStore(state / "ledger.jsonl").read("task")
     else:
-        from harness.ledger import DuckDbLedgerStore
+        from harness.evidence.ledger import DuckDbLedgerStore
 
         events = DuckDbLedgerStore(state / "ledger.duckdb").read("task")
     assert [(event.kind, event.payload["content"]) for event in events] == [

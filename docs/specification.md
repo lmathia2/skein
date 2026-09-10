@@ -41,8 +41,8 @@ coding worker
 | --- | --- | --- |
 | App/factory assembly | [`app/agent/factory.py`](../app/agent/factory.py) | [`test_harness_factory.py`](../tests/unit/test_harness_factory.py), [`test_adk_app.py`](../tests/unit/test_adk_app.py) |
 | Workflow and terminal states | [`app/agent/workflow.py`](../app/agent/workflow.py) | [`test_orchestration.py`](../tests/unit/test_orchestration.py), [`test_replay_and_verification.py`](../tests/integration/test_replay_and_verification.py) |
-| Server lifecycle | [`harness/server/runtime.py`](../harness/server/runtime.py) | [`test_server_runtime.py`](../tests/unit/test_server_runtime.py), [`test_conversation_runtime.py`](../tests/integration/test_conversation_runtime.py) |
-| ADK/provider boundary | [`harness/ai/`](../harness/ai/) | `test_model_*`, `test_codex_responses.py`, `test_openrouter_responses.py` |
+| Server lifecycle | [`harness/adapters/adk/runtime/runtime.py`](../harness/adapters/adk/runtime/runtime.py) | [`test_server_runtime.py`](../tests/unit/test_server_runtime.py), [`test_conversation_runtime.py`](../tests/integration/test_conversation_runtime.py) |
+| ADK/provider boundary | [`harness/adapters/providers/`](../harness/adapters/providers/) | `test_model_*`, `test_codex_responses.py`, `test_openrouter_responses.py` |
 
 The current boundary is trusted local execution. The local adapter MUST NOT be
 described as a production sandbox. Docker confines configured commands but does not
@@ -51,14 +51,14 @@ isolate every host-side harness primitive. See [security](security.md).
 ## 2. Configuration and activation
 
 Configuration MUST validate through
-[`harness/config/models.py`](../harness/config/models.py). Workspace, task,
+[`harness/core/config/models.py`](../harness/core/config/models.py). Workspace, task,
 state-root, conversation, and trust bindings MUST remain outside stable behavior
 configuration.
 
 | Profile/capability | Current status |
 | --- | --- |
-| [`default.yaml`](../harness/config/default.yaml) / [`four-tool.yaml`](../harness/config/profiles/four-tool.yaml) | Supported default; four tools; canonical memory off |
-| [`notebook-ptc-jsonl.yaml`](../harness/config/profiles/notebook-ptc-jsonl.yaml) | Opt-in one-tool PTC and canonical JSONL |
+| [`default.yaml`](../harness/core/config/default.yaml) / [`four-tool.yaml`](../harness/core/config/profiles/four-tool.yaml) | Supported default; four tools; canonical memory off |
+| [`notebook-ptc-jsonl.yaml`](../harness/core/config/profiles/notebook-ptc-jsonl.yaml) | Opt-in one-tool PTC and canonical JSONL |
 
 Unsupported combinations MUST fail rather than silently downgrade. Conversation
 notebook continuity requires PTC. Live semantic retrieval requires an explicitly
@@ -87,7 +87,7 @@ order. Cross-task views MUST carry a source manifest and watermark per task.
 
 ### 4.1 Event envelope
 
-[`LedgerEvent`](../harness/ledger/models.py) MUST include:
+[`LedgerEvent`](../harness/evidence/ledger/models.py) MUST include:
 
 ```text
 event_id, task_id, sequence
@@ -108,7 +108,7 @@ Statuses distinguish `observed`, `requested`, `started`, `completed`, `failed`,
 ### 4.2 Captured sources
 
 When canonical memory is enabled,
-[`harness/ledger/importers.py`](../harness/ledger/importers.py) imports:
+[`harness/evidence/ledger/importers.py`](../harness/evidence/ledger/importers.py) imports:
 
 - harness task and notebook events;
 - tool receipt transitions and trace spans;
@@ -122,27 +122,27 @@ private model reasoning or secrets model-readable.
 
 ### 4.3 Physical backends and migration
 
-[`JsonlLedgerStore`](../harness/ledger/jsonl.py) is dependency-free and uses one
+[`JsonlLedgerStore`](../harness/evidence/ledger/jsonl.py) is dependency-free and uses one
 append-only file, process-local locking, canonical validation, idempotency checks,
 and `fsync`. Scans are linear in total events.
 
-[`DuckDbLedgerStore`](../harness/ledger/store.py) provides transactional append,
+[`DuckDbLedgerStore`](../harness/evidence/ledger/store.py) provides transactional append,
 uniqueness constraints, task/kind indexing, and incremental count projections. One
 process MUST own writes to a state root.
 
-[`LedgerBackedEventStore`](../harness/ledger/shadow.py) is the migration adapter. It
+[`LedgerBackedEventStore`](../harness/evidence/ledger/shadow.py) is the migration adapter. It
 writes operational task JSONL and imports the event into the canonical ledger; reads
 reconstruct ordinary `HarnessEvent` values from canonical evidence. Operational
 stores remain compatibility stores until cutover equality is accepted.
 
-Backfill, archive, and erasure live in [`harness/ledger/`](../harness/ledger/).
+Backfill, archive, and erasure live in [`harness/evidence/ledger/`](../harness/evidence/ledger/).
 Sealed Parquet is archival projection. DuckLake, PostgreSQL, distributed leases, and
 cloud object storage are not implemented.
 
 ## 5. Operational task state
 
-[`HarnessEvent`](../harness/state/events.py) is the task-local operational event.
-`task.created` MUST initialize a typed [`TaskLedger`](../harness/models/ledger.py).
+[`HarnessEvent`](../harness/evidence/state/events.py) is the task-local operational event.
+`task.created` MUST initialize a typed [`TaskLedger`](../harness/core/models/ledger.py).
 Only explicit `ledger.patched`, `task.blocked`, and `task.finished` reductions change
 task state. Observational events MUST NOT mutate it implicitly.
 
@@ -153,7 +153,7 @@ now”; the canonical ledger answers “what happened.”
 ## 6. Effect broker and tools
 
 All direct and nested operations MUST use adapters assembled by
-[`harness/tools/adk_adapter.py`](../harness/tools/adk_adapter.py). Equivalent effects
+[`harness/execution/tools/adk_adapter.py`](../harness/execution/tools/adk_adapter.py). Equivalent effects
 MUST share workspace confinement, command classification, approvals, operation and
 invocation identity, receipts, redaction, output bounds, timeout/cancellation, and
 artifact externalization.
@@ -169,9 +169,9 @@ approval permit them.
 ## 7. Notebook PTC
 
 PTC is assembled in [`app/agent/builders.py`](../app/agent/builders.py), executed by
-[`PersistentPythonWorker`](../harness/repl/worker.py), reduced by
-[`reduce_notebook`](../harness/notebook/reducer.py), and serialized by
-[`materialize_notebook`](../harness/notebook/materializer.py).
+[`PersistentPythonWorker`](../harness/ptc/repl/worker.py), reduced by
+[`reduce_notebook`](../harness/ptc/notebook/reducer.py), and serialized by
+[`materialize_notebook`](../harness/ptc/notebook/materializer.py).
 
 ### 7.1 Cell execution protocol
 
@@ -233,7 +233,7 @@ memory MUST NOT imply notebook continuity.
 
 ### 8.1 Stable prefix
 
-[`build_static_prefix`](../harness/context/prompt.py) constructs stable instructions.
+[`build_static_prefix`](../harness/core/context/prompt.py) constructs stable instructions.
 Volatile task, session, progress, time, and steering data MUST NOT enter it. Before
 each model call, the worker MUST compare model, system instruction, tool declarations,
 and tool configuration with the first call and fail on mutation. Provider cache keys
@@ -257,7 +257,7 @@ Section and total budgets are in
 [`SkeinWorkflowDependencies`](../app/agent/workflow.py). Project instructions and
 skills require explicit trust. Recent events MUST be redacted and bounded.
 
-[`ContextWindowPlugin`](../harness/adk/context.py) captures the public ADK request
+[`ContextWindowPlugin`](../harness/adapters/adk/context.py) captures the public ADK request
 history into canonical evidence and derives its handoff from task events, memory-note
 metadata, and unresolved receipts. `select_context_cut` is the pure policy over the
 retained ADK contents, prior cut, reconstruction mode, and budgets; the plugin remains
@@ -270,7 +270,7 @@ and a newly returned result MUST retain its matching call in the next provider r
 
 ### 9.1 Request and result
 
-[`ViewRequest` and `ViewResult`](../harness/memory/models.py) MUST bind:
+[`ViewRequest` and `ViewResult`](../harness/evidence/memory/models.py) MUST bind:
 
 ```text
 program/version + parameters + authorized sources + watermark/time/filters
@@ -286,7 +286,7 @@ existing cursor.
 
 ### 9.2 Exposure
 
-[`project`](../harness/memory/context.py) MUST apply an explicit event-kind/field
+[`project`](../harness/evidence/memory/context.py) MUST apply an explicit event-kind/field
 allowlist and redaction. Exact reads expose exact bytes of that public projection,
 not raw retained payloads. Artifact reads require an exposed matching reference and
 bounded byte range.
@@ -302,13 +302,13 @@ bounded byte range.
 | `tools.usage` | top-level/nested tool counts and bytes | bounded trace aggregate |
 | `failures.by_kind` | reviewed failure aggregate | scan or DuckDB projection |
 
-[`ContextProgramService`](../harness/tools/memory.py) owns the public command route.
+[`ContextProgramService`](../harness/execution/tools/memory.py) owns the public command route.
 The model requests logical names such as `memory query --program events.count`; it
 MUST NOT discover tables or select physical backends.
 
 ### 9.4 Versioned registry
 
-[`PROGRAM_REGISTRY`](../harness/memory/programs.py) is the single explicit
+[`PROGRAM_REGISTRY`](../harness/evidence/memory/programs.py) is the single explicit
 `(name, version)` catalog used by configuration, execution, and model exposure.
 Reusable code MUST be reviewed, typed, tested, and pinned. Configuration cannot
 provide Python, SQL, import paths, or callables, and notebook code never auto-promotes.
@@ -316,7 +316,7 @@ provide Python, SQL, import paths, or callables, and notebook code never auto-pr
 ### 9.5 Caching and projections
 
 Ordinary deterministic views currently recompute; no general result
-cache exists. [`SummaryCache`](../harness/memory/summary.py) MAY reuse an advisory
+cache exists. An implementation MAY reuse an advisory
 model output only when source view, prompt, model, settings, and source availability
 match.
 
@@ -328,14 +328,14 @@ Projection mismatch triggers deterministic rebuild from `ledger_events`.
 
 ### 9.6 Semantic memory
 
-[`LanceMemorySearch`](../harness/memory/lance.py) builds optional immutable,
+[`LanceMemorySearch`](../harness/evidence/memory/lance.py) builds optional immutable,
 content-addressed projections. Identity MUST include source events and embedding
 version. Search MUST return canonical IDs and hydrate exposed rows from canonical
 evidence. Semantic rank is not truth. No embedder MAY be silently selected/downloaded.
 
 ## 10. Long-context transitions
 
-[`ContextWindowPlugin`](../harness/adk/context.py) implements opt-in window
+[`ContextWindowPlugin`](../harness/adapters/adk/context.py) implements opt-in window
 management. Before changing active context, it MUST persist a context epoch and a
 handoff prioritizing task/control state, unresolved effects, steering, history
 boundary, note metadata/excerpt, and PTC state. An unconsumed tool result MUST remain.
@@ -351,13 +351,13 @@ alone is not authorization.
 
 ## 11. Checkpoints and recovery
 
-[`CheckpointStore`](../harness/state/checkpoints.py) and
-[`validate_recovery_evidence`](../harness/state/recovery.py) implement same-machine
+[`CheckpointStore`](../harness/evidence/state/checkpoints.py) and
+[`validate_recovery_evidence`](../harness/evidence/state/recovery.py) implement same-machine
 recovery. A checkpoint MUST bind invocation/session/task identity, event and receipt
 evidence, reducer/context state, workspace fingerprint, and relevant budget/notebook
 boundaries. Referenced evidence MUST precede checkpoint publication.
 
-Safe-auto recovery in [`harness/server/runtime.py`](../harness/server/runtime.py)
+Safe-auto recovery in [`harness/adapters/adk/runtime/runtime.py`](../harness/adapters/adk/runtime/runtime.py)
 MUST validate unchanged behavior/ownership, initialized Git identity, original ADK
 invocation, published checkpoint, operational/canonical event equality, canonical
 receipts, context epoch, remaining budget, and approval state.
@@ -379,11 +379,11 @@ counterexample for a later work packet.
 
 ## 13. Steering and observability
 
-[`SteeringQueue`](../harness/state/steering.py) durably queues user changes. Delivery
+[`SteeringQueue`](../harness/evidence/state/steering.py) durably queues user changes. Delivery
 MAY occur only at configured safe points. Cancellation MUST propagate through owned
 boundaries; every started operation MUST end terminal or unknown.
 
-[`harness/tracing/`](../harness/tracing/) defaults to bounded metadata. Metrics SHOULD
+[`harness/evidence/tracing/`](../harness/evidence/tracing/) defaults to bounded metadata. Metrics SHOULD
 separate cached/uncached input, output, reasoning, tools, verification, wall time,
 retries, and outcomes. Deterministic tests MUST NOT be presented as live model quality.
 

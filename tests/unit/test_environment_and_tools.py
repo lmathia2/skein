@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from harness.environment import (
+from harness.core.models import ToolStatus
+from harness.execution.environment import (
     FileConflictError,
     LocalWorkspaceEnvironment,
     WorkspaceViolationError,
 )
-from harness.models import ToolStatus
-from harness.tools import (
+from harness.execution.tools import (
     bound_output,
     compact_tool_result,
     execute_edit,

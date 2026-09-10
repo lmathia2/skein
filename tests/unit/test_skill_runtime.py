@@ -5,7 +5,7 @@ import pytest
 
 from app.agent.config import settings_from_composition
 from app.agent.skills import build_skill_context
-from harness.config import RuntimeBindings, load_harness_composition
+from harness.core.config import RuntimeBindings, load_harness_composition
 
 
 @pytest.mark.parametrize("budget", [0, 32, 512, 4096])

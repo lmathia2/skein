@@ -8,10 +8,10 @@ from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
 from app.agent.streaming import PublicReplies, PublicReplyStream
-from harness.models.agent_step import AgentStep
-from harness.orchestration.reply import parse_reply, reply_header
-from harness.orchestration.runtime import parse_agent_step
-from harness.safety import SecretRedactor
+from harness.core.models.agent_step import AgentStep
+from harness.core.orchestration.reply import parse_reply, reply_header
+from harness.core.orchestration.runtime import parse_agent_step
+from harness.execution.safety import SecretRedactor
 
 
 def response(text: str, *, partial: bool = True) -> LlmResponse:

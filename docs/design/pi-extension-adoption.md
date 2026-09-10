@@ -22,7 +22,7 @@ interface.
 Pi's useful contract is continuity, not merely a shorter transcript: preserve a recent
 raw tail, chain the previous summary, track files cumulatively, and never make the
 summary the only durable copy of important evidence. The harness implements that
-contract in `harness/context/compaction.py`. Full outputs remain in the artifact
+contract in `harness/core/context/compaction.py`. Full outputs remain in the artifact
 store, while a bounded set of content-addressed identifiers survives repeated
 compactions. ADK compaction remains a ceiling backstop rather than the primary policy.
 
@@ -54,7 +54,7 @@ Language servers and Moderne Lossless Semantic Trees can materially improve
 cross-language definitions, references, implementations, and multi-repository
 architecture discovery. They also introduce installation, build, licensing,
 freshness, and sometimes network or mutation concerns. The provider-neutral contract
-in `harness/repo/intelligence.py` therefore requires:
+in `harness/execution/repo/intelligence.py` therefore requires:
 
 - an operator-supplied absolute executable and fixed argv;
 - explicit enablement and independent command authorization;

@@ -1798,7 +1798,7 @@ harness/
     callbacks.py
 ```
 
-ADK-specific wiring remains in `app/` or `harness/adk/`. Ledger, view, broker, and
+ADK-specific wiring remains in `app/` or `harness/adapters/adk/`. Ledger, view, broker, and
 notebook/REPL contracts remain importable and testable without cloud credentials.
 The notebook package starts with one concrete implementation; no provider interface,
 daemon, or collaboration abstraction is added until another implementation is

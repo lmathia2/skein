@@ -121,7 +121,7 @@ each one a single job:
 Cell and attempt identities connect the three, but none substitutes for another. A
 notebook cell is not proof that an effect completed; a live value is not durable; a
 ledger event is not automatically useful model context. This separation is implemented
-in `harness/ledger`, `harness/notebook`, and `harness/repl`.
+in `harness/evidence/ledger`, `harness/ptc/notebook`, and `harness/ptc/repl`.
 
 ### 2. Memory is a versioned program with an evidence receipt
 
@@ -136,8 +136,8 @@ view = program@version(evidence at watermark, parameters, budgets)
 That turns progress reports, history pages, summaries, counts, retrieval, and prompt
 selection into inspectable computations. Deterministic views are disposable and
 rebuildable. Candidate programs can run in shadow against the same frozen history
-before they influence context. This contract lives in `harness/memory` and
-`harness/ledger`.
+before they influence context. This contract lives in `harness/evidence/memory` and
+`harness/evidence/ledger`.
 
 ### 3. One programmable tool does not receive ambient authority
 

@@ -183,7 +183,7 @@ implicitly, and task erasure invalidates the corresponding projection.
 
 ## Python, SQL, and caching
 
-[`PROGRAM_REGISTRY`](../../harness/memory/programs.py) is the only code-owned
+[`PROGRAM_REGISTRY`](../../harness/evidence/memory/programs.py) is the only code-owned
 `(name, version)` catalog used by configuration, execution, and model exposure.
 Reusable logic must be reviewed, typed, tested, and version-pinned before entering
 that finite library. Notebook code, YAML callables, and arbitrary SQL are never

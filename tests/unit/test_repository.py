@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from harness.repo.discovery import (
+from harness.execution.repo.discovery import (
     build_repository_manifest,
     collect_project_instructions,
     discover_instruction_files,

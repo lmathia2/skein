@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.ledger import DuckDbLedgerStore
-from harness.memory import LanceMemorySearch
+from harness.evidence.ledger import DuckDbLedgerStore
+from harness.evidence.memory import LanceMemorySearch
 
 
 def _vectorize(text: str) -> list[float]:

@@ -34,7 +34,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "harness"]
+packages = ["app", "harness", "evals"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -52,5 +52,5 @@ ignore = ["E501"]
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
-include = ["app", "harness"]
+include = ["app", "harness", "evals"]
 exclude = ["tests/fixtures"]

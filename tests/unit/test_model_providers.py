@@ -7,16 +7,16 @@ import pytest
 from google.adk.models import Gemini
 from pydantic import ValidationError
 
-from harness.ai import (
+from harness.adapters.providers import (
     ClosedAdkModelProviderRegistry,
     GoogleAdkModelProvider,
     OpenAiCodexModelProvider,
     OpenRouterModelProvider,
     default_adk_model_provider_registry,
 )
-from harness.ai.codex_responses import CodexResponsesLlm
-from harness.ai.openrouter_responses import OpenRouterResponsesLlm
-from harness.config import (
+from harness.adapters.providers.codex_responses import CodexResponsesLlm
+from harness.adapters.providers.openrouter_responses import OpenRouterResponsesLlm
+from harness.core.config import (
     ModelConfig,
     RuntimeBindings,
     SecretRef,

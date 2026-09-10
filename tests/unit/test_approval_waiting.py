@@ -12,12 +12,12 @@ from google.adk.models.google_llm import Gemini
 from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.workflow import _verify_task
-from harness.approvals import ApprovalStore
-from harness.approvals.waiting import ApprovalWaiter
-from harness.config import RuntimeBindings, load_harness_composition
-from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT, SandboxResult
-from harness.state import JsonlEventStore
-from harness.tools.adk_adapter import create_adk_tools
+from harness.core.config import RuntimeBindings, load_harness_composition
+from harness.evidence.state import JsonlEventStore
+from harness.execution.approvals import ApprovalStore
+from harness.execution.approvals.waiting import ApprovalWaiter
+from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT, SandboxResult
+from harness.execution.tools.adk_adapter import create_adk_tools
 from harness.verification import (
     CommandResult,
     ManagedValidationExecutor,

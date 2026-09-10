@@ -7,8 +7,7 @@ from pathlib import Path
 import httpx
 import yaml
 
-from harness.ai.codex_auth import CodexCredential, CodexCredentialManager, CodexCredentialStore
-from harness.codex import (
+from harness.adapters.providers.codex import (
     CODEX_CATALOG_CLIENT_VERSION,
     CODEX_MODELS_URL,
     CodexModel,
@@ -20,7 +19,12 @@ from harness.codex import (
     save_codex_selection,
     write_codex_config,
 )
-from harness.config import parse_harness_composition
+from harness.adapters.providers.codex_auth import (
+    CodexCredential,
+    CodexCredentialManager,
+    CodexCredentialStore,
+)
+from harness.core.config import parse_harness_composition
 
 
 def _token() -> str:

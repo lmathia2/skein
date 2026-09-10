@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from harness.telemetry import (
+from harness.evidence.telemetry import (
     MetricsStore,
     ModelUsageSample,
     TaskOutcomeSample,

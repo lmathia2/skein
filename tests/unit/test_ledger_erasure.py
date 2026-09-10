@@ -1,9 +1,9 @@
 import hashlib
 from pathlib import Path
 
-from harness.ledger import DuckDbLedgerStore, erase_task_state, seal_task_events
-from harness.state import JsonlEventStore
-from harness.telemetry.metrics import MetricsStore, ModelUsageSample
+from harness.evidence.ledger import DuckDbLedgerStore, erase_task_state, seal_task_events
+from harness.evidence.state import JsonlEventStore
+from harness.evidence.telemetry.metrics import MetricsStore, ModelUsageSample
 
 
 def test_erasure_removes_task_ledger_operational_notebook_artifact_and_segment(

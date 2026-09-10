@@ -4,9 +4,9 @@ from google.adk.events import Event
 from google.genai import types
 
 from app.agent.presentation import conversation_history, message_event, result_events
-from harness.context import estimate_tokens
-from harness.server.adk_mapper import AdkAgUiNormalizer
-from harness.server.protocol import AgUiEventType
+from harness.adapters.adk.runtime.adk_mapper import AdkAgUiNormalizer
+from harness.adapters.adk.runtime.protocol import AgUiEventType
+from harness.core.context import estimate_tokens
 
 
 def test_structured_worker_partial_and_final_control_never_become_public_text() -> None:

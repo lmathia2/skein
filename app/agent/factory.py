@@ -16,10 +16,11 @@ from google.adk.apps.app import App, EventsCompactionConfig, ResumabilityConfig
 from google.adk.plugins.base_plugin import BasePlugin
 from pydantic import BaseModel
 
-from harness.adk import SteeringPlugin
-from harness.adk.context import ContextWindowPlugin, MemoryShadowPlugin
-from harness.adk.pi_compaction import pi_event_summarizer
-from harness.agent import (
+from harness.adapters.adk import SteeringPlugin
+from harness.adapters.adk.context import ContextWindowPlugin, MemoryShadowPlugin
+from harness.adapters.adk.pi_compaction import pi_event_summarizer
+from harness.adapters.providers import AdkModelProviderRegistry, default_adk_model_provider_registry
+from harness.core.agent import (
     AdkHarnessAssembly,
     AgentSnapshot,
     ControlCommand,
@@ -30,25 +31,17 @@ from harness.agent import (
     RuntimeCapability,
     SteeringCommand,
 )
-from harness.agent.resources import HarnessResources, ResourceItem
-from harness.ai import AdkModelProviderRegistry, default_adk_model_provider_registry
-from harness.approvals import ApprovalStore
-from harness.approvals.waiting import ApprovalWaiter
-from harness.config import (
+from harness.core.agent.resources import HarnessResources, ResourceItem
+from harness.core.config import (
     FOUR_CODING_TOOLS,
     HarnessComposition,
     ModelConfig,
     RuntimeBindings,
     SkeinConfig,
 )
-from harness.context import prefix_hash
-from harness.environment import (
-    ExecutionRuntime,
-    LocalRepositoryRuntime,
-    LocalWorkspaceEnvironment,
-)
-from harness.ledger import LedgerBackedEventStore, LedgerStore, open_ledger
-from harness.ledger.importers import (
+from harness.core.context import prefix_hash
+from harness.evidence.ledger import LedgerBackedEventStore, LedgerStore, open_ledger
+from harness.evidence.ledger.importers import (
     import_approval,
     import_checkpoint,
     import_metric,
@@ -56,27 +49,38 @@ from harness.ledger.importers import (
     import_tool_receipt,
     import_trace_span,
 )
-from harness.memory.lance import LanceMemorySearch
-from harness.repo import discover_instruction_files
-from harness.safety import ApprovalPolicy, SecretRedactor
-from harness.sandbox import create_configured_command_sandbox
-from harness.state import (
+from harness.evidence.memory.lance import LanceMemorySearch
+from harness.evidence.state import (
     CheckpointStore,
     JsonlEventStore,
     SteeringQueue,
     ToolReceiptStore,
     rebuild_ledger,
 )
-from harness.telemetry.adk_plugin import (
+from harness.evidence.telemetry.adk_plugin import (
     HarnessMetricsPlugin,
     ModelPricing,
     pricing_from_env,
 )
-from harness.tools.adk_adapter import _ArtifactResolver, create_adk_tools, discover_known_secrets
-from harness.tools.memory import ContextProgramService
-from harness.tracing import CodingToolArtifactPlugin, HarnessTracePlugin, TraceContentMode
+from harness.evidence.tracing import CodingToolArtifactPlugin, HarnessTracePlugin, TraceContentMode
+from harness.execution.approvals import ApprovalStore
+from harness.execution.approvals.waiting import ApprovalWaiter
+from harness.execution.environment import (
+    ExecutionRuntime,
+    LocalRepositoryRuntime,
+    LocalWorkspaceEnvironment,
+)
+from harness.execution.repo import discover_instruction_files
+from harness.execution.safety import ApprovalPolicy, SecretRedactor
+from harness.execution.sandbox import create_configured_command_sandbox
+from harness.execution.tools.adk_adapter import (
+    _ArtifactResolver,
+    create_adk_tools,
+    discover_known_secrets,
+)
+from harness.execution.tools.memory import ContextProgramService
+from harness.execution.workspace import GitWorktreeManager
 from harness.verification import ManagedValidationExecutor
-from harness.workspace import GitWorktreeManager
 
 from .builders import build_coding_worker
 from .config import HarnessSettings, settings_from_composition

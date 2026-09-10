@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from harness.ledger import JsonlLedgerStore, LedgerBackedEventStore, erase_task_state
-from harness.state import JsonlEventStore
+from harness.evidence.ledger import JsonlLedgerStore, LedgerBackedEventStore, erase_task_state
+from harness.evidence.state import JsonlEventStore
 
 
 def test_readonly_prior_replay_never_resurrects_erased_canonical_events(tmp_path):

@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from harness.ledger import DuckDbLedgerStore, JsonlLedgerStore
-from harness.memory import MemoryProgramRuntime, ViewRequest, available_programs
-from harness.memory.context import bounded_events
-from harness.tools.memory import ContextProgramService
+from harness.evidence.ledger import DuckDbLedgerStore, JsonlLedgerStore
+from harness.evidence.memory import MemoryProgramRuntime, ViewRequest, available_programs
+from harness.evidence.memory.context import bounded_events
+from harness.execution.tools.memory import ContextProgramService
 
 
 def seed(store, n=6, task="task"):
@@ -19,7 +19,7 @@ def seed(store, n=6, task="task"):
 
 
 def test_configured_program_versions_restrict_the_live_service(tmp_path: Path):
-    from harness.config.models import ContextProgramConfig
+    from harness.core.config.models import ContextProgramConfig
 
     store = JsonlLedgerStore(tmp_path / "events.jsonl")
     seed(store)
@@ -250,8 +250,8 @@ def test_duckdb_count_projection_tracks_appends_restart_and_erasure(tmp_path: Pa
 
 
 def test_oversized_exact_event_is_recoverable_in_utf8_ranges(tmp_path: Path):
-    from harness.ledger.models import canonical_json
-    from harness.memory.context import project
+    from harness.evidence.ledger.models import canonical_json
+    from harness.evidence.memory.context import project
 
     store = JsonlLedgerStore(tmp_path / "ledger")
     event = store.append(task_id="task", source="context", source_id="large", kind="context.history",

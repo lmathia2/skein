@@ -10,9 +10,9 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 
-from harness.models.agent_step import AgentStep
-from harness.orchestration.reply import MAX_HEADER_CHARS, MAX_REPLY_CHARS, parse_reply
-from harness.safety import SecretRedactor
+from harness.core.models.agent_step import AgentStep
+from harness.core.orchestration.reply import MAX_HEADER_CHARS, MAX_REPLY_CHARS, parse_reply
+from harness.execution.safety import SecretRedactor
 
 # Multi-word/multi-line credential forms cannot be safely redacted one token at
 # a time. Conservatively hold from a sensitive label until the final response.

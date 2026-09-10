@@ -85,9 +85,26 @@ result outside the model. The feedback arrow is the long-session mechanism: reta
 evidence is transformed into a new bounded view instead of replaying an ever-growing
 transcript.
 
+## Source boundaries
+
+The directory structure mirrors the authority boundaries in the diagram:
+
+| Package | Intent | May depend on |
+|---|---|---|
+| `harness/core` | Pure task, configuration, context, and loop contracts | Core models and evidence interfaces |
+| `harness/execution` | The single brokered path for filesystem and command effects | Core contracts and evidence receipts |
+| `harness/evidence` | Durable facts and reproducible projections | Core value types; never provider adapters |
+| `harness/ptc` | Notebook-backed programmable execution | Execution broker and evidence |
+| `harness/verification` | Host-owned completion decisions | Core, execution, and evidence |
+| `harness/adapters` | ADK, model-provider, and Pier boundary translations | Any core layer required to integrate the host |
+
+`app/agent` is the composition root. `evals` is deliberately outside `harness`: it
+selects tasks and records benchmark outcomes but is not part of Skein's agent
+authority model.
+
 ## Context compiler
 
-`harness/context` turns the task, repository map, selected skills, recent evidence,
+`harness/core/context` turns the task, repository map, selected skills, recent evidence,
 and any compaction handoff into a bounded work packet. Stable instructions and tool
 declarations remain byte-stable for provider caching; volatile task state stays in
 the dynamic suffix. Context is compiled deterministically so the same inputs and
@@ -110,7 +127,7 @@ actually happens next.
 
 ## Model providers
 
-`harness/ai` adapts supported providers to one ADK-facing contract. Provider choice,
+`harness/adapters/providers` adapts supported providers to one ADK-facing contract. Provider choice,
 model name, reasoning effort, and generation limits are configurable. Request-shape
 hashing, retry bounds, usage accounting, and secret handling stay consistent so a
 provider swap does not change harness authority.
@@ -138,7 +155,7 @@ only explicitly safe cells.
 
 ## Effect broker and runtime
 
-`harness/tools`, `harness/environment`, and `harness/sandbox` form one effect path.
+`harness/execution/tools`, `harness/execution/environment`, and `harness/execution/sandbox` form one effect path.
 They confine file paths, classify commands, enforce policy and approvals, redact
 secrets, bound output, and issue mutation receipts. Direct tools, nested PTC calls,
 and verification reuse these primitives so syntax never changes authority.
@@ -148,7 +165,7 @@ implement execution, but neither can weaken the broker contract.
 
 ## Trace, state, and memory
 
-`harness/state` and `harness/ledger` retain the canonical append-only account of
+`harness/evidence/state` and `harness/evidence/ledger` retain the canonical append-only account of
 task events and effects, including failures, timeouts, cancellation, and unknown
 outcomes. JSONL is the dependency-free ledger; DuckDB is an optional analytical
 implementation. Content-addressed artifacts hold large bodies without inflating
@@ -158,7 +175,7 @@ Appending rather than rewriting matters: a correction adds evidence instead of
 silently replacing the earlier account. The same history can support debugging,
 recovery, notebook reconstruction, verification, and several different prompt views.
 
-`harness/memory` treats memory as a view produced by a versioned computation:
+`harness/evidence/memory` treats memory as a view produced by a versioned computation:
 
 ```text
 view = program@version(authorized evidence at watermark, parameters, budgets)

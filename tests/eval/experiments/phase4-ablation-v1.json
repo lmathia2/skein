@@ -29,13 +29,13 @@
   "candidates": [
     {
       "id": "skein-four-tool",
-      "adapter": "harness.evals.harbor:SkeinHarborAgent",
+      "adapter": "harness.adapters.pier:SkeinHarborAgent",
       "revision": "PENDING",
-      "config_path": "harness/config/profiles/four-tool.yaml",
+      "config_path": "harness/core/config/profiles/four-tool.yaml",
       "config_sha256": "3a63665316f95dc43f83bffaffb2752981867d3a5637c0c7e7d0e2f139c58ba5",
       "behavior_sha256": "f915f33a1ded533bb3b616551b93903f66399fa695d23b745144f48ab19be52b",
       "agent_kwargs": {
-        "config": "harness/config/profiles/four-tool.yaml",
+        "config": "harness/core/config/profiles/four-tool.yaml",
         "max_iterations": 24,
         "max_task_input_tokens": 2000000,
         "wall_time_seconds": 1800
@@ -43,13 +43,13 @@
     },
     {
       "id": "skein-notebook-ptc-jsonl",
-      "adapter": "harness.evals.harbor:SkeinHarborAgent",
+      "adapter": "harness.adapters.pier:SkeinHarborAgent",
       "revision": "PENDING",
-      "config_path": "harness/config/profiles/notebook-ptc-jsonl.yaml",
+      "config_path": "harness/core/config/profiles/notebook-ptc-jsonl.yaml",
       "config_sha256": "71c873c8506a54441c1bca9a4cfe42b1984e8b3c7ca7b37338216531108593a5",
       "behavior_sha256": "6f98acbfee278a291241c8108458806cb2398ac8b3d84821f2eec9f26a1e6c1f",
       "agent_kwargs": {
-        "config": "harness/config/profiles/notebook-ptc-jsonl.yaml",
+        "config": "harness/core/config/profiles/notebook-ptc-jsonl.yaml",
         "max_iterations": 24,
         "max_task_input_tokens": 2000000,
         "wall_time_seconds": 1800

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals import (
+from harness.execution.approvals import (
     ApprovalDecision,
     ApprovalStore,
     ApprovalSubmission,

@@ -22,8 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from harness.config import SkeinConfig, load_harness_composition
-from harness.evals.experiments import harbor_task_path
+from evals.experiments import harbor_task_path
+from harness.core.config import SkeinConfig, load_harness_composition
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFESTS = {
@@ -377,7 +377,7 @@ def run_command(
         "--path",
         str(task_path),
         "--agent-import-path",
-        "harness.evals.harbor:SkeinPierAgent",
+        "harness.adapters.pier:SkeinPierAgent",
         "--model",
         args.model,
         "--agent-kwarg",
@@ -567,7 +567,7 @@ def main() -> int:
         default="xhigh",
         help="reasoning effort, or provider-default to leave it unset",
     )
-    parser.add_argument("--config", default="harness/config/profiles/four-tool.yaml")
+    parser.add_argument("--config", default="harness/core/config/profiles/four-tool.yaml")
     parser.add_argument("--attempts", type=int)
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--retries", type=int, default=0)

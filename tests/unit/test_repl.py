@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from harness.repl import PersistentPythonWorker
+from harness.ptc.repl import PersistentPythonWorker
 
 
 class _Broker:

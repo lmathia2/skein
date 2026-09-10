@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.tools.search_command import SearchCommandParseError, parse_search_command
+from harness.execution.tools.search_command import SearchCommandParseError, parse_search_command
 
 
 def test_search_parser_accepts_bounded_grep_find_health_and_cursor() -> None:

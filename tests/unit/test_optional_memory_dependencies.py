@@ -17,10 +17,10 @@ def blocked(name, *args, **kwargs):
     return original_import(name, *args, **kwargs)
 builtins.__import__ = blocked
 
-import harness.evals.runner
-from harness.ledger import JsonlLedgerStore
+import evals.runner
+from harness.evidence.ledger import JsonlLedgerStore
 
-assert harness.evals.runner is not None
+assert evals.runner is not None
 with tempfile.TemporaryDirectory() as directory:
     ledger = JsonlLedgerStore(Path(directory) / "ledger.jsonl")
     ledger.append(task_id="task", source="test", source_id="one", kind="observed")

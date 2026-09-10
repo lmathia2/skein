@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from harness.skills import SkillRegistry, SkillRoot
+from harness.core.skills import SkillRegistry, SkillRoot
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILLS_ROOT = ROOT / ".agents" / "skills"

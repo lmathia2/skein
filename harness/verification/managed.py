@@ -8,10 +8,10 @@ from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
-from harness.approvals import ApprovalStore
-from harness.safety import ApprovalAction, ApprovalPolicy, CommandRisk, SecretRedactor
-from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT, CommandSandbox, SandboxRequest
-from harness.telemetry import MetricsStore, ToolUsageSample
+from harness.evidence.telemetry import MetricsStore, ToolUsageSample
+from harness.execution.approvals import ApprovalStore
+from harness.execution.safety import ApprovalAction, ApprovalPolicy, CommandRisk, SecretRedactor
+from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT, CommandSandbox, SandboxRequest
 
 from .contracts import CommandResult, ValidationCommand
 

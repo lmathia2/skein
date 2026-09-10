@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.workspace import GitWorktreeManager
+from harness.execution.workspace import GitWorktreeManager
 
 
 def _run(root: Path, *args: str) -> None:

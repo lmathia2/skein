@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.server import AgUiEvent, AgUiEventType, ServerEnvelope
-from harness.server.registry import (
+from harness.adapters.adk.runtime import AgUiEvent, AgUiEventType, ServerEnvelope
+from harness.adapters.adk.runtime.registry import (
     DurableRunEventJournal,
     RunEventBroker,
     RunStatus,

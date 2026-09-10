@@ -3,10 +3,10 @@ from __future__ import annotations
 import importlib
 from types import SimpleNamespace
 
-from harness.models.agent_step import AgentStep
-from harness.models.ledger import TaskLedger
-from harness.models.task import TaskRequest
-from harness.state import EventKind, JsonlEventStore
+from harness.core.models.agent_step import AgentStep
+from harness.core.models.ledger import TaskLedger
+from harness.core.models.task import TaskRequest
+from harness.evidence.state import EventKind, JsonlEventStore
 
 
 def _ledger() -> TaskLedger:

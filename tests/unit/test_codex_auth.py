@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from harness.ai.codex_auth import (
+from harness.adapters.providers.codex_auth import (
     CODEX_DEVICE_TOKEN_URL,
     CODEX_DEVICE_USER_CODE_URL,
     CODEX_TOKEN_URL,

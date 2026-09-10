@@ -7,23 +7,23 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from harness.models.checkpoint import Checkpoint
-from harness.models.ledger import TaskLedger
-from harness.repo import build_repository_manifest
-from harness.sandbox import LocalSandbox
-from harness.state import (
+from harness.core.models.checkpoint import Checkpoint
+from harness.core.models.ledger import TaskLedger
+from harness.evidence.state import (
     CheckpointStore,
     EventKind,
     JsonlEventStore,
     rebuild_ledger,
 )
-from harness.tools.adk_adapter import create_adk_tools
+from harness.execution.repo import build_repository_manifest
+from harness.execution.sandbox import LocalSandbox
+from harness.execution.tools.adk_adapter import create_adk_tools
+from harness.execution.workspace import GitWorktreeManager
 from harness.verification import (
     ManagedValidationExecutor,
     discover_validation_plan,
     run_validation_plan,
 )
-from harness.workspace import GitWorktreeManager
 
 
 def _run(root: Path, *args: str) -> None:

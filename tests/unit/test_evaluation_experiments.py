@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.evals.experiments import (
+from evals.experiments import (
     TrialMetrics,
     TrialRecord,
     analyze_trials,

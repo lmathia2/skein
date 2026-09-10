@@ -10,8 +10,8 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
-from harness.ai.codex_auth import CodexCredential
-from harness.ai.codex_responses import CodexResponsesLlm, build_codex_request_body
+from harness.adapters.providers.codex_auth import CodexCredential
+from harness.adapters.providers.codex_responses import CodexResponsesLlm, build_codex_request_body
 
 
 class _Credentials:

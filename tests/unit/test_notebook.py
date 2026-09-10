@@ -4,13 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from harness.notebook import (
+from harness.evidence.state import EventKind, HarnessEvent
+from harness.ptc.notebook import (
     canonical_notebook_bytes,
     externalize_mime_bundle,
     materialize_notebook,
     reduce_notebook,
 )
-from harness.state import EventKind, HarnessEvent
 
 
 def _event(sequence: int, kind: EventKind, payload: dict[str, object]) -> HarnessEvent:

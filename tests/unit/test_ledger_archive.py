@@ -2,7 +2,7 @@ from pathlib import Path
 
 import duckdb
 
-from harness.ledger import DuckDbLedgerStore, seal_task_events
+from harness.evidence.ledger import DuckDbLedgerStore, seal_task_events
 
 
 def test_sealed_parquet_matches_hot_rows_at_watermark_and_is_reproducible(

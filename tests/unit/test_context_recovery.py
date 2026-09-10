@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from harness.models.checkpoint import Checkpoint
-from harness.models.ledger import TaskLedger
-from harness.server.ownership import WorkspaceOwner
-from harness.state import CheckpointStore, EventKind, JsonlEventStore, ToolReceiptStore
-from harness.state.recovery import validate_recovery_evidence
-from harness.tools.adk_adapter import create_adk_tools
+from harness.adapters.adk.runtime.ownership import WorkspaceOwner
+from harness.core.models.checkpoint import Checkpoint
+from harness.core.models.ledger import TaskLedger
+from harness.evidence.state import CheckpointStore, EventKind, JsonlEventStore, ToolReceiptStore
+from harness.evidence.state.recovery import validate_recovery_evidence
+from harness.execution.tools.adk_adapter import create_adk_tools
 
 
 def _evidence(tmp_path: Path):

@@ -205,8 +205,8 @@ demonstrated.
 - [~] A7. There is one authoritative implementation per concern. Legacy and managed
   tool/policy paths coexist, increasing audit and divergence risk.
 
-Evidence: `app/agent/factory.py`, `harness/config/models.py`,
-`harness/agent/contracts.py`, `tests/unit/test_harness_factory.py`, and
+Evidence: `app/agent/factory.py`, `harness/core/config/models.py`,
+`harness/core/agent/contracts.py`, `tests/unit/test_harness_factory.py`, and
 `tests/unit/test_harness_config.py`.
 
 ### B. Task understanding and workflow governance — 8 points
@@ -596,20 +596,20 @@ live workflow before upgrades.
 ## Evidence index
 
 - Architecture and fixed topology: `app/agent/factory.py:155`,
-  `harness/config/models.py:133`
-- Context compiler: `harness/context/compiler.py:113`
-- Managed four-tool adapter: `harness/tools/adk_adapter/__init__.py:241`
-- Atomic file mutations: `harness/environment/local.py:80`
+  `harness/core/config/models.py:133`
+- Context compiler: `harness/core/context/compiler.py:113`
+- Managed four-tool adapter: `harness/execution/tools/adk_adapter/__init__.py:241`
+- Atomic file mutations: `harness/execution/environment/local.py:80`
 - Verification discovery and evidence: `harness/verification/discovery.py:57`,
   `harness/verification/runner.py:106`
-- No-progress logic: `harness/state/progress.py:25`,
-  `harness/orchestration/core.py:78`
-- ADK event streaming and cancellation: `harness/server/runtime.py:135`,
-  `harness/server/runtime.py:605`
-- Model-only metrics callbacks: `harness/telemetry/adk_plugin.py:172`
-- Tool metrics schema: `harness/telemetry/metrics.py:43`
-- Search and structural repository map: `harness/repo/fff_search.py:268`,
-  `harness/repo/index.py:831`
+- No-progress logic: `harness/evidence/state/progress.py:25`,
+  `harness/core/orchestration/core.py:78`
+- ADK event streaming and cancellation: `harness/adapters/adk/runtime/runtime.py:135`,
+  `harness/adapters/adk/runtime/runtime.py:605`
+- Model-only metrics callbacks: `harness/evidence/telemetry/adk_plugin.py:172`
+- Tool metrics schema: `harness/evidence/telemetry/metrics.py:43`
+- Search and structural repository map: `harness/execution/repo/fff_search.py:268`,
+  `harness/execution/repo/index.py:831`
 - Trace-derived skill synthesis: `harness/learning/skills.py:29`
 - Local operational evaluation:
   `.artifacts/local-model-eval-20260829/results-final/FINAL_REPORT.md`

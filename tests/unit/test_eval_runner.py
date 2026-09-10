@@ -5,10 +5,10 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from harness.config import SkeinConfig, load_harness_composition
-from harness.evals import runner
-from harness.models import TaskRequest
-from harness.server.protocol import AgUiEvent, AgUiEventType, ServerEnvelope
+from evals import runner
+from harness.adapters.adk.runtime.protocol import AgUiEvent, AgUiEventType, ServerEnvelope
+from harness.core.config import SkeinConfig, load_harness_composition
+from harness.core.models import TaskRequest
 
 
 def _repository(root: Path, *, dirty: bool = False) -> Path:

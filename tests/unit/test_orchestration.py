@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from harness.context import estimate_tokens
-from harness.models.agent_step import AgentStep, CompletionClaim
-from harness.models.task import TaskRequest
-from harness.orchestration import (
+from harness.core.context import estimate_tokens
+from harness.core.models.agent_step import AgentStep, CompletionClaim
+from harness.core.models.task import TaskRequest
+from harness.core.orchestration import (
     HarnessRoute,
     build_work_packet,
     create_initial_ledger,
@@ -16,7 +16,7 @@ from harness.orchestration import (
     replan_ledger,
     resume_for_steering,
 )
-from harness.tools.adk_adapter import create_adk_tools
+from harness.execution.tools.adk_adapter import create_adk_tools
 
 
 def _ledger():

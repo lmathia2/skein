@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.sandbox import (
+from harness.execution.sandbox import (
     DockerSandbox,
     LocalSandbox,
     SandboxRequest,

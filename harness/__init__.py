@@ -1,1 +1,1 @@
-"""Core implementation of the ADK coding harness."""
+"""Skein's core, execution, evidence, PTC, verification, and adapter layers."""

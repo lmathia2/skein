@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from harness.models import (
+from harness.core.models import (
     AgentStep,
     TaskLedger,
     TaskRequest,
 )
-from harness.models.agent_step import StructuredAgentStep
+from harness.core.models.agent_step import StructuredAgentStep
 
 
 def test_task_request_adds_default_acceptance_criterion() -> None:

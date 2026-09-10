@@ -8,11 +8,7 @@ from google.adk.events import Event
 from google.genai import types
 from pydantic import ValidationError
 
-from harness.config import load_harness_composition
-from harness.config.models import PersistenceConfig
-from harness.ledger import DuckDbLedgerStore
-from harness.ledger.importers import import_session_record
-from harness.persistence.adk_services import (
+from harness.adapters.adk.persistence.adk_services import (
     ArtifactBackend,
     PersistenceSettings,
     SessionBackend,
@@ -22,7 +18,11 @@ from harness.persistence.adk_services import (
     local_durable_settings,
     settings_from_composition,
 )
-from harness.persistence.observed_session import ObservedSessionService
+from harness.adapters.adk.persistence.observed_session import ObservedSessionService
+from harness.core.config import load_harness_composition
+from harness.core.config.models import PersistenceConfig
+from harness.evidence.ledger import DuckDbLedgerStore
+from harness.evidence.ledger.importers import import_session_record
 
 
 def test_bundled_composition_selects_local_durable_backends() -> None:

@@ -1,0 +1,53 @@
+"""Declarative coding-harness composition contracts."""
+
+from .loader import (
+    DEFAULT_COMPOSITION_PATH,
+    DEFAULT_HARNESS_CONFIG_MODELS,
+    load_harness_composition,
+    parse_harness_composition,
+)
+from .models import (
+    FOUR_CODING_TOOLS,
+    AgentConfig,
+    GenerationConfig,
+    HarnessCapability,
+    HarnessComposition,
+    HarnessSelectionConfig,
+    MemoryConfig,
+    ModelConfig,
+    NotebookPtcConfig,
+    PersistenceConfig,
+    ProgressConfig,
+    RuntimeBindings,
+    SandboxConfig,
+    SecretRef,
+    ServerConfig,
+    SkeinConfig,
+    ToolSurfaceConfig,
+    WorkflowConfig,
+)
+
+__all__ = [
+    "DEFAULT_COMPOSITION_PATH",
+    "DEFAULT_HARNESS_CONFIG_MODELS",
+    "FOUR_CODING_TOOLS",
+    "AgentConfig",
+    "GenerationConfig",
+    "HarnessCapability",
+    "HarnessComposition",
+    "HarnessSelectionConfig",
+    "MemoryConfig",
+    "ModelConfig",
+    "NotebookPtcConfig",
+    "PersistenceConfig",
+    "ProgressConfig",
+    "RuntimeBindings",
+    "SandboxConfig",
+    "SecretRef",
+    "ServerConfig",
+    "SkeinConfig",
+    "ToolSurfaceConfig",
+    "WorkflowConfig",
+    "load_harness_composition",
+    "parse_harness_composition",
+]

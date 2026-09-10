@@ -8,8 +8,8 @@ against.
 
 | Stack | Revision | Model-facing text examined |
 | --- | --- | --- |
-| Skein four-tool | `7c8ddcc` | `coding_worker.instruction` in `harness/config/profiles/four-tool.yaml`; tool schemas from `harness/tools/adk_adapter.py` |
-| Skein notebook PTC | `7c8ddcc` | same base + `NOTEBOOK_PTC_INSTRUCTION` (`app/agent/config.py`) + `NotebookPtcConfig.batching_instruction` (`harness/config/models.py`); tool description in `app/agent/ptc.py` |
+| Skein four-tool | `7c8ddcc` | `coding_worker.instruction` in `harness/core/config/profiles/four-tool.yaml`; tool schemas from `harness/execution/tools/adk_adapter.py` |
+| Skein notebook PTC | `7c8ddcc` | same base + `NOTEBOOK_PTC_INSTRUCTION` (`app/agent/config.py`) + `NotebookPtcConfig.batching_instruction` (`harness/core/config/models.py`); tool description in `app/agent/ptc.py` |
 | Skein Prime PTC | `7c8ddcc` | same base + inline adapter paragraph in `app/agent/config.py`; tool description in `app/agent/prime_ptc.py` |
 | Prime Agent upstream | `bf8894a` (pinned; prompt files unchanged at `d4bc773`) | `packages/coding-agent/src/core/prompts/rlm.ts`, `tools/ipython.ts`, `system-prompt.ts` |
 | pi coding agent | `853a80d` | `packages/coding-agent/src/core/system-prompt.ts`, `tools/{read,bash,edit,write}.ts` |
@@ -172,7 +172,7 @@ verify:     Run already-selected formatter, type, and targeted-test commands in 
 
 ### `agent.help()` contract change
 
-`_AGENT_RESULTS` in `harness/repl/worker.py` becomes the single source of result
+`_AGENT_RESULTS` in `harness/ptc/repl/worker.py` becomes the single source of result
 shapes and must match the broker. Every envelope, including error, blocked, and
 per-item parallel results, exposes `status`, `model_text`, and a `data` mapping
 that is empty when there is no typed detail. This is reference-six N3.

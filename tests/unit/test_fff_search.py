@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.repo import FffSearchService, SearchCursorError
+from harness.execution.repo import FffSearchService, SearchCursorError
 
 
 def _service(tmp_path: Path) -> FffSearchService:

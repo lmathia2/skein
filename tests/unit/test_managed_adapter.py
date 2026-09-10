@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.repo import SearchPage
-from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT, SandboxRequest, SandboxResult
-from harness.tools.adk_adapter import create_adk_tools, discover_known_secrets
+from harness.execution.repo import SearchPage
+from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT, SandboxRequest, SandboxResult
+from harness.execution.tools.adk_adapter import create_adk_tools, discover_known_secrets
 
 
 class _RecordingSandbox:

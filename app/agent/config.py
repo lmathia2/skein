@@ -8,14 +8,14 @@ import socket
 from dataclasses import dataclass
 from pathlib import Path
 
-from harness.config import (
+from harness.core.config import (
     DEFAULT_COMPOSITION_PATH,
     HarnessComposition,
     RuntimeBindings,
     SkeinConfig,
 )
-from harness.context import build_static_prefix
-from harness.repo import collect_project_instructions
+from harness.core.context import build_static_prefix
+from harness.execution.repo import collect_project_instructions
 
 NOTEBOOK_PTC_INSTRUCTION = """
 Notebook-native programmatic tool calling is enabled. Your only model-visible tool is
@@ -146,7 +146,7 @@ def runtime_bindings_from_env(configuration_root: Path) -> RuntimeBindings:
 
 
 def load_settings() -> HarnessSettings:
-    from harness.config import DEFAULT_COMPOSITION_PATH, load_harness_composition
+    from harness.core.config import DEFAULT_COMPOSITION_PATH, load_harness_composition
 
     path = (
         Path(os.getenv("SKEIN_CONFIG", str(DEFAULT_COMPOSITION_PATH))).expanduser().resolve()

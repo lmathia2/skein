@@ -6,20 +6,20 @@ from unittest.mock import patch
 
 import pytest
 
-from harness.approvals import ApprovalStore
-from harness.ledger import DuckDbLedgerStore, JsonlLedgerStore
-from harness.ledger.importers import (
+from harness.adapters.adk.runtime import AgUiEvent, AgUiEventType
+from harness.adapters.adk.runtime.registry import SqliteRunEventStore
+from harness.evidence.ledger import DuckDbLedgerStore, JsonlLedgerStore
+from harness.evidence.ledger.importers import (
     import_approval,
     import_harness_event,
     import_public_event,
     import_run,
     import_steering,
 )
-from harness.ledger.shadow import LedgerBackedEventStore
-from harness.server import AgUiEvent, AgUiEventType
-from harness.server.registry import SqliteRunEventStore
-from harness.state import JsonlEventStore, SteeringQueue
-from harness.state.events import HarnessEvent
+from harness.evidence.ledger.shadow import LedgerBackedEventStore
+from harness.evidence.state import JsonlEventStore, SteeringQueue
+from harness.evidence.state.events import HarnessEvent
+from harness.execution.approvals import ApprovalStore
 
 
 def test_append_is_idempotent_gap_free_and_rejects_conflicts(tmp_path: Path) -> None:

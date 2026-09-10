@@ -13,25 +13,25 @@ from google.genai import types
 from pydantic import PrivateAttr, ValidationError
 
 from app.agent.factory import default_harness_registry
-from harness.ai import ClosedAdkModelProviderRegistry
-from harness.ai.selection import (
-    ModelChoice,
-    load_model_default,
-    model_default_path,
-    save_model_default,
-)
-from harness.codex import (
+from harness.adapters.adk.persistence import build_service_bundle, settings_from_composition
+from harness.adapters.adk.runtime.models import MODEL_METADATA, CatalogModel, ModelControlError
+from harness.adapters.adk.runtime.protocol import ModelRequestMessage, StartTaskMessage
+from harness.adapters.adk.runtime.registry import RunEventBroker, SqliteRunEventStore
+from harness.adapters.adk.runtime.runtime import AdkRunExecutionFactory, RunCoordinator
+from harness.adapters.providers import ClosedAdkModelProviderRegistry
+from harness.adapters.providers.codex import (
     CodexSelection,
     load_codex_selection,
     prepare_codex_config,
     save_codex_selection,
 )
-from harness.config import RuntimeBindings, load_harness_composition
-from harness.persistence import build_service_bundle, settings_from_composition
-from harness.server.models import MODEL_METADATA, CatalogModel, ModelControlError
-from harness.server.protocol import ModelRequestMessage, StartTaskMessage
-from harness.server.registry import RunEventBroker, SqliteRunEventStore
-from harness.server.runtime import AdkRunExecutionFactory, RunCoordinator
+from harness.adapters.providers.selection import (
+    ModelChoice,
+    load_model_default,
+    model_default_path,
+    save_model_default,
+)
+from harness.core.config import RuntimeBindings, load_harness_composition
 
 
 class ScriptedModel(BaseLlm):
@@ -242,7 +242,7 @@ async def test_failed_default_write_does_not_change_conversation_choice(tmp_path
         raise OSError("disk full")
     try:
         await catalog(control)
-        monkeypatch.setattr("harness.server.models.save_model_default", fail)
+        monkeypatch.setattr("harness.adapters.adk.runtime.models.save_model_default", fail)
         with pytest.raises(OSError):
             await control.model_request(request(provider="scripted", name="beta", persist=True), user_id="user")
         assert control.models.current("user", "conversation").name == "alpha"

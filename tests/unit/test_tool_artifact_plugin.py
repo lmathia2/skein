@@ -4,8 +4,8 @@ import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
 
-from harness.state import EventKind, JsonlEventStore
-from harness.tracing import CodingToolArtifactPlugin
+from harness.evidence.state import EventKind, JsonlEventStore
+from harness.evidence.tracing import CodingToolArtifactPlugin
 
 
 def _invoke(

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.evals.manifests import (
+from evals.manifests import (
     BENCHMARKS,
     TrialReward,
     load_evaluation_manifest,

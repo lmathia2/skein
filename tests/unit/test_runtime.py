@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.orchestration.runtime import changed_paths, parse_agent_step
+from harness.core.orchestration.runtime import changed_paths, parse_agent_step
 
 
 def _run(root: Path, *args: str) -> None:

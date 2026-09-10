@@ -18,22 +18,22 @@ from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 from google.genai import types
 
-from harness.approvals.waiting import ApprovalWaiter
-from harness.config import NotebookPtcConfig
-from harness.environment.async_call import run_managed_thread
-from harness.notebook import (
+from harness.core.config import NotebookPtcConfig
+from harness.evidence.state import EventKind, EventStore
+from harness.evidence.state.events import HarnessEvent
+from harness.execution.approvals.waiting import ApprovalWaiter
+from harness.execution.environment.async_call import run_managed_thread
+from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT
+from harness.execution.tools.adk_adapter import AdkCodingTools
+from harness.execution.tools.output import bound_output, compact_tool_result
+from harness.ptc.notebook import (
     NotebookCell,
     externalize_mime_bundle,
     materialize_notebook,
     put_artifact,
     reduce_notebook,
 )
-from harness.repl import PersistentPythonWorker
-from harness.sandbox import MANAGED_COMMAND_ENVIRONMENT
-from harness.state import EventKind, EventStore
-from harness.state.events import HarnessEvent
-from harness.tools.adk_adapter import AdkCodingTools
-from harness.tools.output import bound_output, compact_tool_result
+from harness.ptc.repl import PersistentPythonWorker
 from harness.verification.contracts import is_reusable_validation_command
 
 from .config import HarnessSettings

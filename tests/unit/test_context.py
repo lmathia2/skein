@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import pytest
 
-from harness.context import (
+from harness.core.context import (
     CompactionPolicy,
     build_compaction_snapshot,
     truncate_to_tokens,
 )
-from harness.models import (
+from harness.core.models import (
     Decision,
     TaskLedger,
     TaskRequest,
     ValidationResult,
 )
-from harness.state.events import HarnessEvent
+from harness.evidence.state.events import HarnessEvent
 
 
 def _ledger() -> TaskLedger:

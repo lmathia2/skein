@@ -16,7 +16,7 @@ from google.adk.plugins.base_plugin import BasePlugin
 from google.adk.sessions.state import State
 from google.genai import types
 
-from harness.tracing import (
+from harness.evidence.tracing import (
     HarnessTracePlugin,
     TraceContentMode,
     TraceSpan,
@@ -192,7 +192,7 @@ def test_virtual_search_trace_classification_is_fail_open(
     monkeypatch,
 ) -> None:
     plugin = HarnessTracePlugin(database=tmp_path / "trace.db", clock=_clock)
-    from harness.tools import search_command
+    from harness.execution.tools import search_command
 
     def fail_parser(_command: str):
         raise RuntimeError("parser unavailable")

@@ -46,7 +46,7 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
         "model": "openai/gpt-5.5",
         "provider": "openrouter",
         "reasoning": "max",
-        "config": "harness/config/profiles/four-tool.yaml",
+        "config": "harness/core/config/profiles/four-tool.yaml",
         "max_output_tokens": 16_384,
         "max_task_input_tokens": 200_000,
         "api_key_env": "OPENROUTER_API_KEY",
@@ -63,7 +63,7 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
         str(tmp_path / "deep-swe-task"),
         "--agent-import-path",
     ]
-    assert "harness.evals.harbor:SkeinPierAgent" in command
+    assert "harness.adapters.pier:SkeinPierAgent" in command
     assert command[command.index("--model") + 1] == "openai/gpt-5.5"
     assert "max_task_input_tokens=200000" in command
     assert "--no-delete" in command
@@ -76,7 +76,7 @@ def test_provider_defaults_omit_reasoning_and_output_limit(tmp_path: Path) -> No
         "model": "openai/gpt-5.5",
         "provider": "openrouter",
         "reasoning": None,
-        "config": "harness/config/profiles/four-tool.yaml",
+        "config": "harness/core/config/profiles/four-tool.yaml",
         "max_output_tokens": None,
         "max_task_input_tokens": 200_000,
         "api_key_env": "OPENROUTER_API_KEY",

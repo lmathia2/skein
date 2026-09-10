@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from harness.skills import SkillRegistry, SkillRoot
+from harness.core.skills import SkillRegistry, SkillRoot
 
 if TYPE_CHECKING:
     from .config import HarnessSettings

@@ -30,7 +30,7 @@ Run the smoke suite with two isolated Pier trials at a time:
 ```sh
 .venv/bin/python scripts/run_harbor_eval.py \
   --suite smoke \
-  --config harness/config/profiles/four-tool.yaml \
+  --config harness/core/config/profiles/four-tool.yaml \
   --concurrency 2
 ```
 
@@ -60,5 +60,19 @@ uv run --extra eval ruff check app harness scripts tests/unit/test_harbor_adapte
 uv run --extra eval pyright app harness
 ```
 
+The source tree separates product code from benchmark support:
+
+| Path | Responsibility |
+|---|---|
+| `app/agent/` | Concrete ADK worker and composition root |
+| `harness/core/` | Task contracts, configuration, context, and orchestration |
+| `harness/execution/` | Brokered tools, policy, approvals, and workspace runtimes |
+| `harness/evidence/` | Append-only state, ledger projections, traces, and metrics |
+| `harness/ptc/` | Persistent Python worker and notebook projection |
+| `harness/verification/` | Independent completion checks |
+| `harness/adapters/` | ADK, provider, and Pier integration code |
+| `evals/` | Harbor manifests, campaign runner, and result analysis—not harness core |
+
 See `docs/evaluation-harbor.md` for Pier details and `docs/architecture.md` for
-the component wiring.
+the component wiring. See `docs/package-layout.md` for dependency rules and the
+contents of each package.

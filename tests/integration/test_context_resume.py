@@ -15,14 +15,14 @@ from google.genai import types
 from pydantic import PrivateAttr
 
 from app.agent.factory import default_harness_registry
-from harness.ai import ClosedAdkModelProviderRegistry
-from harness.approvals import ApprovalStore
-from harness.config import load_harness_composition
-from harness.ledger import LedgerBackedEventStore, open_ledger
-from harness.ledger.importers import import_tool_receipt
-from harness.server.bootstrap import build_server_assembly
-from harness.server.protocol import CancelTaskMessage, StartTaskMessage
-from harness.state import CheckpointStore, JsonlEventStore, ToolReceiptStore
+from harness.adapters.adk.runtime.bootstrap import build_server_assembly
+from harness.adapters.adk.runtime.protocol import CancelTaskMessage, StartTaskMessage
+from harness.adapters.providers import ClosedAdkModelProviderRegistry
+from harness.core.config import load_harness_composition
+from harness.evidence.ledger import LedgerBackedEventStore, open_ledger
+from harness.evidence.ledger.importers import import_tool_receipt
+from harness.evidence.state import CheckpointStore, JsonlEventStore, ToolReceiptStore
+from harness.execution.approvals import ApprovalStore
 
 
 class ResumeModel(BaseLlm):
@@ -140,7 +140,7 @@ def test_real_process_resume_same_invocation_to_verified_completion(tmp_path: Pa
     subprocess.run(["git", "-C", str(workspace), "add", "test_check.py"], check=True)
     subprocess.run(["git", "-C", str(workspace), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
                     "commit", "-qm", "fixture"], check=True)
-    profile = Path(__file__).resolve().parents[2] / "harness/config/profiles/four-tool.yaml"
+    profile = Path(__file__).resolve().parents[2] / "harness/core/config/profiles/four-tool.yaml"
     payload = load_harness_composition(profile).model_dump(mode="json")
     payload["harness"]["config"]["memory"]["enabled"] = True
     payload["harness"]["config"]["adk"]["recovery"] = "safe_auto"

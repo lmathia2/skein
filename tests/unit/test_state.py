@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from harness.models.checkpoint import Checkpoint
-from harness.models.ledger import TaskLedger
-from harness.orchestration import replan_ledger
-from harness.state import (
+from harness.core.models.checkpoint import Checkpoint
+from harness.core.models.ledger import TaskLedger
+from harness.core.orchestration import replan_ledger
+from harness.evidence.state import (
     CheckpointStore,
     EventKind,
     JsonlEventStore,

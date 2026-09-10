@@ -11,7 +11,8 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from pydantic import ValidationError
 
-from harness.agent import (
+from harness.adapters.providers import AdkModelProvider, AdkModelProviderRegistry
+from harness.core.agent import (
     AdkHarnessAssembly,
     AgentSnapshot,
     ControlCommand,
@@ -23,8 +24,7 @@ from harness.agent import (
     RuntimeCapability,
     SteeringCommand,
 )
-from harness.ai import AdkModelProvider, AdkModelProviderRegistry
-from harness.config import (
+from harness.core.config import (
     HarnessComposition,
     ModelConfig,
     RuntimeBindings,
