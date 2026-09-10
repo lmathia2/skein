@@ -39,6 +39,13 @@ disabled module selects the ordinary behavior; it never disables authorization,
 redaction, output bounds, or independent verification. Invalid combinations fail while
 loading configuration instead of silently falling back.
 
+The source tree follows the same boundaries: `harness/core` owns task and context
+contracts; `execution` owns effects; `evidence` owns durable facts and derived views;
+`ptc` owns programmable execution; `verification` owns completion; and `adapters`
+translates ADK, providers, and Pier. Harbor manifests and campaign analysis live in
+top-level `evals`, outside the core harness. The detailed ownership rules are in the
+[package layout](../package-layout.md).
+
 ## One code-mode tool gives the model a language for acting
 
 The target model-facing surface is one `execute_code` tool. Within it, Python can
