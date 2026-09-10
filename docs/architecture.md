@@ -1,8 +1,20 @@
 # Skein architecture
 
-Skein is a coding-agent control plane built around one Google ADK worker. The model
-chooses tactics; deterministic host code owns context, effects, history, recovery,
-budgets, and completion.
+Skein explores a simple idea: give a capable model one programmable way to act,
+retain the evidence of its work, and compute the context it needs from that evidence.
+Google ADK supplies model execution and session machinery; Skein supplies the coding
+loop, effect boundary, trace, memory programs, and independent completion decision.
+
+The design responds to a basic long-session problem: useful information accumulates
+faster than a model can keep it in active context. Repeated tool calls consume turns,
+raw results consume tokens, and summaries can erase details needed later. Skein keeps
+computation and evidence outside the prompt, then deliberately selects what the model
+needs for its next decision.
+
+This creates a deliberate split of authority. The model owns tactics—what to inspect,
+compute, change, or try next. Deterministic host code owns authorization, deadlines,
+effects, history, recovery, budgets, context construction, and whether the work is
+actually complete.
 
 ```mermaid
 flowchart LR
@@ -10,7 +22,7 @@ flowchart LR
         direction TB
         TASK["Task + project context"]
         CFG["Validated profile"]
-        CTX["Bounded context compiler"]
+        CTX["Bounded context<br/><small>selected from evidence</small>"]
         TASK --> CTX
         CFG --> CTX
     end
@@ -19,7 +31,7 @@ flowchart LR
         direction TB
         MODEL["Model provider<br/><small>Gemini · Codex · OpenRouter</small>"]
         WORKER["ADK coding worker<br/><small>one model/tool loop</small>"]
-        MODE["Execution mode<br/><small>four tools · Skein PTC · Prime PTC</small>"]
+        MODE["Programmable action surface<br/><small>four tools · Skein PTC · Prime PTC</small>"]
         MODEL --> WORKER
         WORKER --> MODE
     end
@@ -36,9 +48,9 @@ flowchart LR
 
     subgraph EVIDENCE["④ Record + decide"]
         direction TB
-        TRACE[("Canonical append-only trace")]
-        MEMORY["Versioned memory programs"]
-        VIEWS["Notebook · artifacts · metrics"]
+        TRACE[("Canonical evidence<br/>append-only trace")]
+        MEMORY["Memory as computation<br/><small>program@version(trace, watermark)</small>"]
+        VIEWS["Durable workbench<br/><small>notebook · artifacts · metrics</small>"]
         VERIFY["Independent verifier"]
         RESULT{"Complete · retry · blocked"}
         TRACE --> MEMORY
@@ -67,6 +79,12 @@ flowchart LR
     style EVIDENCE fill:#fafafa,stroke:#bbf7d0,stroke-width:1px
 ```
 
+The main loop is intentionally small: assemble bounded context, let one worker reason
+and act through one selected interface, record every material attempt, and verify the
+result outside the model. The feedback arrow is the long-session mechanism: retained
+evidence is transformed into a new bounded view instead of replaying an ever-growing
+transcript.
+
 ## Context compiler
 
 `harness/context` turns the task, repository map, selected skills, recent evidence,
@@ -74,6 +92,10 @@ and any compaction handoff into a bounded work packet. Stable instructions and t
 declarations remain byte-stable for provider caching; volatile task state stays in
 the dynamic suffix. Context is compiled deterministically so the same inputs and
 watermark produce the same bytes.
+
+This is the central economy of the design. The trace may grow for the life of a task;
+the prompt does not. Large bodies remain in artifacts or runtime values, while the
+model receives the smallest representation that supports its next judgment.
 
 ## Harness factory and ADK worker
 
@@ -95,14 +117,24 @@ provider swap does not change harness authority.
 
 ## Execution modes
 
-The compatibility mode exposes `read`, `bash`, `edit`, and `write`. Skein notebook
-PTC and Prime PTC expose one programmable `execute_code` tool instead. These modes
-change how the model composes work, not what it is allowed to do.
+The target surface is one programmable `execute_code` tool. Code gives the model a
+language for mechanical work: a filter, join, loop, or exact condition can be stated
+once, executed by the computer, and reduced to the observation that needs judgment.
+Intermediate data can remain outside the prompt. This can replace many conversational
+tool round trips without asking the model to guess several dependent decisions at
+once.
+
+The compatibility mode retains `read`, `bash`, `edit`, and `write` as the measured
+baseline. Skein notebook PTC and Prime PTC expose `execute_code`. These modes change
+how the model composes work, not what it is allowed to do; all routes meet again at
+the same effect boundary.
 
 Skein notebook PTC uses a persistent CPython worker and routes nested capabilities
-through the same broker as direct tools. Its notebook is a deterministic workbench
-projection over trace evidence, not the historical authority. Failed cells discard
-their dirty kernel epoch; restoration replays only explicitly safe cells.
+through the same broker as direct tools. The notebook places exact submitted code,
+selected results, narrative, and provenance in one durable working document. It is a
+deterministic projection over trace evidence, not the historical authority, and it is
+not the live heap. Failed cells discard their dirty kernel epoch; restoration replays
+only explicitly safe cells.
 
 Prime PTC supplies an alternative persistent REPL and bounded snapshot policy. Its
 native effects are classified explicitly rather than being mistaken for brokered
@@ -126,11 +158,22 @@ outcomes. JSONL is the dependency-free ledger; DuckDB is an optional analytical
 implementation. Content-addressed artifacts hold large bodies without inflating
 model context.
 
-`harness/memory` contains versioned programs over that evidence. History pages,
-counts, retrieval, summaries, and compaction views carry their source watermark and
-hash. They advise context selection but do not become a second authority. Notebooks,
-indexes, caches, metrics, and live Python values are disposable projections or
-runtime state.
+Appending rather than rewriting matters: a correction adds evidence instead of
+silently replacing the earlier account. The same history can support debugging,
+recovery, notebook reconstruction, verification, and several different prompt views.
+
+`harness/memory` treats memory as a view produced by a versioned computation:
+
+```text
+view = program@version(authorized evidence at watermark, parameters, budgets)
+```
+
+History pages, counts, retrieval, summaries, and compaction views carry their program
+identity, evidence addresses, source watermark, parameters, budgets, and result hash.
+Deterministic views can be discarded and rebuilt; candidate versions can run against
+the same frozen trace before promotion. Model-generated summaries retain inputs and
+provenance but remain advisory. Notebooks, indexes, caches, metrics, and live Python
+values are projections or runtime state, never competing historical authorities.
 
 ## Independent verification
 
@@ -147,3 +190,11 @@ context or generation settings. They may not expand the model-visible tool surfa
 bypass the effect broker, replace trace authority, weaken independent verification,
 or move volatile state into the stable prompt prefix without an explicit measured
 ablation.
+
+The companion ADRs turn the thesis into enforceable contracts:
+
+| Decision | Contract |
+| --- | --- |
+| [Trace-native harness and composable PTC](adr/trace-native-harness.md) | How execution, the notebook document, and runtime-state recovery remain distinct. |
+| [Context and memory](adr/context-and-memory.md) | How evidence becomes bounded, versioned, reproducible context. |
+| [Execution and recovery](adr/execution-and-recovery.md) | How effects are authorized, interruptions reconciled, and completion verified. |
