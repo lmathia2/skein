@@ -130,9 +130,11 @@ verifier outcome.
   changed 11 files in 1,386 lines. Prime changed 21 files in 1,797 lines.
 - Verification: all three passed the repository's visible suite. Notebook also ran
   several ad hoc `tsx` probes for `Not`, `Changed`, `Added`, `Removed`, callbacks,
-  nesting, relations, and distribution. Its `Removed` probe covered the
-  complete-to-incomplete transition but never tested an entity which had only one
-  constituent and was therefore never complete.
+  nesting, relations, and distribution. Its final claim summarized the relevant
+  result only as `Removed 1`: a positive complete-to-incomplete check. By contrast,
+  the four-tool trace includes `Removed no false positive len=0`, which tests an
+  entity that never completed the aspect. That missing negative probe is the
+  clearest behavioral delta between the two accepted patches.
 - Isolated result: notebook passed 50/51 feature tests. The sole failure was
   `Removed modifier > should not match entity that never had all constituents`.
   Four tools passed 51/51. Prime missed three modifier cases.
@@ -140,9 +142,11 @@ verifier outcome.
   to an acceptance-test matrix gap, not lost notebook state or an inability to edit
   the repository.
 
-The decisive notebook evidence is in the Koota notebook and canonical event trace
-listed under **Artifacts**. `nb search --scope source --cell-type code <notebook> removed`
-finds the transition probes; there is no source match for `never had`.
+The decisive evidence is in the Koota ADK session and canonical event trace listed
+under **Artifacts**. The notebook's positive result appears in the model-visible
+tool result and its completion claim; the four-tool session contains the explicit
+negative result. This is stronger evidence than inferring coverage from notebook
+source search alone.
 
 ### Ofetch: notebook efficiency win with equal quality
 
@@ -197,35 +201,39 @@ and 23 successful writes. Seven cells failed:
 | --- | ---: | --- |
 | Python syntax error from over-escaped generated code | 3 | No effect, but the kernel epoch was discarded |
 | Guarded direct `pathlib` import or `open()` call | 2 | Rejected before execution, but the epoch was discarded |
-| Capability result-shape `KeyError('data')` | 2 | Read-only nested calls completed, then Python failed |
+| Failed-read envelope missing `data` | 2 | A nonexistent path returned only `status` and `model_text`; the documented `result["data"]` access then raised `KeyError` |
 
 Those failures created four kernel epochs in Koota, four in Testem, and two in
 Wazero. The other three tasks stayed in one epoch. There is no cross-task state
 leakage: every task used a fresh Harbor container, distinct run/notebook identity,
 and separate ledger.
 
+The two `KeyError` failures were not caused by the model alternating between
+result fields. In both cases the model followed the documented successful-read
+shape and indexed `data` after a read of a nonexistent path. In Testem, one failed
+parallel read followed two successful reads in the same cell; resetting the epoch
+discarded all three Python results and the rest of that namespace. N3 is therefore
+a uniform error-envelope fix, not a prompting fix.
+
 ## Recommended next units of work
 
-1. **Make PTC verification criterion-shaped.** Before notebook PTC can return
-   `done`, require a durable acceptance matrix which maps each behavioral clause to
-   positive, negative, and transition evidence. Seed temporal words such as
-   `Added`, `Removed`, `before`, `after`, and `never` into the matrix. The Koota
-   regression should become the deterministic fixture: a Removed aspect must not
-   match an entity that was never complete. Keep this as a PTC prompt/view
-   experiment first; promote it to shared verification only if it improves both
-   quality and cost on replay.
+1. **Finish the common nested-result envelope.** Failed and blocked capability
+   results must carry the same compact top-level fields as success plus an empty
+   `data` mapping when no typed detail exists. This deterministic change needs no
+   paid run.
 2. **Do not restart on proven pre-execution failures.** Syntax and source-policy
    validation happen before user code executes and have `effect: none`. Preserve
    the existing kernel epoch for those two classes, while retaining discard and
    reconciliation for runtime failures or uncertain effects. A focused test must
    prove the namespace is unchanged. This would have avoided five of seven kernel
    resets in this run without weakening transaction safety.
-3. **Finish the common nested-result envelope.** The trace shows models alternating
-   between `result["data"]` and `result["model_text"]`, causing two KeyErrors.
-   Make every `agent.fs.*` and `agent.shell.*` result expose the same compact fields
-   (`status`, `model_text`, `effect`, truncation and artifact references), retain
-   typed detail under one predictable field, and include one short executable
-   example in the PTC prefix. Do not add another top-level tool.
+3. **Make DeepSWE criteria first-class before tightening verification.** DeepSWE
+   requests supply no explicit acceptance-criteria list, so `TaskRequest` currently
+   substitutes the entire goal as one row. Split the work into three contracts:
+   create stable clause rows, address completion claims to row IDs rather than
+   exact text, and only then bind command evidence per row. For every transition
+   clause require both the requested transition and a precondition-unmet probe;
+   do not depend on lexical hints such as `never` appearing in the specification.
 4. **Replan earlier on read-only churn, experimentally.** Koota and Testem each hit
    the 24-cell no-change yield and later the 48-cell batch limit. Compare the current
    `24/48` policy with `12/36`, with the acceptance matrix included. Do not simply
@@ -239,27 +247,49 @@ and separate ledger.
 
 ### Trace-derived execution plan
 
-The first change should strengthen enforcement, not add more general prompt advice.
-Skein already runs one durable counterexample review in `app/agent/workflow.py`, and
-both that review and the notebook batching instruction explicitly mention histories
-where a prerequisite was never reached. Koota still missed exactly that case. The
-current verifier also assigns the same successful behavioral command references to
-every acceptance criterion in `harness/verification/runner.py`, so a broad repository
-test can make every row appear satisfied without proving clause-level coverage.
+The quality diagnosis is sound, but criterion enforcement cannot be tightened at
+the verifier first. DeepSWE requests carry no acceptance criteria. In coding mode,
+`TaskRequest` falls back to `[goal]`, producing one approximately 1.6-kilobyte Koota
+row. The model later supplied four useful clause-shaped completion claims, but
+`workflow.py` indexes claims by exact criterion text. None matched the whole-goal
+row, so the verification report recorded empty `claimed_evidence`. At sequence 223,
+the first review consequently showed the model the entire goal as one `MISSING`
+row, not the clause matrix that N1 assumed existed.
+
+The verifier then compounds the problem: it assigns the same passing behavioral
+command references and satisfaction boolean to every row. Koota therefore finished
+internally with the whole-goal row satisfied by the broad visible suite even though
+its model claims were unmatched and Harbor later found the missing negative case.
+The existing test
+`test_environmental_evidence_does_not_require_model_completion_prose` codifies this
+behavior. A claimed-evidence gate intentionally changes that contract; initially
+gate it to the notebook experiment and add the inverse profile-specific test rather
+than silently changing all modes.
+
+Skein already asks during counterexample review for histories where a prerequisite
+was never reached. More prompt wording is not the first fix. The Koota specification
+says `Removed` matches the “transition from all-present” without using a temporal
+keyword such as `never`; the matrix rule should therefore derive a
+precondition-unmet probe for every transition clause.
 
 Land and measure the following units independently:
 
 | Order | Unit and smallest implementation | Deterministic evidence | Promotion gate |
 | --- | --- | --- | --- |
-| N1 | **Criterion-bound acceptance evidence.** Reuse the existing counterexample-review turn, `completion_claims`, task ledger, and validation receipts; do not add a tool or another state store. Require the review to enumerate each behavioral clause and its positive, negative, boundary, and transition counterexamples where applicable. Change verification so a successful command reference is attached only to the criterion it was selected to prove, and leave unmatched rows unsatisfied. Start as a notebook-profile experiment; promote the contract to shared verification only after it helps. | Add a verifier regression with two criteria and two targeted commands proving that one passing command cannot satisfy both rows. Add a Koota-shaped fixture in which complete→incomplete passes but “never complete” remains unresolved and blocks completion. Confirm the acceptance view stays in the dynamic suffix/notebook projection and does not change stable-prefix bytes. | Across three paired Koota attempts, notebook pass rate must match or exceed four tools. Internal `done` must never coexist with an unresolved fixture row. |
-| N2 | **Preserve the kernel after proven pre-execution rejection.** Have the worker report whether failure occurred during parse/source validation, Python execution, or transport. In `app/agent/ptc.py`, retain the epoch only for parse/source failures with no broker call and `effect: none`; keep discard, safe restore, and reconciliation for runtime or unknown effects. | Extend `tests/unit/test_repl.py` and `tests/unit/test_notebook_ptc_integration.py`: syntax and source-policy rejection preserve prior values and epoch; a runtime failure after assignment discards the epoch and restores only committed replay-safe cells; event/notebook identities remain stable. | Replay the six traces or equivalent fixtures with zero safety-contract regressions and five avoidable resets removed. No paid run is needed for this gate. |
-| N3 | **Normalize nested capability results.** Make every `agent.fs.*`, `agent.shell.*`, parallel-read, and failure result expose the same compact top-level fields plus a `data` mapping, empty when no typed detail exists. Keep `model_text` as the bounded rendering and update the existing `agent.help()` example; do not add a model-visible tool. | Table-test success, blocked, error, truncated, and parallel results through the real broker adapter. Assert stable field presence, redaction, output bounds, artifact references, and unchanged capability receipts. | Zero result-shape exceptions in deterministic scenarios and in the next live trace; no increase in serialized top-level tool output. |
+| N3 | **Normalize nested capability results.** Make every `agent.fs.*`, `agent.shell.*`, parallel-read, blocked, and error result expose the same compact top-level fields plus a `data` mapping, empty when no typed detail exists. Keep `model_text` as the bounded rendering and update the existing `agent.help()` example; do not add a model-visible tool. | Table-test success, blocked, error, truncated, and mixed-success parallel results through the real broker adapter. Reproduce a nonexistent read followed by `result["data"]` and assert it is safe. Assert redaction, output bounds, artifact references, and unchanged capability receipts. | Zero result-shape exceptions in deterministic scenarios. No paid run is needed; the next live trace should contain none. |
+| N2 | **Preserve the kernel after proven pre-execution rejection.** Have the worker report a trusted failure stage: parse, source validation, Python execution, or transport. `PermissionError` alone is insufficient because the guarded import hook can also raise it at runtime. In `app/agent/ptc.py`, retain the epoch only for parse/source failures with no broker call and `effect: none`; keep discard, safe restore, and reconciliation for runtime or unknown effects. | Extend `tests/unit/test_repl.py` and `tests/unit/test_notebook_ptc_integration.py`: syntax and source-policy rejection preserve prior values and epoch; a runtime `PermissionError` and a runtime failure after assignment discard the epoch and restore only committed replay-safe cells; event/notebook identities remain stable. | Replay the six traces or equivalent fixtures with zero safety-contract regressions and five avoidable resets removed. No paid run is needed for this gate. |
+| N1a | **Create first-class clause rows with stable IDs.** Reuse the task ledger and first criterion-review turn. Explicit criteria receive deterministic IDs at initialization. When DeepSWE supplies none, retain the original goal as the authoritative parent and allow the first review to propose a bounded set of derived child rows; validate, record the source-goal hash, assign stable IDs, and freeze the rows for the run. Model decomposition is advisory structure, never completion authority. | Exercise the actual fallback path: initialize a Koota-shaped request with no acceptance criteria, adopt four proposed clause rows, and prove the same source yields stable IDs and cannot silently drop the parent requirement. Confirm rows remain in the dynamic suffix/notebook projection and stable-prefix bytes do not change. | The first Koota review renders bounded clause rows rather than one whole-goal `MISSING` row. No paid run is needed. |
+| N1b | **Address claims by criterion ID.** Extend the existing completion-claim schema with `criterion_id`; keep criterion text only for display and diagnostics. Reject unknown, duplicate, or stale IDs. Stop exact-text matching in `workflow.py`. | Replay the Koota-shaped claims against the fallback fixture and prove all four bind to their frozen rows. Add unknown-ID and changed-wording regressions. | Every accepted claim has one unambiguous row; no evidence disappears because prose differs. No paid run is needed. |
+| N1c | **Bind command evidence per row.** A validation receipt satisfies only the row IDs selected for it; leave unmatched rows unsatisfied. For a transition row, require both transition-observed and precondition-unmet evidence regardless of specification wording. Start behind the notebook profile so the four-tool/default contract does not change during the experiment. | Add the two-row/two-command verifier regression, but also retain the end-to-end Koota fallback fixture: a positive `Removed 1` receipt cannot satisfy the missing precondition-unmet row, while `Removed no false positive len=0` can. Add a notebook-profile inverse of `test_environmental_evidence_does_not_require_model_completion_prose`; retain the existing default-profile assertion. | Across three paired Koota attempts, notebook pass rate must match or exceed four tools. Internal `done` must never coexist with an unresolved derived row. |
 | N4 | **Tune work-batch yielding only after N1-N3.** Compare the current `24/48` no-change/max-cell policy with `12/36`; keep the existing counters and yielded event rather than adding a scheduler. A yield should return the unresolved acceptance rows and most recent validation failure, not restart exploration. | Add boundary tests for read-only cell 12/24, changed work, and maximum-cell yield. Prove the same event stream makes the same decision and complete tool-call/result pairs remain in context. | On paired Koota and Testem attempts, reduce median cells or active time without lowering reward or increasing uncached input. Otherwise retain `24/48`. |
-| N5 | **Run a staged confirmation.** First run Koota for three paired notebook/four-tool attempts. If N1 clears that gate, run Testem and Textual for three attempts per mode; use Prime's successful Textual trace as diagnostic evidence, not as another implementation target. Finally rerun Ofetch and Wazero as regression sentinels before changing defaults. | Preserve the exact commit, profile hashes, task images, provider settings, attempt count, no-retry policy, and per-task traces in a new audit. Fail fast on infrastructure or configuration errors, but do not discard model failures. | Notebook must match or exceed four-tool pass rate on the staged set, retain Ofetch/Wazero, and not regress median uncached input or recorded cost per accepted task. Only then consider changing the default. |
+| N5 | **Run a staged confirmation.** First run Koota for three paired notebook/four-tool attempts. If N1 clears that gate, run Testem and Textual for three attempts per mode; use Prime's successful Textual trace as diagnostic evidence, not as another implementation target. Finally rerun Ofetch and Wazero as regression sentinels before changing defaults. Harbor reward remains authoritative when visible repository tests pass but hidden tests are unavailable. | Preserve the exact commit, profile hashes, task images, provider settings, attempt count, no-retry policy, and per-task traces in a new audit. Fail fast on infrastructure or configuration errors, but do not discard model failures. | Notebook must match or exceed four-tool pass rate on the staged set, retain Ofetch/Wazero, and not regress median uncached input or recorded cost per accepted task. Only then consider changing the default. |
 
-N1 is the quality fix. N2 and N3 remove notebook-specific friction that wastes cells
-and continuity but is not, by itself, evidence of the lost Koota pass. N4 is optional
-and should be skipped if N1-N3 recover quality without Testem-style churn.
+N1 remains the quality-critical dependency, but the safest landing order is
+**N3 -> N2 -> N1a -> N1b -> N1c -> N5**. N3 and N2 are small, deterministic,
+offline fixes; N1 must first repair row propagation before enforcing row evidence.
+Defer N4 until N1 produces meaningful unresolved-row feedback. Provider cost was
+small in this run; roughly quarter-hour task latency is the practical constraint on
+the staged N5 experiment.
 
 Do not change container isolation, notebook serialization, or the memory backend
 from this result. The traces show no leakage or persistence corruption, and changing
@@ -290,8 +320,12 @@ find <ptc-root> -path '*/agent/skein-state/runs/*/ledger.jsonl' -type f | sort
 
 The quality-discriminating Koota evidence is:
 
+- four-tool ADK session (contains `Removed no false positive len=0`):
+  `/Users/mathiasl/skein-eval-results/deepswe-reference-six-four-tool-7c8ddcc/002-koota-composite-trait-aspects-attempt-01/002-koota-composite-trait-aspects-attempt-01/94ac4d52d173cc22827714c56d74f098__GCxUbmM/agent/skein-state/adk/sessions.db`
 - four-tool trace:
   `/Users/mathiasl/skein-eval-results/deepswe-reference-six-four-tool-7c8ddcc/002-koota-composite-trait-aspects-attempt-01/002-koota-composite-trait-aspects-attempt-01/94ac4d52d173cc22827714c56d74f098__GCxUbmM/agent/skein-state/runs/1de61fd3f55ecef07fef1e6d0df8cb2d/events/7bb383a7d19d743072d0de373c35ac681d00ac5f9d3f2013a38007bbc26fda5a.jsonl`
+- notebook ADK session (contains the four clause claims and `Removed 1`):
+  `/Users/mathiasl/skein-eval-results/deepswe-reference-six-notebook-ptc-7c8ddcc/002-koota-composite-trait-aspects-attempt-01/002-koota-composite-trait-aspects-attempt-01/94ac4d52d173cc22827714c56d74f098__jpths8v/agent/skein-state/adk/sessions.db`
 - notebook trace:
   `/Users/mathiasl/skein-eval-results/deepswe-reference-six-notebook-ptc-7c8ddcc/002-koota-composite-trait-aspects-attempt-01/002-koota-composite-trait-aspects-attempt-01/94ac4d52d173cc22827714c56d74f098__jpths8v/agent/skein-state/runs/1de61fd3f55ecef07fef1e6d0df8cb2d/events/7bb383a7d19d743072d0de373c35ac681d00ac5f9d3f2013a38007bbc26fda5a.jsonl`
 - notebook document:
