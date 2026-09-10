@@ -287,11 +287,11 @@ def test_factory_exposes_only_execute_code_when_notebook_ptc_is_enabled(tmp_path
     assert tool_names == {"execute_code"}
     assert worker.include_contents == "default"
     assert "include_contents" in worker.model_fields_set
-    assert "Capability calls\nreturn mappings" in worker.static_instruction
+    assert "persistent Python as the control plane" in worker.static_instruction
     assert "agent.parallel" in worker.static_instruction
-    assert "`open()`" in worker.static_instruction
+    assert "Direct filesystem" in worker.static_instruction
     assert assembly.build_info.tool_names == ("execute_code",)
-    assert "never parse notebook JSON" in worker.static_instruction
+    assert "independent verification" in worker.static_instruction
     resources = registry.resources(
         composition,
         RuntimeBindings(workspace=workspace, state_root=tmp_path / "state", task_id="task"),
@@ -504,7 +504,8 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert "notebook_path" not in second and "state_delta" not in second
     assert kinds[-1] == EventKind.NOTEBOOK_SNAPSHOTTED
     assert '"tools":["execute_code"]' in settings.static_prefix
-    assert "During verify, group already-selected" in settings.static_instruction
+    assert "when results require semantic judgment" in settings.static_instruction
+    assert "collect_known_evidence" not in settings.static_instruction
 
 
 @pytest.mark.asyncio

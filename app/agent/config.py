@@ -18,49 +18,16 @@ from harness.core.context import build_static_prefix
 from harness.execution.repo import collect_project_instructions
 
 NOTEBOOK_PTC_INSTRUCTION = """
-Notebook-native programmatic tool calling is enabled. Your only model-visible tool is
-`execute_code(code)`. Each call appends and executes one durable notebook cell in a persistent
-CPython worker. Compose managed capabilities through `agent.fs.read`, `agent.fs.write`,
-`agent.fs.edit`, and `agent.shell.run`; filter intermediate results in Python and expose
-only what is useful. `agent` is prebound; do not import or introspect it. Core signatures:
-`agent.fs.read(path, offset=1, limit=400)` (limit must be 1-400),
-`agent.fs.write(path, content, expected_sha256=None, expected_absent=False)`,
-`agent.fs.edit(path, old_text, new_text, expected_sha256=None)`, and
-`agent.shell.run(command, timeout_seconds=120)`. `agent.help()` lists all exact signatures;
-`agent.help(name, details=True)` returns one targeted result contract. Capability calls
-return mappings. Process the machine-readable `data` field in Python and expose only facts
-or short excerpts needed for the next decision; `model_text` is a bounded human rendering.
-Retain reusable intermediate values instead of spending a model turn on each trivial call.
+Use persistent Python as the control plane: retain useful values, orchestrate brokered
+capabilities, and transform results before returning only the facts needed for the next
+decision. Chain operations when their next inputs are already known; return to the model
+when results require semantic judgment. Run projects through their own commands and
+environment via `agent.shell.run`, not by importing them into the kernel.
 
-Compose work until new semantic judgment is required. Examples:
-```
-pages = agent.parallel([
-    {"operation": "fs.read", "arguments": {"path": path}} for path in known_paths
-])
-good = [p for p in pages if p["status"] == "ok"]
-errors = [p["model_text"] for p in pages if p["status"] != "ok"]
-[(p["data"]["path"], "needle" in p["data"]["text"]) for p in good], errors
-
-changed = agent.fs.edit(path, old, new, expected_sha256=digest)
-check = agent.shell.run(targeted_check) if changed["status"] == "ok" else changed
-{"change": changed["status"], "check": check.get("exit_code"), "error": check.get("data", {}).get("stderr", "")[-2000:]}
-
-evidence = {criterion: collect_known_evidence(criterion) for criterion in weak_criteria}
-{criterion: rows for criterion, rows in evidence.items() if not rows}
-```
-These illustrate orchestration, not permission to invent repairs or completion. Return to
-the model when results require interpretation; independent verification owns completion.
-`agent.parallel(...)` accepts only independent `fs.read` operations and returns results in
-input order; other operations remain serial.
-Use
-`agent.state.list()` or
-`agent.state.describe(name)` to inspect
-live variable metadata without exposing values. For `.ipynb` files, use `nb read` or
-`nb search` through `agent.shell.run`; never parse notebook JSON in Python. The notebook
-records code and selected outputs, while the append-only ledger records execution and
-nested capability outcomes. `open()` and direct filesystem, process, or network APIs are
-blocked; use the corresponding `agent.*` capability. A notebook is not proof that a side effect completed, and cells
-that write or have unknown effects must never be replayed automatically.
+Inspect capability signatures and result contracts with `agent.help()`. Direct filesystem,
+process, and network access is blocked; use `agent.*`. Only `agent.parallel` operations are
+parallel-safe. The append-only ledger records effects, and independent verification—not a
+notebook cell or model claim—decides completion.
 """.strip()
 
 @dataclass(frozen=True, slots=True)
@@ -190,12 +157,7 @@ def settings_from_composition(
 
     tool_names = ("read", "bash", "edit", "write")
     if config.notebook_ptc.enabled:
-        instruction += (
-            "\n\n"
-            + NOTEBOOK_PTC_INSTRUCTION
-            + "\n\nPhase-aware cell composition:\n"
-            + config.notebook_ptc.batching_instruction.strip()
-        )
+        instruction += "\n\n" + NOTEBOOK_PTC_INSTRUCTION
         tool_names = ("execute_code",)
     coding_model = config.models[worker_config.model].name
     skill_roots: list[Path] = []
