@@ -1,5 +1,20 @@
 # Skein implementation status
 
+## Supported minimal boundary
+
+Skein is now a one-shot Harbor/Pier evaluation harness. The retained runtime is the
+ADK coding worker, Harbor environment adapter, Pier campaign runner, effect policy,
+append-only evidence, and deterministic verifier. Supported profiles are four-tool,
+Skein notebook PTC with JSONL or DuckDB, and Prime PTC with JSONL.
+
+The Bubble Tea client, WebSocket app, interactive CLI, launcher scripts, provider
+control UI, and their dedicated tests are removed. Internal run/event modules remain
+because the evaluation coordinator uses them for ordered lifecycle, timeouts, replay,
+and result extraction; they are not a supported server API.
+
+The sections below are historical implementation detail unless they describe one of
+the retained evaluation modes.
+
 The supported capability boundary is the simplified local harness, not the
 historical feature checklist or book-rubric score.
 
