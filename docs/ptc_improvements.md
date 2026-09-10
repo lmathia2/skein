@@ -5,6 +5,10 @@
 > Scope: Skein notebook PTC only
 >
 > Evidence baseline: [matched DeepSWE reference-six audit](audits/ptc-deepswe-reference-six-2026-09-10.md)
+>
+> Prompt references: Deep Agents QuickJS PTC at
+> `d93ab3351bbf4c3687212f665094ccad100f2c08` and Prime Agent RLM at
+> `bf8894afa55832f7cfa2094c8a0d041bc680a691` (reviewed 2026-09-10)
 
 ## Outcome
 
@@ -133,8 +137,10 @@ unsupported combinations.
 
 The worker enforces a 128,000-byte cell-source limit, configured output bounds, a
 default and maximum timeout, bounded parallel fan-out, maximum cells per batch, and
-a no-progress yield. The application yields control to the model or verifier at
-deterministic boundaries rather than allowing an unbounded inner Python loop.
+a no-progress yield. It does not yet limit total broker calls within one cell, so a
+fast loop can issue many serial operations before the cell timeout. The application
+yields control to the model or verifier at deterministic boundaries, but that does
+not bound the inner loop's effects.
 
 ### Features already proven by deterministic tests
 
@@ -175,6 +181,11 @@ The trace points to four actionable problems:
    present a verified inventory of the active kernel, useful project CLIs, or
    registered MCP capabilities. The model must probe or guess.
 
+Deep Agents' QuickJS PTC confirms the plan's result, error, capability-discovery,
+composition, and state-recovery priorities. Its one actionable missing control is a
+per-evaluation nested-call limit; broader async execution, heap isolation, and richer
+snapshots have not been tied to a Skein quality failure.
+
 ## Design constraints
 
 - `execute_code` remains the only model-visible PTC tool.
@@ -200,11 +211,26 @@ These changes are small, offline, and should precede prompt experiments.
 | F1 Uniform results | Give every nested success, error, blocked, timeout, and parallel result the same bounded envelope, including an empty `data` mapping when no typed detail exists. Generate `agent.help(..., details=True)` result contracts from that source. | Table-test every terminal status through the real broker; a missing-file read followed by `result["data"]` must not raise. Preserve redaction, artifacts, and receipts. |
 | F2 Failure stages | Report `parse`, `source_validation`, `execution`, or `transport` as a trusted worker failure stage. Preserve the kernel only for parse and source-validation failures with no broker call and no effect. | Syntax and static-policy failures preserve the epoch and existing values. Runtime mutation followed by failure still discards the epoch and restores only replay-safe cells. |
 | F3 Compact errors | Return the exception type, bounded message, cell-local source line, short source excerpt, failure stage, and whether state was preserved. Strip worker implementation frames. | Snapshot tests cover syntax, policy, broker, and runtime failures without natural-language assertions. |
+| F4 Capability budget | Add a configured maximum number of nested broker calls per cell, counting children of `agent.parallel`, and reject calls beyond it before dispatch. | Serial and parallel calls stop at the limit; rejected calls have no receipt; prior effects retain their normal recovery semantics. |
 
 ### Phase 2: make available capabilities obvious
 
 Follow Prime Agent's useful pattern: advertise stable facilities, list extensible
 capabilities compactly, and disclose detailed contracts only on demand.
+
+The prompt comparison points to a smaller target, not a larger prompt:
+
+- Prime gives Python one clear role: keep state, orchestrate tools, and transform
+  results; run a project through its own environment.
+- Deep Agents gives one explicit batching rule: chain known dependent work in one
+  program, and return to the model only when the next step needs judgment.
+- Skein currently repeats mechanics in `NOTEBOOK_PTC_INSTRUCTION` and
+  `batching_instruction`, and its three examples contain undefined placeholder names.
+
+Keep only those two behavioral rules plus the invariant safety boundary in the stable
+instruction. Put exact active capability names in the dynamic packet and detailed
+schemas behind `agent.help(name, details=True)`. Do not copy Prime's full runtime
+manual or Deep Agents' complete generated API reference into every request.
 
 Add a parent-built, immutable catalog to the worker:
 
@@ -221,7 +247,13 @@ agent.help("mcp.github.search", details=True)  # one exact contract
 | C1 Capability metadata | Register each MCP handler with its name, description, argument schema, result schema, effect class, and approval policy. Reuse upstream schemas when present. | Every callable advertised to the model is registered and invocable; disabled handlers are absent; catalog ordering and serialization are stable. |
 | C2 Kernel manifest | Configure a small preload set and verify imports when the worker starts. Expose only verified module names and meaningful versions through `agent.help("kernel")`. Do not scan or advertise the whole environment. | Worker startup fails closed on a required preload; optional missing modules are omitted; manifest bytes are deterministic. |
 | C3 CLI manifest | Verify a curated command list in the authoritative Pier task environment. Include repository-detected commands only when their manifests or executable paths exist. | Host and Pier inventories cannot be confused; unavailable commands are never advertised. |
-| C4 Prompt split | Replace duplicated signatures and placeholder examples in the stable PTC instruction with a short doctrine and one executable example in the `execute_code` description. Put the bounded environment summary in the dynamic work packet. | Prefix snapshot changes once; subsequent environment changes do not alter stable-prefix bytes. The example executes against the real broker. |
+| C4 Prompt replacement | Replace `NOTEBOOK_PTC_INSTRUCTION` plus `batching_instruction` with one short stable doctrine: Python retains working state and orchestrates capabilities; chain operations whose next inputs are known; return when judgment is needed; use the project's own environment; the broker and verifier retain authority. Put persistence, final-expression, and result-envelope mechanics in the `execute_code` description. Put active capability names, phase, and unresolved criteria in the dynamic packet; keep exact schemas behind targeted `agent.help()`. Include at most one self-contained example using only real names and return fields. | Snapshot the stable prefix and tool description, execute the example through the real broker, and capture the serialized provider request. No undefined example names, duplicated API prose, or environment-dependent bytes may enter the stable prefix. |
+
+Deterministic checks prove only prompt shape and example correctness. Compare the
+current prompt with the compact C4 prompt as a prompt-only, matched Koota ablation
+across multiple attempts. Keep the compact prompt only if reward does not regress;
+use capability choice, cell shape, tokens, and latency to diagnose the result rather
+than as independent promotion gates.
 
 The prompt should teach strategy rather than enumerate APIs:
 
@@ -306,16 +338,17 @@ current Harbor failure.
 
 ## Evaluation sequence
 
-1. Land F1-F3 and replay deterministic notebook/broker failure fixtures.
-2. Land C1-C4 and Q1-Q4; freeze the new prefix, behavior hash, catalog, and profiles.
-3. Run three paired four-tool/notebook attempts on Koota. Notebook must recover the
+1. Land F1-F4 and replay deterministic notebook/broker failure fixtures.
+2. Land C1-C3, run the prompt-only C4 Koota ablation, then land the winning C4 variant.
+3. Land Q1-Q4; freeze the new prefix, behavior hash, catalog, and profiles.
+4. Run three paired four-tool/notebook attempts on Koota. Notebook must recover the
    lost pass.
-4. Run three paired attempts on Testem and Textual to measure churn and strategy
+5. Run three paired attempts on Testem and Textual to measure churn and strategy
    variance.
-5. Rerun Ofetch and Wazero as regression sentinels.
-6. Only after the quality gate passes, test E3 and bounded snapshots as isolated
+6. Rerun Ofetch and Wazero as regression sentinels.
+7. Only after the quality gate passes, test E3 and bounded snapshots as isolated
    ablations.
-7. Expand to the reference six, then the next frozen Harbor tier before considering
+8. Expand to the reference six, then the next frozen Harbor tier before considering
    notebook PTC as the default.
 
 Record exact revision and diff hash, profile and behavior hashes, task image, model
@@ -347,6 +380,7 @@ or increasing hidden retries.
 - Allow package installation during benchmark execution.
 - Add background Python tasks, unrestricted filesystem access, or another notebook
   execution path.
+- Add general async PTC or broader parallel execution without measured need.
 - Change the ledger backend, container isolation, or model provider during the PTC
   comparison.
 - Optimize call density at the expense of necessary model judgment.
@@ -358,12 +392,12 @@ or increasing hidden retries.
 | Stable PTC instruction | `app/agent/config.py` |
 | Capability registration and broker | `app/agent/builders.py`, `app/agent/ptc.py` |
 | Worker, `agent.help()`, failure stages | `harness/ptc/repl/worker.py` |
-| PTC configuration | `harness/core/config/models.py`, `harness/core/config/profiles/notebook-ptc-jsonl.yaml` |
+| PTC limits and configuration | `harness/core/config/models.py`, `harness/core/config/profiles/notebook-ptc-jsonl.yaml` |
 | Criterion and completion flow | `app/agent/workflow.py`, `harness/verification/` |
 | Trace-derived metrics | `harness/evidence/`, `evals/` |
 | Deterministic contracts | `tests/unit/test_repl.py`, `tests/unit/test_notebook_ptc_integration.py` |
 
-The implementation order is **F1 → F2 → F3 → C1 → C2 → C3 → C4 → Q1 → Q2
+The implementation order is **F1 → F2 → F3 → F4 → C1 → C2 → C3 → C4 → Q1 → Q2
 → Q3 → Q4 → staged Harbor evaluation → E3/snapshot ablations**. This fixes known
 deterministic waste first, then the observed quality miss, and only then adds runtime
 complexity.
