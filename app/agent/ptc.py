@@ -261,6 +261,20 @@ def build_notebook_session(
                 **result,
                 "data": result.get("data") if isinstance(result.get("data"), dict) else {},
             }
+            result_bytes = (
+                json.dumps(
+                    result,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                )
+                + "\n"
+            ).encode()
+            result_artifact_uri = put_artifact(
+                settings.state_root / "artifacts" / "sha256",
+                result_bytes,
+            )
             operation_id = str(common["operation_id"])
             status = str(result.get("status", "error"))
             if status == "blocked":
@@ -279,6 +293,7 @@ def build_notebook_session(
                 )
                 if isinstance(value, str) and value.startswith(("artifact://", "file://"))
             }
+            refs.add(result_artifact_uri)
             self.artifact_refs.update(refs)
             self.effects.append(effect)
             result_hash = hashlib.sha256(
@@ -292,6 +307,9 @@ def build_notebook_session(
                     "status": status,
                     "effect": effect,
                     "result_hash": result_hash,
+                    "result_artifact_uri": result_artifact_uri,
+                    "result_media_type": "application/json",
+                    "result_bytes": len(result_bytes),
                     "artifact_refs": sorted(refs),
                     "truncated": bool(result.get("truncated")),
                     "omitted_bytes": max(0, int(result.get("omitted_bytes", 0))),

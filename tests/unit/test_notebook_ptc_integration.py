@@ -644,6 +644,20 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     )
     assert terminal.payload["capability_count"] == 2
     assert terminal.payload["capability_operations"] == ["fs.write", "fs.read"]
+    capability_events = [
+        event
+        for event in events.read("task-1")
+        if event.kind == EventKind.CAPABILITY_COMPLETED
+    ]
+    assert len(capability_events) == 2
+    for event in capability_events:
+        uri = event.payload["result_artifact_uri"]
+        artifact = state_root / "artifacts" / "sha256" / uri.rsplit("/", 1)[-1]
+        stored = artifact.read_bytes()
+        assert len(stored) == event.payload["result_bytes"]
+        assert event.payload["result_media_type"] == "application/json"
+        assert json.loads(stored)["status"] == "ok"
+        assert uri in event.payload["artifact_refs"]
     assert "notebook_path" not in second and "state_delta" not in second
     assert kinds[-1] == EventKind.NOTEBOOK_SNAPSHOTTED
     assert '"tools":["execute_code"]' in settings.static_prefix
