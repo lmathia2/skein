@@ -255,6 +255,11 @@ across multiple attempts. Keep the compact prompt only if reward does not regres
 use capability choice, cell shape, tokens, and latency to diagnose the result rather
 than as independent promotion gates.
 
+**Result (2026-09-10): rejected.** The prior prompt scored 3/3; the compact C4
+prompt scored 1/2 before its third trial was stopped, while using more input
+tokens in two completed trials than the baseline used in three. The prior prompt
+was restored. See `docs/audits/ptc-prompt-ablation-2026-09-10.md`.
+
 The prompt should teach strategy rather than enumerate APIs:
 
 ```text
