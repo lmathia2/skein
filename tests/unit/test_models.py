@@ -99,7 +99,7 @@ def test_provider_terminal_schema_requires_every_property() -> None:
 
     assert set(schema["required"]) == set(schema["properties"])
     assert schema["$defs"]["StructuredCompletionClaim"]["required"] == [
-        "criterion",
+        "criterion_id",
         "evidence",
     ]
     result = StructuredAgentStep.model_validate({"status": "done"})

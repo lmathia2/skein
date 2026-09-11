@@ -19,6 +19,7 @@ from harness.adapters.adk.runtime.bootstrap import build_server_assembly
 from harness.adapters.adk.runtime.protocol import CancelTaskMessage, StartTaskMessage
 from harness.adapters.providers import ClosedAdkModelProviderRegistry
 from harness.core.config import load_harness_composition
+from harness.core.models.task import criterion_id
 from harness.evidence.ledger import LedgerBackedEventStore, open_ledger
 from harness.evidence.ledger.importers import import_tool_receipt
 from harness.evidence.state import CheckpointStore, JsonlEventStore, ToolReceiptStore
@@ -38,7 +39,10 @@ class ResumeModel(BaseLlm):
         else:
             part = types.Part(text=json.dumps({
                 "status": "verify", "message": "Verify result.",
-                "completion_claims": [{"criterion": "result is done", "evidence": ["result.txt"]}],
+                "completion_claims": [{
+                    "criterion_id": criterion_id("result is done"),
+                    "evidence": ["result.txt"],
+                }],
             }))
         yield LlmResponse(content=types.Content(role="model", parts=[part]))
 

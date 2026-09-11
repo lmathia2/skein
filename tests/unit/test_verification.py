@@ -19,6 +19,32 @@ from harness.verification import (
 )
 from harness.verification.contracts import is_reusable_validation_command
 from harness.verification.managed import _fingerprint
+from harness.verification.runner import build_report
+
+
+def test_report_binds_each_validation_only_to_selected_criterion_row() -> None:
+    command = "pytest -q tests/test_transition.py"
+    result = CommandResult(
+        category="test",
+        command=command,
+        exit_code=0,
+        stdout="1 passed",
+        strength="behavioral",
+    )
+    report = build_report(
+        criteria=["positive", "negative"],
+        criterion_ids={"positive": "criterion-positive", "negative": "criterion-negative"},
+        criterion_validations={"criterion-positive": [0], "criterion-negative": []},
+        results=[result],
+        scope_violations=[],
+        criterion_evidence={"criterion-positive": [command]},
+        changed_paths=["feature.py"],
+    )
+
+    assert not report.passed
+    assert report.criteria[0].satisfied
+    assert not report.criteria[1].satisfied
+    assert report.criteria[0].evidence[0].reference == "validation:0"
 
 
 @pytest.mark.parametrize(

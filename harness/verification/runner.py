@@ -157,6 +157,8 @@ def _verified_references(
 def build_report(
     *,
     criteria: list[str],
+    criterion_ids: Mapping[str, str] | None = None,
+    criterion_validations: Mapping[str, list[int]] | None = None,
     results: list[CommandResult],
     scope_violations: list[str],
     criterion_evidence: Mapping[str, list[str]] | None = None,
@@ -165,6 +167,7 @@ def build_report(
     baseline_results: Mapping[str, CommandResult] | None = None,
 ) -> VerificationReport:
     evidence_map = criterion_evidence or {}
+    row_ids = criterion_ids or {criterion: criterion for criterion in criteria}
     changed = changed_paths or []
     required = _required_strength(changed, required_strength)
     baselines = baseline_results or {}
@@ -196,28 +199,39 @@ def build_report(
     ]
     verified_references, achieved = _verified_references(evidence_results, required)
     strength_satisfied = _STRENGTH_ORDER[achieved] >= _STRENGTH_ORDER[required]
-    criteria_rows = [
-        CriterionEvidence(
+    criteria_rows = []
+    for criterion in criteria:
+        row_id = row_ids[criterion]
+        claimed = list(evidence_map.get(row_id, evidence_map.get(criterion, [])))
+        selected_indexes = (
+            set(criterion_validations.get(row_id, []))
+            if criterion_validations is not None
+            else set(range(len(results)))
+        )
+        selected = [
+            reference
+            for reference in verified_references
+            if reference.validation_index in selected_indexes
+        ]
+        criteria_rows.append(
+            CriterionEvidence(
+            criterion_id=row_id,
             criterion=criterion,
-            satisfied=(
-                required_commands_passed
-                and strength_satisfied
-            ),
-            claimed_evidence=list(evidence_map.get(criterion, [])),
-            evidence=list(verified_references),
+            satisfied=required_commands_passed and strength_satisfied and bool(selected),
+            claimed_evidence=claimed,
+            evidence=selected,
             notes=(
                 "No model completion claim recorded; satisfaction is bound to "
                 "environmental verification"
-                if not evidence_map.get(criterion)
+                if not claimed
                 else (
                     f"No successful {required} verification was executed"
                     if not strength_satisfied
-                    else None
+                    else ("Claimed evidence did not identify a successful validation" if not selected else None)
                 )
             ),
         )
-        for criterion in criteria
-    ]
+        )
     diagnostics = [
         _diagnostic(result)
         for result, accepted in zip(results, effective, strict=True)

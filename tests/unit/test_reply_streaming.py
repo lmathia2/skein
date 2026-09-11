@@ -68,7 +68,7 @@ async def test_character_chunks_are_redacted_before_publication_and_aggregate_de
 @pytest.mark.asyncio
 @pytest.mark.parametrize("header", [
     {"status": "verify"}, {"status": "done"}, {"status": "blocked"},
-    {"status": "answer", "completion_claims": [{"criterion": "work done"}]},
+    {"status": "answer", "completion_claims": [{"criterion_id": "criterion-work"}]},
 ])
 async def test_ineligible_control_does_not_stream(header) -> None:
     stream = PublicReplyStream(SecretRedactor())

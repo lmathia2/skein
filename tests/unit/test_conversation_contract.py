@@ -37,7 +37,7 @@ def test_tool_effects_and_workspace_changes_force_verification(required, unchang
 
 def test_empty_reply_and_completion_claims_are_not_direct_answers() -> None:
     for step in [AgentStep(status="answer"), AgentStep(status="answer", message="done",
-            completion_claims=[CompletionClaim(criterion="implemented")])]:
+            completion_claims=[CompletionClaim(criterion_id="criterion-implemented")])]:
         assert not can_answer_directly(
             parse_task_request("request"), step,
             verification_required=False, workspace_unchanged=True,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from enum import StrEnum
 from typing import Literal
@@ -35,6 +36,18 @@ class PlanStepStatus(StrEnum):
     ACTIVE = "active"
     COMPLETE = "complete"
     BLOCKED = "blocked"
+
+
+def criterion_id(text: str, parent_id: str | None = None) -> str:
+    payload = f"{parent_id or ''}\0{' '.join(text.split())}"
+    return f"criterion-{hashlib.sha256(payload.encode()).hexdigest()[:12]}"
+
+
+class CriterionRow(StrictModel):
+    criterion_id: str
+    text: str = Field(min_length=1, max_length=10_000)
+    parent_id: str | None = None
+    probe: Literal["general", "positive", "negative", "precondition_unmet"] = "general"
 
 
 class TaskRequest(StrictModel):
@@ -89,6 +102,7 @@ class TaskLedger(StrictModel):
     goal: str
     mode: Literal["auto", "coding"] = "coding"
     acceptance_criteria: list[str]
+    criterion_rows: list[CriterionRow] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     non_goals: list[str] = Field(default_factory=list)
     permitted_paths: list[str] | None = None
@@ -125,6 +139,26 @@ class TaskLedger(StrictModel):
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
     version: int = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def populate_criterion_rows(self) -> TaskLedger:
+        if not self.criterion_rows:
+            object.__setattr__(
+                self,
+                "criterion_rows",
+                [
+                    CriterionRow(criterion_id=criterion_id(text), text=text)
+                    for text in self.acceptance_criteria
+                ],
+            )
+        if [row.text for row in self.criterion_rows] != self.acceptance_criteria:
+            raise ValueError("criterion rows must match acceptance criteria")
+        if len({row.criterion_id for row in self.criterion_rows}) != len(self.criterion_rows):
+            raise ValueError("criterion row IDs must be unique")
+        known = {row.criterion_id for row in self.criterion_rows}
+        if any(row.parent_id is not None and row.parent_id not in known for row in self.criterion_rows):
+            raise ValueError("criterion row parent is unknown")
+        return self
 
     @classmethod
     def from_request(
@@ -166,6 +200,7 @@ class TaskLedger(StrictModel):
             "goal": self.goal,
             "mode": self.mode,
             "acceptance_criteria": self.acceptance_criteria,
+            "criterion_rows": [row.model_dump(mode="json") for row in self.criterion_rows],
             "constraints": self.constraints,
             "non_goals": self.non_goals,
             "phase": self.phase.value,

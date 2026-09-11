@@ -7,10 +7,18 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class CriterionProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=10_000)
+    parent_id: str
+    probe: Literal["general", "positive", "negative", "precondition_unmet"] = "general"
+
+
 class CompletionClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    criterion: str
+    criterion_id: str
     evidence: list[str] = Field(default_factory=list)
 
     @field_validator("evidence", mode="before")
@@ -35,6 +43,15 @@ class AgentStep(BaseModel):
     discovered_constraints: list[str] = Field(default_factory=list)
     files_in_focus: list[str] = Field(default_factory=list)
     completion_claims: list[CompletionClaim] = Field(default_factory=list)
+    criterion_proposals: list[CriterionProposal] = Field(default_factory=list, max_length=16)
+
+
+class StructuredCriterionProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    parent_id: str
+    probe: Literal["general", "positive", "negative", "precondition_unmet"]
 
 
 class StructuredCompletionClaim(BaseModel):
@@ -42,7 +59,7 @@ class StructuredCompletionClaim(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    criterion: str
+    criterion_id: str
     evidence: list[str]
 
     @model_validator(mode="before")
@@ -67,6 +84,7 @@ class StructuredAgentStep(BaseModel):
     discovered_constraints: list[str]
     files_in_focus: list[str]
     completion_claims: list[StructuredCompletionClaim]
+    criterion_proposals: list[StructuredCriterionProposal]
 
     @model_validator(mode="before")
     @classmethod
@@ -83,6 +101,7 @@ class StructuredAgentStep(BaseModel):
             "discovered_constraints",
             "files_in_focus",
             "completion_claims",
+            "criterion_proposals",
         ):
             completed.setdefault(field, [])
         return completed

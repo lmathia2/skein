@@ -45,7 +45,7 @@ def test_parse_agent_step_rejects_non_structured_final_text() -> None:
 def test_parse_agent_step_normalizes_scalar_claim_evidence_from_local_models() -> None:
     step = parse_agent_step(
         '{"status":"done","completion_claims":['
-        '{"criterion":"It works","evidence":"python test.py passed"}]}'
+        '{"criterion_id":"criterion-it-works","evidence":"python test.py passed"}]}'
     )
 
     assert step.completion_claims[0].evidence == ["python test.py passed"]

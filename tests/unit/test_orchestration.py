@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from harness.core.context import estimate_tokens
-from harness.core.models.agent_step import AgentStep, CompletionClaim
-from harness.core.models.task import TaskRequest
+from harness.core.models.agent_step import AgentStep, CompletionClaim, CriterionProposal
+from harness.core.models.task import TaskRequest, criterion_id
 from harness.core.orchestration import (
     HarnessRoute,
     build_work_packet,
@@ -54,7 +56,7 @@ def test_reducer_and_routes() -> None:
 
     verify = AgentStep(
         status="done",
-        completion_claims=[CompletionClaim(criterion="Login works", evidence=["pytest"])],
+        completion_claims=[CompletionClaim(criterion_id="criterion-login", evidence=["pytest"])],
     )
     ledger = reduce_agent_step(ledger, verify)
     assert decide_route(ledger, verify) == HarnessRoute.VERIFY
@@ -62,6 +64,50 @@ def test_reducer_and_routes() -> None:
     replanned = replan_ledger(ledger)
     assert replanned.phase == "plan"
     assert replanned.no_progress_count == ledger.no_progress_count
+
+
+def test_reducer_adopts_stable_child_rows_and_complete_transition_matrix() -> None:
+    ledger = create_initial_ledger(
+        TaskRequest(goal="Handle trait aspects"),
+        task_id="task",
+        base_revision="abc",
+        workspace_id="workspace",
+        branch_id="main",
+    )
+    parent_id = ledger.criterion_rows[0].criterion_id
+    proposals = [
+        CriterionProposal(text="Added", parent_id=parent_id),
+        CriterionProposal(text="Removed", parent_id=parent_id),
+        CriterionProposal(text="onAdd fires", parent_id=parent_id, probe="positive"),
+        CriterionProposal(text="onAdd does not fire", parent_id=parent_id, probe="negative"),
+        CriterionProposal(
+            text="onAdd stays quiet before its prerequisite",
+            parent_id=parent_id,
+            probe="precondition_unmet",
+        ),
+    ]
+
+    updated = reduce_agent_step(ledger, AgentStep(status="continue", criterion_proposals=proposals))
+    replayed = reduce_agent_step(updated, AgentStep(status="continue", criterion_proposals=proposals))
+
+    assert updated.acceptance_criteria[:3] == ["Handle trait aspects", "Added", "Removed"]
+    assert len(replayed.criterion_rows) == len(updated.criterion_rows)
+    assert updated.criterion_rows[1].criterion_id == criterion_id("Added", parent_id)
+
+
+def test_reducer_rejects_incomplete_transition_matrix() -> None:
+    ledger = _ledger()
+    parent_id = ledger.criterion_rows[0].criterion_id
+    with pytest.raises(ValueError, match="all three probe rows"):
+        reduce_agent_step(
+            ledger,
+            AgentStep(
+                status="continue",
+                criterion_proposals=[
+                    CriterionProposal(text="positive", parent_id=parent_id, probe="positive")
+                ],
+            ),
+        )
 
 
 def test_pending_steering_preempts_terminal_routes_at_a_safe_point() -> None:

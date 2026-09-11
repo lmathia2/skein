@@ -9,7 +9,7 @@ from enum import StrEnum
 from harness.core.context import estimate_tokens, truncate_to_tokens
 from harness.core.models.agent_step import AgentStep
 from harness.core.models.ledger import TaskLedger
-from harness.core.models.task import TaskRequest
+from harness.core.models.task import CriterionRow, TaskRequest, criterion_id
 from harness.evidence.state.progress import ProgressRoute, route_for_progress
 
 
@@ -70,6 +70,29 @@ def reduce_agent_step(ledger: TaskLedger, step: AgentStep) -> TaskLedger:
         if decision not in known_decisions
     )
     data["decisions"] = decisions
+    if step.criterion_proposals:
+        rows = list(ledger.criterion_rows)
+        known = {row.criterion_id for row in rows}
+        proposals = []
+        for proposal in step.criterion_proposals:
+            if proposal.parent_id not in known:
+                raise ValueError(f"unknown criterion parent: {proposal.parent_id}")
+            row = CriterionRow(
+                criterion_id=criterion_id(proposal.text, proposal.parent_id),
+                text=proposal.text,
+                parent_id=proposal.parent_id,
+                probe=proposal.probe,
+            )
+            if row.criterion_id not in known:
+                proposals.append(row)
+                known.add(row.criterion_id)
+        for parent_id in {row.parent_id for row in proposals if row.probe != "general"}:
+            probes = {row.probe for row in proposals if row.parent_id == parent_id}
+            if not {"positive", "negative", "precondition_unmet"}.issubset(probes):
+                raise ValueError("transition criterion proposals require all three probe rows")
+        rows.extend(proposals)
+        data["criterion_rows"] = [row.model_dump(mode="python") for row in rows]
+        data["acceptance_criteria"] = [row.text for row in rows]
     if "constraints" in data:
         data["constraints"] = list(
             dict.fromkeys([*data.get("constraints", []), *step.discovered_constraints])

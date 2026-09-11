@@ -174,21 +174,23 @@ def _ledger_patch(before: TaskLedger, after: TaskLedger) -> dict[str, Any]:
 
 
 def _criterion_review_action(ledger: TaskLedger, step: AgentStep) -> str:
-    claimed = {claim.criterion: claim.evidence for claim in step.completion_claims}
+    claimed = {claim.criterion_id: claim.evidence for claim in step.completion_claims}
     rows = [
-        f"- {criterion}: " + (
-            "; ".join(claimed[criterion])
-            if claimed.get(criterion)
+        f"- {row.criterion_id}: {row.text}: " + (
+            "; ".join(claimed[row.criterion_id])
+            if claimed.get(row.criterion_id)
             else "MISSING concrete implementation or test evidence"
         )
-        for criterion in ledger.acceptance_criteria
+        for row in ledger.criterion_rows
     ]
     return (
         "Perform the single criterion-gap review. Preserve the complete original requirements. "
         "Try to falsify weak or missing rows with omitted, default, boundary, and interacting "
         "inputs. For stateful or transition requirements, test both the requested transition and "
         "histories where its prerequisite was never reached. Fix confirmed defects and return "
-        "updated completion_claims. Do not repeat broad exploration. When every row has concrete "
+        "updated completion_claims keyed by criterion_id. If the goal needs decomposition, propose "
+        "bounded child rows under its parent ID; transition criteria require positive, negative, "
+        "and precondition_unmet rows. Do not repeat broad exploration. When every row has concrete "
         "implementation and test evidence and the targeted checks pass, request verification "
         "immediately.\n"
         + "\n".join(rows)
@@ -462,8 +464,12 @@ async def _verify_task(
                 strength="behavioral",
             )
         )
-    evidence_map: dict[str, list[str]] = {
-        claim["criterion"]: list(claim.get("evidence", [])) for claim in claims
+    known_ids = {row.criterion_id for row in ledger.criterion_rows}
+    claim_ids = [str(claim.get("criterion_id", "")) for claim in claims]
+    if len(claim_ids) != len(set(claim_ids)) or any(item not in known_ids for item in claim_ids):
+        raise ValueError("completion claims contain duplicate, unknown, or stale criterion IDs")
+    evidence_map = {
+        str(claim["criterion_id"]): list(claim.get("evidence", [])) for claim in claims
     }
     executor = deps.validation_executor(ledger.task_id)
     baseline_results = {
@@ -565,6 +571,20 @@ async def _verify_task(
             break
     report = build_report(
         criteria=ledger.acceptance_criteria,
+        criterion_ids={row.text: row.criterion_id for row in ledger.criterion_rows},
+        criterion_validations={
+            row.criterion_id: (
+                list(range(len(command_results)))
+                if row.probe == "general"
+                else [
+                    index
+                    for index, result in enumerate(command_results)
+                    if result.command in evidence_map.get(row.criterion_id, [])
+                    or f"validation:{index}" in evidence_map.get(row.criterion_id, [])
+                ]
+            )
+            for row in ledger.criterion_rows
+        },
         results=command_results,
         scope_violations=check_scope(
             plan.changed_paths,

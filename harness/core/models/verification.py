@@ -23,6 +23,7 @@ class EvidenceReference(StrictModel):
 
 
 class CriterionEvidence(StrictModel):
+    criterion_id: str
     criterion: str
     satisfied: bool
     claimed_evidence: list[str] = Field(default_factory=list)
