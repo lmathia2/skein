@@ -26,6 +26,11 @@ product surfaces and have been removed.
 - `harness/ptc` owns the persistent CPython worker and deterministic notebook
   projection. The ledger is historical authority; the notebook is a workbench; the
   live heap is disposable runtime state.
+- Notebook PTC exposes deterministic capability, kernel, CLI, and search manifests
+  through `agent.help()`. Stable criterion rows and row-bound validation receipts
+  keep requirement coverage under host control.
+- Conservative replay-safe recovery remains the shipped default. A bounded
+  primitive/container snapshot policy is available only as an experimental opt-in.
 - `harness/verification` owns acceptance checks and the final complete/retry/blocked
   decision. Model completion claims are never authoritative.
 - `harness/adapters` contains external boundary code only: Google ADK integration,

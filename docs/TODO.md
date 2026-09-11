@@ -93,6 +93,15 @@ and the implementation/evaluation rubric.
 The current quality-first implementation sequence and promotion gates are in
 [PTC improvements](ptc_improvements.md).
 
+- [x] Normalize nested results, classify compact failures, and bound capability calls.
+- [x] Expose deterministic capability, kernel, CLI, and search manifests on demand.
+- [x] Bind first-review criterion decomposition, completion claims, transition probes,
+  and validation evidence to stable criterion IDs.
+- [x] Emit deterministic phase guidance in the dynamic work packet.
+- [x] Add opt-in bounded snapshot rollback without replaying brokered effects.
+- [ ] Run the `24/48` versus `12/36` E3 live comparison; the 2026-09-10 attempt was
+  blocked by the host external-egress policy before any provider call.
+
 ### Modular architecture execution checklist
 
 - [x] U1: Prebuild the pinned ADK sandbox image and verify its package contents.

@@ -213,6 +213,9 @@ These changes are small, offline, and should precede prompt experiments.
 | F3 Compact errors | Return the exception type, bounded message, cell-local source line, short source excerpt, failure stage, and whether state was preserved. Strip worker implementation frames. | Snapshot tests cover syntax, policy, broker, and runtime failures without natural-language assertions. |
 | F4 Capability budget | Add a configured maximum number of nested broker calls per cell, counting children of `agent.parallel`, and reject calls beyond it before dispatch. | Serial and parallel calls stop at the limit; rejected calls have no receipt; prior effects retain their normal recovery semantics. |
 
+**Implemented (2026-09-10): F1-F4.** Focused broker, worker, configuration, and
+integration tests cover the four deterministic contracts.
+
 ### Phase 2: make available capabilities obvious
 
 Follow Prime Agent's useful pattern: advertise stable facilities, list extensible
@@ -248,6 +251,11 @@ agent.help("mcp.github.search", details=True)  # one exact contract
 | C2 Kernel manifest | Configure a small preload set and verify imports when the worker starts. Expose only verified module names and meaningful versions through `agent.help("kernel")`. Do not scan or advertise the whole environment. | Worker startup fails closed on a required preload; optional missing modules are omitted; manifest bytes are deterministic. |
 | C3 CLI manifest | Verify a curated command list in the authoritative Pier task environment. Include repository-detected commands only when their manifests or executable paths exist. | Host and Pier inventories cannot be confused; unavailable commands are never advertised. |
 | C4 Prompt replacement | Replace `NOTEBOOK_PTC_INSTRUCTION` plus `batching_instruction` with one short stable doctrine: Python retains working state and orchestrates capabilities; chain operations whose next inputs are known; return when judgment is needed; use the project's own environment; the broker and verifier retain authority. Put persistence, final-expression, and result-envelope mechanics in the `execute_code` description. Put active capability names, phase, and unresolved criteria in the dynamic packet; keep exact schemas behind targeted `agent.help()`. Include at most one self-contained example using only real names and return fields. | Snapshot the stable prefix and tool description, execute the example through the real broker, and capture the serialized provider request. No undefined example names, duplicated API prose, or environment-dependent bytes may enter the stable prefix. |
+
+**Implemented (2026-09-10): C1-C3.** The existing `agent.help()` path now exposes
+parent-built registered capability metadata, the verified CPython/preload manifest,
+and project commands backed by present repository manifests. C4 was evaluated and
+rejected below.
 
 Deterministic checks prove only prompt shape and example correctness. Compare the
 current prompt with the compact C4 prompt as a prompt-only, matched Koota ablation
@@ -285,6 +293,11 @@ This is the quality-critical phase.
 | Q3 Evidence by row | Bind each validation receipt only to the rows it was selected to test. Unmatched rows remain unresolved. | A positive transition test cannot satisfy a negative or precondition-unmet row. |
 | Q4 Transition matrix | For state-transition requirements, require positive transition, negative, and precondition-unmet probes regardless of whether the goal contains words such as “never.” | The historical Koota positive probe remains insufficient until the missing false-positive case is demonstrated. |
 
+**Implemented (2026-09-10): Q1-Q4.** The original goal remains the parent row;
+bounded first-review proposals receive stable IDs; claims reject unknown, duplicate,
+or stale IDs; and transition rows require separately selected positive, negative,
+and precondition-unmet validation evidence.
+
 Criterion rows and unresolved evidence appear in the dynamic suffix and notebook
 projection. They never enter the stable prompt prefix.
 
@@ -298,6 +311,11 @@ criteria.
 | E1 Phase hints | Emit one current-phase hint at a phase transition or batch yield. Remove phase-dependent prose from the stable prefix. | Hint phase always matches the ledger; complete tool-call/result pairs remain in context. |
 | E2 Search discovery | Document the existing brokered search grammar in `agent.help()` and the CLI manifest. Do not add another top-level tool. | Search fixtures preserve path confinement, bounds, and receipts; the model no longer needs `find`/`grep` probing to discover syntax. |
 | E3 Batch tuning | Compare the current `24/48` no-change/max-cell policy with `12/36`. A yield returns unresolved rows and the latest failed validation rather than restarting exploration. | On Koota and Testem, reduce median cells or active time without reducing reward or increasing uncached input. Otherwise keep `24/48`. |
+
+**Status (2026-09-10): E1-E2 implemented; E3 unpromoted.** Phase guidance is in
+the dynamic task projection and the CLI manifest documents the existing bounded
+search grammar. The host blocked the live `24/48` versus `12/36` OpenRouter run
+before provider execution, so the supported profile remains `24/48`.
 
 Target cell-shape indicators, evaluated before buying a broader reward run:
 
@@ -340,6 +358,11 @@ Gate snapshot activation on:
 Top-level `await` and background tasks are deferred. They add interruption,
 attribution, shutdown, and snapshot complexity without evidence that they address a
 current Harbor failure.
+
+**Implemented experimentally (2026-09-10).** `state: snapshot` serializes only a
+bounded allowlist of primitive/container values before a cell and restores it after
+runtime failure. Timeouts and transport failures discard the worker; brokered effects
+are recorded once and never replayed. `replay_safe` remains the supported profile.
 
 ## Evaluation sequence
 
