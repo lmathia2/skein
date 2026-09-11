@@ -80,6 +80,7 @@ def build_coding_worker(
     read_default_lines = active_tool_config.read_default_lines
     bash_default_timeout = active_tool_config.bash_default_timeout_seconds
     capability_handlers = capabilities or {}
+    active_redactor = redactor or SecretRedactor()
     fingerprint_workspace = workspace_fingerprint or LocalRepositoryRuntime(
         settings.workspace
     ).fingerprint
@@ -248,6 +249,7 @@ def build_coding_worker(
             fingerprint_workspace=fingerprint_workspace,
             read_default_lines=read_default_lines, bash_default_timeout=bash_default_timeout,
             runtime_identity=_runtime_identity, require_verification=_require_verification,
+            redactor=active_redactor,
         )
         if active_ptc_config.enabled
         else None

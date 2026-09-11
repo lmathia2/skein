@@ -25,6 +25,7 @@ from harness.evidence.state.events import HarnessEvent
 from harness.execution.approvals.waiting import ApprovalWaiter
 from harness.execution.environment.async_call import run_managed_thread
 from harness.execution.repo import build_repository_manifest
+from harness.execution.safety.redaction import SecretRedactor
 from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT
 from harness.execution.tools.adk_adapter import AdkCodingTools
 from harness.execution.tools.output import bound_output, compact_tool_result
@@ -120,6 +121,7 @@ def build_notebook_session(
     bash_default_timeout: int,
     runtime_identity: Callable[[ToolContext | None], tuple[str | None, str | None]],
     require_verification: Callable[[ToolContext | None], None],
+    redactor: SecretRedactor,
 ) -> PtcSession:
     _runtime_identity = runtime_identity
     _require_verification = require_verification
@@ -274,10 +276,11 @@ def build_notebook_session(
             self.effects.append(effect)
 
         def _record_result(self, common: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-            result = {
+            result = redactor.redact({
                 **result,
                 "data": result.get("data") if isinstance(result.get("data"), dict) else {},
-            }
+            })
+            assert isinstance(result, dict)
             result_bytes = (
                 json.dumps(
                     result,
@@ -642,14 +645,15 @@ def build_notebook_session(
                     raise ValueError("artifact name must normalize to 1-128 safe characters")
                 if description is not None and len(str(description)) > 500:
                     raise ValueError("artifact description must be at most 500 characters")
-                if isinstance(value, bytes):
-                    content, media_type = value, "application/octet-stream"
-                elif isinstance(value, str):
-                    content, media_type = value.encode(), "text/plain; charset=utf-8"
+                safe_value = redactor.redact(value)
+                if isinstance(safe_value, bytes):
+                    content, media_type = safe_value, "application/octet-stream"
+                elif isinstance(safe_value, str):
+                    content, media_type = safe_value.encode(), "text/plain; charset=utf-8"
                 else:
                     content = (
                         json.dumps(
-                            value,
+                            safe_value,
                             ensure_ascii=False,
                             sort_keys=True,
                             separators=(",", ":"),
@@ -881,10 +885,18 @@ def build_notebook_session(
         else:
             terminal_kind = EventKind.REPL_CELL_FAILED
         effect = "unknown" if result.effect_unknown else broker.effect
+        stdout = redactor.redact_text(result.stdout)
+        stderr = redactor.redact_text(result.stderr)
+        full_stdout = (
+            redactor.redact_text(result.full_stdout) if result.full_stdout is not None else None
+        )
+        full_stderr = (
+            redactor.redact_text(result.full_stderr) if result.full_stderr is not None else None
+        )
         output_artifacts: list[dict[str, Any]] = []
         for stream, complete in (
-            ("stdout", result.full_stdout),
-            ("stderr", result.full_stderr),
+            ("stdout", full_stdout),
+            ("stderr", full_stderr),
         ):
             if complete is None:
                 continue
@@ -916,8 +928,8 @@ def build_notebook_session(
             "work_batch_id": work_batch_id,
             "kernel_epoch": kernel_epoch,
             "effect": effect,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "stdout": stdout,
+            "stderr": stderr,
             "artifact_refs": sorted(broker.artifact_refs),
             "output_artifacts": output_artifacts,
             "capability_count": broker.call_index,
@@ -973,8 +985,8 @@ def build_notebook_session(
         visible = "\n".join(
             part
             for part in (
-                result.full_stdout or result.stdout,
-                result.full_stderr or result.stderr,
+                full_stdout or stdout,
+                full_stderr or stderr,
                 result.value_repr,
                 (
                     f"{result.error_type}: {result.error_message}"

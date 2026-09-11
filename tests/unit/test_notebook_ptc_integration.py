@@ -30,6 +30,7 @@ from harness.core.config import (
     parse_harness_composition,
 )
 from harness.evidence.state import EventKind, JsonlEventStore
+from harness.execution.safety.redaction import SecretRedactor
 from harness.execution.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
 
@@ -991,6 +992,42 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
     assert len(publish_events) == 2
     assert publish_events[0].payload["artifact_uri"] == publish_events[1].payload["artifact_uri"]
     assert publish_events[0].payload["host_visible"] is True
+
+
+@pytest.mark.asyncio
+async def test_ptc_redacts_registered_results_before_python_and_artifact_persistence(
+    tmp_path: Path,
+) -> None:
+    secret = "known-secret-value"
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=state_root, task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        ptc_config=config.notebook_ptc,
+        capabilities={
+            "private.read": lambda _arguments: {
+                "status": "ok",
+                "data": {"text": secret, "token": secret},
+            }
+        },
+        redactor=SecretRedactor(known_secrets=(secret,)),
+    )
+    assert worker.execute_code is not None
+    try:
+        result = await worker.execute_code("agent.mcp.call('private.read', {})")
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert secret not in result["model_text"]
+    assert "<redacted>" in result["model_text"]
+    artifacts = (state_root / "artifacts" / "sha256").iterdir()
+    assert all(secret.encode() not in artifact.read_bytes() for artifact in artifacts)
 
 
 @pytest.mark.asyncio
