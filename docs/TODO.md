@@ -99,8 +99,32 @@ The current quality-first implementation sequence and promotion gates are in
   and validation evidence to stable criterion IDs.
 - [x] Emit deterministic phase guidance in the dynamic work packet.
 - [x] Add opt-in bounded snapshot rollback without replaying brokered effects.
-- [ ] Run the `24/48` versus `12/36` E3 live comparison; the 2026-09-10 attempt was
-  blocked by the host external-egress policy before any provider call.
+- [x] Run the `24/48` versus `12/36` E3 live comparison on Koota with three
+  no-retry attempts per arm. Keep `24/48`: it scored 3/3 while `12/36` scored
+  2/3, so the tighter candidate failed the no-quality-regression gate.
+- [x] Preserve the implementation phase after a changed `max_cells` yield; only
+  no-change yields enter criterion review. Add repository-neutral read-once and
+  bounded-search guidance without changing the `24/48` limits or 16 kB output cap.
+- [ ] Persist each complete nested capability result as an immutable,
+  content-addressed artifact before bounding model-visible output. Record only its
+  URI, media type, byte size, operation identity, status, and result hash in the
+  ledger; keep the original result available to the live Python worker.
+- [ ] Preserve complete stdout/stderr when cell output exceeds the configured cap.
+  Return a bounded head-and-tail preview plus artifact URI and omitted-byte count
+  instead of silently discarding the overflow.
+- [ ] Expose confined `agent.artifacts.load(uri, offset=0, limit=...)` and
+  `agent.artifacts.list()` operations so persisted results and overflow remain
+  reloadable after a worker restart. Keep reads bounded, task-scoped, redacted, and
+  receipt-bearing.
+- [ ] Add an explicit `agent.artifacts.publish(value, name, description=None)` for
+  intentional host-facing deliverables. Normalize the name, store immutable bytes,
+  mark the artifact as published in metadata, and let the host decide whether to
+  display or forward it; never treat automatic internal artifacts as user-facing.
+- [ ] Prove the artifact contract deterministically: small results remain unchanged
+  in Python, large results do not enter the prompt unless selected, truncated output
+  is byte-equal when reloaded, names cannot escape their namespace, and repeated
+  persistence deduplicates by content hash. Re-run Koota only after these checks;
+  retain 16 kB unless live evidence justifies a separate 32 kB cap arm.
 
 ### Modular architecture execution checklist
 
