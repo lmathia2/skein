@@ -29,6 +29,10 @@ product surfaces and have been removed.
 - Notebook PTC exposes deterministic capability, kernel, CLI, and search manifests
   through `agent.help()`. Stable criterion rows and row-bound validation receipts
   keep requirement coverage under host control.
+- Complete nested capability results and truncated stdout/stderr are immutable,
+  content-addressed artifacts. Internal result artifacts stay out of model responses;
+  bounded task-scoped load/list operations recover them, while explicit publish adds
+  normalized host-facing metadata without forwarding data.
 - Conservative replay-safe recovery remains the shipped default. A bounded
   primitive/container snapshot policy is available only as an experimental opt-in.
 - `harness/verification` owns acceptance checks and the final complete/retry/blocked

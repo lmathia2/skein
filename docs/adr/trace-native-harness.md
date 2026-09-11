@@ -340,11 +340,28 @@ artifacts, or the durable terminal event. The result hash identifies semantic ou
 and is stable across replay and runtime-epoch changes. Full receipts remain in the
 canonical trace; bounded reads recover them when authorized.
 
-Images and other rich MIME results are content-addressed before presentation. Text may
-remain inline within the output budget; binary or oversized results become
-`artifact://sha256/...` references. Existing managed artifact reads enforce confinement,
-redaction, and byte limits, so a PTC implementation cannot create a second unbounded
-result channel.
+Every completed non-artifact nested capability result is deterministically serialized and stored as
+an immutable content-addressed artifact before model presentation. Its terminal event
+records the result hash, artifact URI, media type, byte size, operation identity, and
+effect; the live Python worker still receives the complete result mapping. Automatic
+result-artifact URIs remain internal unless selected, so durability does not add a URI
+to every model turn.
+Artifact load/list/publish results are not recursively artifacted.
+
+Images and other rich MIME results are content-addressed before presentation. When
+stdout or stderr exceeds the configured cell-output cap, the complete stream is stored
+as an artifact and the model receives a bounded head-and-tail preview, omitted-byte
+count, and reloadable URI. Task-scoped `agent.artifacts.load` and
+`agent.artifacts.list` preserve confinement and byte limits. The explicit
+`agent.artifacts.publish(value, name, description=None)` operation adds normalized
+host-facing metadata to an immutable artifact; it does not itself send, display, or
+forward data. Automatic tool-result and overflow artifacts are internal by default.
+
+The invariant execution doctrine stays in the cache-stable instruction and tool
+description. Kernel, CLI, and capability inventories remain deterministic and
+progressively disclosed through targeted `agent.help()` calls. Runtime discovery must
+not append a newly learned environment catalog to the system instruction after the
+first cell, because that would mutate the provider-cache prefix mid-run.
 
 `tools.usage@1` is the code-owned trace-memory view for accounting. It reports bounded
 counts by name and terminal status for top-level calls and nested PTC capabilities,
