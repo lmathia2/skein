@@ -6,7 +6,7 @@ import pytest
 
 from harness.core.context import estimate_tokens
 from harness.core.models.agent_step import AgentStep, CompletionClaim, CriterionProposal
-from harness.core.models.task import TaskRequest, criterion_id
+from harness.core.models.task import TaskPhase, TaskRequest, criterion_id
 from harness.core.orchestration import (
     HarnessRoute,
     build_work_packet,
@@ -75,6 +75,7 @@ def test_reducer_adopts_stable_child_rows_and_complete_transition_matrix() -> No
         branch_id="main",
     )
     parent_id = ledger.criterion_rows[0].criterion_id
+    ledger = ledger.model_copy(update={"phase": TaskPhase.REVIEW})
     proposals = [
         CriterionProposal(text="Added", parent_id=parent_id),
         CriterionProposal(text="Removed", parent_id=parent_id),
@@ -88,15 +89,21 @@ def test_reducer_adopts_stable_child_rows_and_complete_transition_matrix() -> No
     ]
 
     updated = reduce_agent_step(ledger, AgentStep(status="continue", criterion_proposals=proposals))
-    replayed = reduce_agent_step(updated, AgentStep(status="continue", criterion_proposals=proposals))
+    repeated = reduce_agent_step(ledger, AgentStep(status="continue", criterion_proposals=proposals))
 
     assert updated.acceptance_criteria[:3] == ["Handle trait aspects", "Added", "Removed"]
-    assert len(replayed.criterion_rows) == len(updated.criterion_rows)
+    assert repeated.criterion_rows == updated.criterion_rows
     assert updated.criterion_rows[1].criterion_id == criterion_id("Added", parent_id)
 
 
 def test_reducer_rejects_incomplete_transition_matrix() -> None:
-    ledger = _ledger()
+    ledger = create_initial_ledger(
+        TaskRequest(goal="Handle transition"),
+        task_id="task",
+        base_revision="abc",
+        workspace_id="workspace",
+        branch_id="main",
+    ).model_copy(update={"phase": TaskPhase.REVIEW})
     parent_id = ledger.criterion_rows[0].criterion_id
     with pytest.raises(ValueError, match="all three probe rows"):
         reduce_agent_step(

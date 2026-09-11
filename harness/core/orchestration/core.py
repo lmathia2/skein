@@ -33,6 +33,7 @@ def create_initial_ledger(
         goal=request.goal,
         mode=request.mode,
         acceptance_criteria=request.acceptance_criteria,
+        criteria_inferred=request.criteria_inferred,
         constraints=request.constraints,
         non_goals=request.non_goals,
         permitted_paths=request.permitted_paths,
@@ -71,6 +72,12 @@ def reduce_agent_step(ledger: TaskLedger, step: AgentStep) -> TaskLedger:
     )
     data["decisions"] = decisions
     if step.criterion_proposals:
+        if (
+            not ledger.criteria_inferred
+            or ledger.phase != "review"
+            or any(row.parent_id is not None for row in ledger.criterion_rows)
+        ):
+            raise ValueError("criterion decomposition is allowed only at the first inferred review")
         rows = list(ledger.criterion_rows)
         known = {row.criterion_id for row in rows}
         proposals = []

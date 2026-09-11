@@ -56,6 +56,7 @@ class TaskRequest(StrictModel):
     goal: str = Field(min_length=1, max_length=50_000)
     mode: Literal["auto", "coding"] = "coding"
     acceptance_criteria: list[str] = Field(default_factory=list)
+    criteria_inferred: bool = False
     constraints: list[str] = Field(default_factory=list)
     non_goals: list[str] = Field(default_factory=list)
     permitted_paths: list[str] | None = None
@@ -70,6 +71,7 @@ class TaskRequest(StrictModel):
     def ensure_acceptance_criteria(self) -> TaskRequest:
         if not self.acceptance_criteria and self.mode == "coding":
             self.acceptance_criteria = [self.goal]
+            self.criteria_inferred = True
         return self
 
 
@@ -102,6 +104,7 @@ class TaskLedger(StrictModel):
     goal: str
     mode: Literal["auto", "coding"] = "coding"
     acceptance_criteria: list[str]
+    criteria_inferred: bool = False
     criterion_rows: list[CriterionRow] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     non_goals: list[str] = Field(default_factory=list)
@@ -175,6 +178,7 @@ class TaskLedger(StrictModel):
             goal=request.goal,
             mode=request.mode,
             acceptance_criteria=request.acceptance_criteria,
+            criteria_inferred=request.criteria_inferred,
             constraints=request.constraints,
             non_goals=request.non_goals,
             permitted_paths=request.permitted_paths,

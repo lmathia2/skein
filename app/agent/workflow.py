@@ -1347,6 +1347,7 @@ async def _orchestrate_owned(
                     **ledger.model_dump(mode="python"),
                     "mode": "coding",
                     "acceptance_criteria": request.acceptance_criteria,
+                    "criteria_inferred": request.criteria_inferred,
                 }
             )
             deps.event_store.append(
