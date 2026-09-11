@@ -12,6 +12,7 @@ import ast
 import builtins
 import importlib
 import io
+import json
 import multiprocessing
 import pickle
 import platform
@@ -237,6 +238,7 @@ class _RemoteOperation:
 
 _PRELOADED_MODULES = ("json", "math", "re")
 _RESERVED_NAMES = frozenset({"agent", *_PRELOADED_MODULES})
+_MAX_HELP_BYTES = 16_000
 _AGENT_HELP = {
     "fs.read": "agent.fs.read(path, offset=1, limit=400)",
     "fs.write": ("agent.fs.write(path, content, expected_sha256=None, expected_absent=False)"),
@@ -284,7 +286,7 @@ def _agent_help(
     prefix: str | None = None,
     *,
     details: bool = False,
-) -> dict[str, str] | dict[str, dict[str, object]]:
+) -> dict[str, object]:
     """Return bounded, deterministic capability signatures."""
 
     if prefix is not None and not isinstance(prefix, str):
@@ -294,9 +296,30 @@ def _agent_help(
         for name, item in sorted(catalog.items())
         if prefix is None or name.startswith(prefix)
     }
-    if not details:
-        return {name: str(item.get("signature", item.get("description", ""))) for name, item in selected.items()}
-    return {name: dict(item) for name, item in selected.items()}
+    compact: dict[str, object] = {
+        name: str(item.get("signature", item.get("description", "")))
+        for name, item in selected.items()
+    }
+    candidate: dict[str, object] = (
+        {name: dict(item) for name, item in selected.items()} if details else compact
+    )
+    if len(json.dumps(candidate, sort_keys=True, separators=(",", ":")).encode()) <= _MAX_HELP_BYTES:
+        return candidate
+    notice = (
+        f"Help exceeded {_MAX_HELP_BYTES} bytes; "
+        "call agent.help('exact.name', details=True)."
+    )
+    degraded: dict[str, object] = {"_notice": notice, **compact}
+    if len(json.dumps(degraded, sort_keys=True, separators=(",", ":")).encode()) <= _MAX_HELP_BYTES:
+        return degraded
+    names: list[str] = []
+    pointer: dict[str, object] = {"_notice": notice, "matches": names}
+    for name in selected:
+        names.append(name)
+        if len(json.dumps(pointer, sort_keys=True, separators=(",", ":")).encode()) > _MAX_HELP_BYTES:
+            names.pop()
+            break
+    return pointer
 
 
 def _binding_description(

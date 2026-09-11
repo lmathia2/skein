@@ -31,6 +31,9 @@ only what is useful. `agent` is prebound; do not import or introspect it. Core s
 return mappings. Process the machine-readable `data` field in Python and expose only facts
 or short excerpts needed for the next decision; `model_text` is a bounded human rendering.
 Retain reusable intermediate values instead of spending a model turn on each trivial call.
+Use Python for exact calculation, parsing, aggregation, comparison, and deterministic
+transformation when it reduces copying or reasoning error; return prose directly when
+execution adds no evidence.
 Read a file once into a variable, print only the range needed now, and slice the retained
 value in later cells instead of reading the file again. Use `search grep --pattern TEXT
 --path PATH --limit 20` through `agent.shell.run` before recursive grep or repeated

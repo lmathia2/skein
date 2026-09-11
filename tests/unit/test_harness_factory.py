@@ -393,6 +393,9 @@ def test_ptc_prompt_teaches_read_once_and_search(tmp_path: Path) -> None:
     ).static_instruction
 
     assert "Read a file once into a variable" in instruction
+    assert "exact calculation, parsing, aggregation, comparison" in instruction
+    assert "return prose directly when" in instruction
+    assert "execution adds no evidence" in instruction
     assert "result = agent.fs.read(path)" in instruction
     assert "slice src again instead of rereading path" in instruction
     assert "search grep --pattern TEXT" in instruction

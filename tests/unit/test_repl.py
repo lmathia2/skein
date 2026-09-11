@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from typing import Any
@@ -7,6 +8,7 @@ from typing import Any
 import pytest
 
 from harness.ptc.repl import PersistentPythonWorker
+from harness.ptc.repl.worker import _agent_help
 
 
 class _Broker:
@@ -96,6 +98,30 @@ def test_worker_exposes_bounded_capability_help() -> None:
         worker.execute("agent.help('kernel', details=True)", _Broker(), 5).value_repr or ""
     )
     assert worker.execute("json.dumps({'ok': True})", _Broker(), 5).value_repr == "'{\"ok\": true}'"
+
+
+def test_capability_help_degrades_to_signatures_then_targeted_pointer() -> None:
+    detailed = {
+        f"mcp.tool_{index:03d}": {
+            "signature": f"agent.mcp.call('tool_{index:03d}', arguments)",
+            "description": "x" * 1000,
+        }
+        for index in range(100)
+    }
+
+    degraded = _agent_help(detailed, details=True)
+    pointer = _agent_help(
+        {
+            f"mcp.{'x' * 400}_{index:03d}": {"signature": "y" * 400}
+            for index in range(100)
+        }
+    )
+
+    assert "exceeded 16000 bytes" in str(degraded["_notice"])
+    assert isinstance(degraded["mcp.tool_000"], str)
+    assert set(pointer) == {"_notice", "matches"}
+    assert len(json.dumps(degraded, sort_keys=True).encode()) <= 16_000
+    assert len(json.dumps(pointer, sort_keys=True).encode()) <= 16_000
 
 
 def test_worker_returns_mime_bundle_as_rich_display() -> None:
