@@ -56,6 +56,14 @@ class ReplBroker(Protocol):
 
     def parallel(self, operations: list[dict[str, Any]]) -> Any: ...
 
+    def artifacts_load(self, uri: str, offset: int = 0, limit: int = 16_000) -> Any: ...
+
+    def artifacts_list(self) -> Any: ...
+
+    def artifacts_publish(
+        self, value: Any, name: str, description: str | None = None
+    ) -> Any: ...
+
 
 @dataclass(frozen=True, slots=True)
 class PythonExecutionResult:
@@ -238,6 +246,9 @@ _AGENT_HELP = {
     "parallel": "agent.parallel([{'operation': 'fs.read', 'arguments': {...}}, ...])",
     "state.list": "agent.state.list()",
     "state.describe": "agent.state.describe(name)",
+    "artifacts.load": "agent.artifacts.load(uri, offset=0, limit=16000)",
+    "artifacts.list": "agent.artifacts.list()",
+    "artifacts.publish": "agent.artifacts.publish(value, name, description=None)",
 }
 
 _AGENT_RESULTS: dict[str, dict[str, object]] = {
@@ -403,6 +414,11 @@ def _agent_proxy(
         ),
         shell=SimpleNamespace(run=_RemoteOperation(connection, "shell.run")),
         mcp=SimpleNamespace(call=_RemoteOperation(connection, "mcp.call")),
+        artifacts=SimpleNamespace(
+            load=_RemoteOperation(connection, "artifacts.load"),
+            list=_RemoteOperation(connection, "artifacts.list"),
+            publish=_RemoteOperation(connection, "artifacts.publish"),
+        ),
         state=_StateProxy(namespace, metadata),
     )
 
@@ -661,6 +677,9 @@ class PersistentPythonWorker:
             "shell.run": "bash",
             "mcp.call": "call",
             "parallel": "parallel",
+            "artifacts.load": "artifacts_load",
+            "artifacts.list": "artifacts_list",
+            "artifacts.publish": "artifacts_publish",
         }
         name = names.get(operation)
         if name is None:

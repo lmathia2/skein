@@ -934,6 +934,64 @@ async def test_truncated_cell_output_is_reloadable_from_an_artifact(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishable(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "note.txt").write_text("durable payload", encoding="utf-8")
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(state_root / "events")
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=workspace, state_root=state_root, task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=create_adk_tools(workspace, state_root=state_root, task_scope="task"),
+        ptc_config=config.notebook_ptc,
+        event_store=events,
+    )
+    assert worker.execute_code is not None
+    try:
+        await worker.execute_code("agent.fs.read('note.txt')")
+        loaded = await worker.execute_code(
+            "uri = agent.artifacts.list()['data']['artifacts'][0]['uri']\n"
+            "agent.artifacts.load(uri)['data']['text']"
+        )
+        first = await worker.execute_code(
+            "agent.artifacts.publish({'answer': 42}, 'Final Report', 'User deliverable')"
+        )
+        second = await worker.execute_code(
+            "agent.artifacts.publish({'answer': 42}, 'Final Report', 'User deliverable')"
+        )
+        published = await worker.execute_code(
+            "[item for item in agent.artifacts.list()['data']['artifacts'] "
+            "if item.get('published')]"
+        )
+        denied = await worker.execute_code(
+            "agent.artifacts.load('artifact://sha256/' + ('0' * 64))"
+        )
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert "durable payload" in loaded["model_text"]
+    assert "Final_Report" in first["model_text"]
+    assert first["artifact_uris"] == second["artifact_uris"]
+    assert "'published': True" in published["model_text"]
+    assert "PermissionError" in denied["model_text"]
+    publish_events = [
+        event for event in events.read("task") if event.kind == EventKind.ARTIFACT_PUBLISHED
+    ]
+    assert len(publish_events) == 2
+    assert publish_events[0].payload["artifact_uri"] == publish_events[1].payload["artifact_uri"]
+    assert publish_events[0].payload["host_visible"] is True
+
+
+@pytest.mark.asyncio
 async def test_provider_payload_growth_tracks_selected_egress_not_ptc_heap(
     tmp_path: Path,
 ) -> None:

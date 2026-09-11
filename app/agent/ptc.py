@@ -6,6 +6,7 @@ import ast
 import asyncio
 import hashlib
 import json
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -179,12 +180,27 @@ def build_notebook_session(
     def notebook_events(task_id: str) -> list[HarnessEvent]:
         return [*prior_notebook_events, *active_event_store.read(task_id)]
 
+    def task_artifact_uris(task_id: str) -> set[str]:
+        def collect(value: Any) -> set[str]:
+            if isinstance(value, dict):
+                return set().union(*(collect(item) for item in value.values()), set())
+            if isinstance(value, list):
+                return set().union(*(collect(item) for item in value), set())
+            if isinstance(value, str) and value.startswith("artifact://sha256/"):
+                return {value}
+            return set()
+
+        return set().union(
+            *(collect(event.payload) for event in active_event_store.read(task_id)), set()
+        )
+
     class _RestoreBroker:
         @staticmethod
         def _blocked(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
             raise PermissionError("capabilities are disabled while restoring replay-safe cells")
 
         read = write = edit = bash = call = parallel = _blocked
+        artifacts_load = artifacts_list = artifacts_publish = _blocked
 
     class _CellBroker:
         def __init__(
@@ -209,6 +225,7 @@ def build_notebook_session(
             self.operations: list[str] = []
             self.effects: list[str] = []
             self.artifact_refs: set[str] = set()
+            self.model_artifact_refs: set[str] = set()
 
         def _reserve(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
             if self.call_index >= active_ptc_config.max_capability_calls_per_cell:
@@ -293,6 +310,7 @@ def build_notebook_session(
                 )
                 if isinstance(value, str) and value.startswith(("artifact://", "file://"))
             }
+            self.model_artifact_refs.update(refs)
             refs.add(result_artifact_uri)
             self.artifact_refs.update(refs)
             self.effects.append(effect)
@@ -543,6 +561,123 @@ def build_notebook_session(
                 lambda: registered_capability.handler(arguments),
             )
 
+        def artifacts_load(
+            self, uri: str, offset: int = 0, limit: int = active_ptc_config.max_output_bytes
+        ) -> dict[str, Any]:
+            def invoke() -> dict[str, Any]:
+                if uri not in task_artifact_uris(self.task_id):
+                    raise PermissionError("artifact is not referenced by this task")
+                if not isinstance(offset, int) or offset < 0:
+                    raise ValueError("artifact offset must be a non-negative integer")
+                if not isinstance(limit, int) or not 1 <= limit <= active_ptc_config.max_output_bytes:
+                    raise ValueError(
+                        f"artifact limit must be between 1 and {active_ptc_config.max_output_bytes}"
+                    )
+                digest = uri.removeprefix("artifact://sha256/")
+                if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                    raise ValueError("invalid content-addressed artifact URI")
+                content = (settings.state_root / "artifacts" / "sha256" / digest).read_bytes()
+                selected = content[offset : offset + limit]
+                return {
+                    "status": "ok",
+                    "data": {
+                        "uri": uri,
+                        "text": selected.decode("utf-8", errors="replace"),
+                        "offset": offset,
+                        "returned_bytes": len(selected),
+                        "total_bytes": len(content),
+                        "complete": offset + len(selected) >= len(content),
+                        "next_offset": (
+                            None if offset + len(selected) >= len(content) else offset + len(selected)
+                        ),
+                    },
+                    "model_text": f"loaded {len(selected)} of {len(content)} artifact bytes",
+                    "artifact_uri": uri,
+                }
+
+            return self._call(
+                "artifacts.load", {"uri": uri, "offset": offset, "limit": limit}, invoke
+            )
+
+        def artifacts_list(self) -> dict[str, Any]:
+            def invoke() -> dict[str, Any]:
+                published = {
+                    str(event.payload.get("artifact_uri")): {
+                        "name": event.payload.get("name"),
+                        "description": event.payload.get("description"),
+                        "published": True,
+                    }
+                    for event in active_event_store.read(self.task_id)
+                    if event.kind == EventKind.ARTIFACT_PUBLISHED
+                }
+                items = [
+                    {"uri": uri, **published.get(uri, {"published": False})}
+                    for uri in sorted(task_artifact_uris(self.task_id))
+                ]
+                return {
+                    "status": "ok",
+                    "data": {"artifacts": items},
+                    "model_text": f"{len(items)} task artifacts",
+                }
+
+            return self._call("artifacts.list", {}, invoke)
+
+        def artifacts_publish(
+            self, value: Any, name: str, description: str | None = None
+        ) -> dict[str, Any]:
+            def invoke() -> dict[str, Any]:
+                normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(name)).strip("._-")
+                if not normalized or len(normalized) > 128:
+                    raise ValueError("artifact name must normalize to 1-128 safe characters")
+                if description is not None and len(str(description)) > 500:
+                    raise ValueError("artifact description must be at most 500 characters")
+                if isinstance(value, bytes):
+                    content, media_type = value, "application/octet-stream"
+                elif isinstance(value, str):
+                    content, media_type = value.encode(), "text/plain; charset=utf-8"
+                else:
+                    content = (
+                        json.dumps(
+                            value,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            default=str,
+                        )
+                        + "\n"
+                    ).encode()
+                    media_type = "application/json"
+                uri = put_artifact(settings.state_root / "artifacts" / "sha256", content)
+                active_event_store.append(
+                    self.task_id,
+                    EventKind.ARTIFACT_PUBLISHED,
+                    {
+                        "artifact_uri": uri,
+                        "name": normalized,
+                        "description": str(description) if description is not None else None,
+                        "media_type": media_type,
+                        "byte_size": len(content),
+                        "host_visible": True,
+                        "operation_id": f"{self.attempt_id}:{self.call_index}",
+                    },
+                    idempotency_key=f"artifact-published:{self.attempt_id}:{self.call_index}",
+                )
+                return {
+                    "status": "ok",
+                    "data": {"uri": uri, "name": normalized, "media_type": media_type},
+                    "model_text": f"published artifact {normalized!r}: {uri}",
+                    "artifact_uri": uri,
+                }
+
+            return self._call(
+                "artifacts.publish",
+                {
+                    "name": str(name),
+                    "description": str(description) if description is not None else None,
+                },
+                invoke,
+            )
+
         @property
         def effect(self) -> str:
             if "unknown" in self.effects:
@@ -745,6 +880,7 @@ def build_notebook_session(
             content = complete.encode()
             uri = put_artifact(settings.state_root / "artifacts" / "sha256", content)
             broker.artifact_refs.add(uri)
+            broker.model_artifact_refs.add(uri)
             output_artifacts.append(
                 {
                     "stream": stream,
@@ -761,6 +897,7 @@ def build_notebook_session(
                 max_inline_bytes=active_ptc_config.max_output_bytes,
             )
             broker.artifact_refs.update(display_refs)
+            broker.model_artifact_refs.update(display_refs)
         terminal_payload: dict[str, Any] = {
             "notebook_id": notebook_id,
             "cell_id": cell_id,
@@ -862,7 +999,7 @@ def build_notebook_session(
             "effect": effect,
             "notebook_path": str(notebook_path),
             "notebook_sha256": notebook_hash,
-            "artifact_uris": sorted(broker.artifact_refs),
+            "artifact_uris": sorted(broker.model_artifact_refs),
             "output_artifacts": output_artifacts,
             "duration_ms": result.duration_ms,
             "truncated": result.output_truncated or bounded.truncated,

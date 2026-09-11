@@ -20,6 +20,7 @@ class EventKind(StrEnum):
     ACTION_RECORDED = "action.recorded"
     MESSAGE_RECORDED = "message.recorded"
     TOOL_ARTIFACT_RECORDED = "tool.artifact_recorded"
+    ARTIFACT_PUBLISHED = "artifact.published"
     STEERING_RECEIVED = "steering.received"
     COMPACTION_CREATED = "compaction.created"
     CHECKPOINT_CREATED = "checkpoint.created"
