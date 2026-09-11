@@ -4,11 +4,10 @@
 >
 > Scope: Skein notebook PTC only
 >
-> Evidence baseline: [matched DeepSWE reference-six audit](audits/ptc-deepswe-reference-six-2026-09-10.md)
+> Evidence baseline: [six-task trace analysis](ptc-six-task-trace-analysis.md)
 >
-> Prompt references: Deep Agents QuickJS PTC at
-> `d93ab3351bbf4c3687212f665094ccad100f2c08` and Prime Agent RLM at
-> `bf8894afa55832f7cfa2094c8a0d041bc680a691` (reviewed 2026-09-10)
+> Prompt reference: Deep Agents QuickJS PTC at
+> `d93ab3351bbf4c3687212f665094ccad100f2c08` (reviewed 2026-09-10)
 
 ## Outcome
 
@@ -24,9 +23,8 @@ boundaries.
 ## Current implementation
 
 Skein ships notebook PTC as the opt-in `notebook-ptc-jsonl.yaml` profile. The default
-`four-tool.yaml` profile remains the quality baseline. The former Prime and ADK Code
-Mode implementations have been removed; this plan concerns the retained Skein
-runtime only.
+`four-tool.yaml` profile remains the quality baseline. The ADK Code Mode implementation
+has been removed; this plan concerns the retained Skein runtime only.
 
 ### Model interface and prompt
 
@@ -218,13 +216,13 @@ integration tests cover the four deterministic contracts.
 
 ### Phase 2: make available capabilities obvious
 
-Follow Prime Agent's useful pattern: advertise stable facilities, list extensible
-capabilities compactly, and disclose detailed contracts only on demand.
+Advertise stable facilities, list extensible capabilities compactly, and disclose
+detailed contracts only on demand.
 
 The prompt comparison points to a smaller target, not a larger prompt:
 
-- Prime gives Python one clear role: keep state, orchestrate tools, and transform
-  results; run a project through its own environment.
+- Give Python one clear role: keep state, orchestrate tools, and transform results;
+  run a project through its own environment.
 - Deep Agents gives one explicit batching rule: chain known dependent work in one
   program, and return to the model only when the next step needs judgment.
 - Skein currently repeats mechanics in `NOTEBOOK_PTC_INSTRUCTION` and
@@ -232,8 +230,8 @@ The prompt comparison points to a smaller target, not a larger prompt:
 
 Keep only those two behavioral rules plus the invariant safety boundary in the stable
 instruction. Put exact active capability names in the dynamic packet and detailed
-schemas behind `agent.help(name, details=True)`. Do not copy Prime's full runtime
-manual or Deep Agents' complete generated API reference into every request.
+schemas behind `agent.help(name, details=True)`. Do not copy a full runtime manual or
+Deep Agents' complete generated API reference into every request.
 
 Add a parent-built, immutable catalog to the worker:
 
@@ -402,8 +400,7 @@ or increasing hidden retries.
 
 ## Explicit non-goals
 
-- Import Prime Agent's full runtime, prompt, daemon, skills product, or native OS
-  authority.
+- Import another agent runtime, prompt, daemon, skills product, or native OS authority.
 - Add an exhaustive package or executable scanner.
 - Allow package installation during benchmark execution.
 - Add background Python tasks, unrestricted filesystem access, or another notebook

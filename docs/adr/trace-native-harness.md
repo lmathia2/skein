@@ -1,7 +1,6 @@
 # Trace-native harness and composable PTC
 
-> Status: historical implementation record; Prime sections were superseded when the
-> experimental adapter was removed. The current core architecture is
+> Status: historical implementation record. The current core architecture is
 > [Skein architecture design](skein_architecture_design.md).
 >
 > Updated: 2026-09-09
@@ -55,11 +54,8 @@ ADK Runner and Skein workflow
        `---- PTC tool: execute_code
                          |
                   closed session dispatch
-                    |       |       |
-                 Skein     ADK    Prime-native
-                 bundle   bundle     bundle
-                    |       |          `--> cell-level native-untracked evidence
-                    +-------+
+                         |
+                   Skein notebook
                          |
                guarded capability broker
                  |       |       |
@@ -86,7 +82,7 @@ selector plus persistence fields that validate supported native pairings:
 ```yaml
 notebook_ptc:
   enabled: true
-  implementation: skein_notebook     # skein_notebook | prime_repl
+  implementation: skein_notebook
   serialization: native              # native or the implementation's explicit format
   state: native                      # native or the implementation's explicit policy
   continuity: run                    # run | conversation when supported
@@ -120,7 +116,6 @@ The initial compatibility mapping is deterministic:
 | PTC value | Execution | Serialization | State | Continuity |
 | --- | --- | --- | --- | --- |
 | `skein_notebook` | `skein_repl` | `notebook` | `replay_safe` | existing value |
-| `prime_repl` | vendored Prime-native REPL | task JSONL lifecycle events | `snapshot` | `run` |
 
 `serialization: native` and `state: native` preserve these pairings. Their explicit
 equivalents are accepted where implemented. The complete validated configuration,
@@ -138,12 +133,8 @@ validation errors. There is no fallback to another runtime or persistence policy
 
 The transitional `notebook_ptc` schema accepts `serialization: native` and
 `state: native` by default. Skein additionally accepts its explicit `notebook` and
-`replay_safe` pairing. Prime's native pairing
-is JSONL transcript plus runtime snapshots, gated by explicit native execution and
-project trust. Its first adapter supports run continuity only. Conversation snapshot
-lineage, safe-auto effect recovery, and the brokered memory-command bridge raise
-`NotImplementedError`. The matrix below is a delivery
-target, not a promise that all combinations are available now.
+`replay_safe` pairing. The matrix below is a delivery target, not a promise that all
+combinations are available now.
 
 - `replay_safe` requires a persistent runtime and canonical cell lifecycle events.
 - `snapshot` requires a runtime that implements bounded snapshot/restore and records
@@ -195,9 +186,6 @@ The assembly behavior is therefore explicit:
 | either | off | active | off | Configuration error: programs require canonical memory |
 | either | off | off | on | Configuration error: bounded context requires trace-native memory |
 
-`prime_repl` with active memory programs is a known unsupported row and raises
-`NotImplementedError` naming the missing brokered memory-command bridge. Its trace-native
-memory may still be enabled with programs off for host-side evidence and context policy.
 Disabling PTC never initializes a runtime, serializer, snapshot owner, or container.
 
 The support matrix is closed: a combination exists only when assembly validation and
@@ -283,9 +271,9 @@ into competing sources of truth.
 
 ## Execution protocol
 
-The following is the target coordinator protocol. Current implementations preserve the
-same safety order internally, but the Skein notebook and Prime builders still own their
-event, restore, execution, and persistence sequences.
+The following is the target coordinator protocol. The Skein notebook preserves the
+same safety order internally while owning its event, restore, execution, and
+persistence sequence.
 
 For each `execute_code` call, the extracted coordinator will perform this sequence:
 
@@ -362,20 +350,39 @@ description. Kernel, CLI, and capability inventories remain deterministic and
 progressively disclosed through targeted `agent.help()` calls. Runtime discovery must
 not append a newly learned environment catalog to the system instruction after the
 first cell, because that would mutate the provider-cache prefix mid-run.
+Help rendering is capped deterministically: detailed contracts degrade to compact
+signatures, then to a bounded names list with an exact-query pointer.
+
+Intermediate values can remain outside provider context while still existing in the
+live heap or artifact store. Before a registered result, printed stream, or published
+value crosses into durable artifacts or model-visible output, the configured secret
+redactor produces the persisted representation. Skein does not yet implement reversible
+PII tokenization for opaque cross-MCP transfer and must not claim that stronger privacy
+property. Such a data-flow policy requires explicit source/destination authorization and
+an independently protected token vault before activation.
+
+The shipped notebook kernel is persistent within its owned run and intentionally differs
+from stateless hosted calculation tools. Its trusted-local adapter is not a production
+security sandbox, package availability is reported by `agent.help("kernel")`, and model
+temperature remains an evaluated profile setting rather than a code-execution override.
+The worker is a constrained coordination and working-state plane, not the repository
+environment: filesystem, shell, network, clock, and external actions require explicit
+host bridges. Interpreter state complements bounded message history and durable
+artifacts; it does not replace either authority. Snapshots preserve only validated
+serializable working data, never live handles or evidence of completed effects. This
+matches the interpreter boundary described by [Deep Agents](https://www.langchain.com/blog/give-your-agents-an-interpreter)
+without adding its subagent bridge or a second JavaScript runtime.
 
 `tools.usage@1` is the code-owned trace-memory view for accounting. It reports bounded
 counts by name and terminal status for top-level calls and nested PTC capabilities,
 plus model-visible and omitted bytes. ADK nested tool metrics share the enclosing
 invocation identity; brokered notebook capabilities have explicit capability receipts.
-Prime native Python effects cannot be reconstructed as individual tool calls and are
-therefore counted only as `native_untracked_cells`, never mislabelled as brokered usage.
 The view accepts exact status and name-query filters and exposes hashes and aggregates,
 not raw arguments or full results.
 
 Existing histories are not rewritten. Current Skein notebook writers emit
 `notebook.cell_added` plus `repl.cell_submitted` and a `repl.cell_*` terminal event.
-Prime emits its separate `prime.cell_submitted`, `prime.cell_terminal`, and snapshot
-events. There is no normalized `ptc.cell_*` writer yet. Any future vocabulary unification must
+There is no normalized `ptc.cell_*` writer yet. Any future vocabulary unification must
 retain import compatibility and prove replay equality before changing writers.
 
 ### State policies
@@ -388,13 +395,12 @@ epoch. Restart executes only completed, self-contained data-construction cells c
 as safe. Imports, definitions, calls, dependent expressions, and broker effects are not
 silently replayed.
 
-`snapshot` preserves Prime-style heap continuity. The runtime serializes names
-independently under total and per-value byte caps, writes payload and manifest atomically,
-and reports skipped values. Restore is valid only for the same owner, workspace,
-runtime implementation/version, and compatible Python environment. Snapshot bytes are
-an opaque recovery artifact: they do not prove how a value was produced, whether an
-external effect completed, or that the current environment is semantically equivalent.
-Unknown effects still block retry or completion.
+`snapshot` remains a reserved recovery policy. Any future implementation must apply
+total and per-value byte caps, write payload and manifest atomically, and restore only
+for the same owner, workspace, runtime implementation/version, and compatible Python
+environment. Snapshot bytes are an opaque recovery artifact: they do not prove how a
+value was produced, whether an external effect completed, or that the current
+environment is semantically equivalent. Unknown effects still block retry or completion.
 
 ## Notebook contract
 
@@ -530,15 +536,13 @@ This delivery ledger distinguishes landed seams from the remaining extraction:
    configuration loading with specific errors.
 3. **Landed:** exact memory program versions resolve through one finite registry; the
    prior mutable SQL and duplicate prompt-program catalogs were removed.
-4. **Landed:** Prime runtime, JSONL lifecycle evidence, bounded snapshots, trust gate,
-   and native-untracked effect classification are bundled from pinned source.
-5. **Landed:** the evaluated ADK Code Mode arm, image, reusable worker, and Docker SDK
+4. **Landed:** the evaluated ADK Code Mode arm, image, reusable worker, and Docker SDK
    were removed after it exhausted the matched 200k input budget; stale configuration
    fails with a migration error and Git retains the experiment.
-6. **Remaining:** extract a common cell coordinator, runtime, serializer, and state
+5. **Remaining:** extract a common cell coordinator, runtime, serializer, and state
    policy without changing event bytes, tool declarations, provider prefixes, or
    failure behavior.
-7. **Remaining:** run the deterministic composition matrix and matched live provider
+6. **Remaining:** run the deterministic composition matrix and matched live provider
    comparison before adding cross-pairings or changing the four-tool default.
 
 Canonical runtime/persistence matrix after implementation audit:
@@ -547,8 +551,6 @@ Canonical runtime/persistence matrix after implementation audit:
 | --- | --- | --- | --- | --- |
 | `skein_repl` | `notebook` | `replay_safe` | supported | Durable cells and conservative replay |
 | `skein_repl` | `jsonl` | `replay_safe` | not implemented | Requires extraction of notebook serialization from the coordinator |
-| `prime_repl` | `jsonl` | `snapshot` | supported | Trusted native execution; bounded names restore within ownership limits |
-| `prime_repl` | `notebook` | `snapshot` | not implemented | Requires a deterministic Prime transcript-to-notebook projector |
 
 For identical brokered programs, changing only serialization must preserve runtime
 result, operation identities, authorization, receipts, workspace result, and
@@ -560,17 +562,16 @@ duplicate or unknown effects, snapshot bytes/failures, and terminal reason.
 ## Implemented boundary
 
 - Four tools are the default profile.
-- `execute_code` is the shared model-facing name for Skein notebook and trusted Prime
-  implementations; both return the compact result envelope.
+- `execute_code` is the model-facing name for Skein notebook PTC and returns the compact
+  result envelope.
 - Runtime, serialization, and state policy are not yet independently composed; the
   current `NotebookPtcConfig.implementation` remains the compatibility bundle until the
   migration above lands.
 - Notebook PTC is implemented and disabled by default.
-- Skein and Prime local adapters require project trust and are not production security
-  sandboxes.
+- The Skein local adapter requires project trust and is not a production security
+  sandbox.
 - Registered MCP calls, direct tools, brokered PTC calls, and verification share policy,
-  receipts, redaction, output limits, and task identity. Prime-native effects are the
-  explicit cell-level `native_untracked` exception.
+  receipts, redaction, output limits, and task identity.
 - Canonical JSONL and DuckDB ledgers are implemented and optional.
 - One code-owned memory-program registry controls configuration, execution, and model
   exposure; legacy prompt/reducer and mutable SQL catalogs were removed.

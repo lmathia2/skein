@@ -169,10 +169,8 @@ def test_task_input_budget_cannot_be_smaller_than_one_work_packet() -> None:
         parse_harness_composition(payload)
 
 
-@pytest.mark.parametrize("implementation", ["adk_code_mode", "prime_repl"])
-def test_removed_ptc_implementations_have_a_helpful_migration_error(
-    implementation: str,
-) -> None:
+def test_removed_ptc_implementation_has_a_helpful_migration_error() -> None:
+    implementation = "adk_code_mode"
     payload = _composition_payload()
     payload["harness"]["config"]["notebook_ptc"] = {
         "enabled": True,

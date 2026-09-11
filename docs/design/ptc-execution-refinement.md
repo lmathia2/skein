@@ -53,14 +53,12 @@ not comparative performance evidence.
 
 | Reference | Useful mechanism | Do not copy without need |
 | --- | --- | --- |
-| [Prime Agent](https://github.com/PrimeIntellect-ai/prime-agent/tree/bf8894afa55832f7cfa2094c8a0d041bc680a691) | Persistent IPython state, top-level await, host-reported process completion, complete interaction boundaries for compaction | A second orchestration framework or assumptions that every heap value survives compaction |
 | [Open-PTC](https://github.com/daly2211/open-ptc/tree/2f2ef0ce4087d338a2cd1646c8ef18cc3f57b1de) | Explicit input/output contracts and selected console output; brokered execution resumption | Replacing Skein's persistent worker with its per-execution Deno subprocess or copying its chain-budget behavior |
 | [pi-ptc](https://github.com/cegersdoerfer/pi-ptc/tree/b567c8902d751fcc6edac9ffcfda527375d1c539) | Correlated RPC responses, pending futures, asynchronous host dispatch | Assuming async syntax alone gives cancellation, effect ordering, or replay safety |
 | [llmvm](https://github.com/9600dev/llmvm/tree/2939932cb03e17df5c7ca66d3b874c465e24e8a0) | Persistent execution locals and separation of program execution from reasoning | Its short-code-block prompting and nested LLM extraction/map-reduce as a latency policy |
 | [UTCP Code Mode](https://github.com/universal-tool-calling-protocol/code-mode/tree/e5fdc319bfae1ceec57e7bce37048337635ffb51) | Generated input/output interfaces, namespaced tools, explicit returned value versus diagnostic logs, isolate memory limits, and tests for hung calls | Its fresh isolate per chain, loading every tool interface, blocking tool bridge, or abandonment as a substitute for cancellation/reconciliation |
 
-Reviewed seams: Prime's `docs/rlm.md`, `docs/compaction.md`, and RLM prompt;
-Open-PTC's sandbox executor, REPL tool builder, and orchestrator; pi-ptc's Python
+Reviewed seams: Open-PTC's sandbox executor, REPL tool builder, and orchestrator; pi-ptc's Python
 RPC runtime, host RPC handler, and executor; llmvm's continuation controller and
 Python execution prompt; UTCP Code Mode's TypeScript/Python runtimes, generated
 interfaces, bridge lifecycle, and timeout/resource tests. Local repositories live

@@ -95,6 +95,12 @@ The current quality-first implementation sequence and promotion gates are in
 
 - [x] Normalize nested results, classify compact failures, and bound capability calls.
 - [x] Expose deterministic capability, kernel, CLI, and search manifests on demand.
+- [x] Bound help catalogs with deterministic full-contract, compact-signature, and
+  targeted-query fallback tiers without mutating the cache-stable prompt.
+- [x] Apply the configured secret redactor before registered capability results,
+  printed overflow, or explicitly published values reach model output or durable
+  artifacts. Keep reversible PII tokenization out until a cross-MCP data-flow policy
+  and protected token vault are explicitly required.
 - [x] Bind first-review criterion decomposition, completion claims, transition probes,
   and validation evidence to stable criterion IDs.
 - [x] Emit deterministic phase guidance in the dynamic work packet.
@@ -149,26 +155,18 @@ The current quality-first implementation sequence and promotion gates are in
   - [x] Pass the full unit suite, runnable integrations, full lint, and changed-code typing.
   - [x] Clear the production `app`/`harness` Pyright baseline; executable tests remain
     covered by pytest rather than static analysis of their deliberately dynamic fakes.
-  - [x] Run a larger matched provider comparison; all three six-task DeepSWE lanes
-    scored 0/6, so four tools remain the default. Notebook used 12.8% fewer input
-    tokens and 17.3% less active time than the four-tool baseline. See
-    `docs/audits/ptc-deepswe-six-task-2026-09-09.md`.
-  - [x] Run a one-task, four-mode matched OpenRouter smoke with memory disabled. Prime
-    used the fewest calls, wall time, and serialized request bytes; ADK Code Mode
-    exhausted the 200k input budget. See `docs/audits/ptc-matched-smoke-2026-09-09.md`.
+  - [x] Keep four tools as the default after the matched provider comparisons; notebook
+    PTC did not clear the quality gate despite lower median token use and active time.
   - [x] Remove ADK Code Mode, its container pool/image, and vendored Docker SDK; keep a
-    helpful configuration migration error and the smoke report as historical evidence.
+    helpful configuration migration error.
   - [x] Add bounded concurrent Harbor task scheduling while preserving one isolated
-    Pier trial per worker; run Prime through a persistent in-container bridge so its
-    native effects target the authoritative task workspace.
+    Pier trial per worker.
   - [x] Make matched DeepSWE runs benchmark-selectable and single-attempt by default;
     preserve official reward, latency, token usage, and separate Skein reliability
     status in each append-only run record.
-  - [x] Rerun four tools, Skein notebook PTC, and Prime JSONL PTC on the exact six
-    historical reference tasks at one clean revision. Four tools scored 3/6,
-    notebook 2/6, and Prime 1/6; notebook reduced raw latency, tokens, and cost but
-    missed one Koota transition edge. See
-    `docs/audits/ptc-deepswe-reference-six-2026-09-10.md`.
+  - [x] Rerun four tools and Skein notebook PTC on the historical reference tasks at
+    one clean revision; notebook reduced raw latency, tokens, and cost but did not
+    clear the quality gate.
 
 - [ ] Extract the shared `PtcRuntime` and `PtcSession` contracts behind
   `execute_code` without changing either current implementation's tool declaration.
@@ -178,18 +176,14 @@ The current quality-first implementation sequence and promotion gates are in
   recovery (`none`, `replay_safe`, or bounded `snapshot`) and reject invalid combinations.
 - [x] Replace bundled memory implementation selection with exact code-owned
   `(program name, version)` configuration and receipt identity.
-- [x] Add the pinned Prime REPL runtime and bounded snapshot policy as optional
-  implementations without importing Prime's daemon, TUI, or session authority.
-- [x] Bundle Prime's snapshot dependency with license and provenance; verify recovery
-  without site-packages.
 - [x] Run the deterministic composition matrix across PTC, memory-program, context,
   serialization, state, and continuity selections, including explicit rejection of
   unsupported combinations.
 - [x] Run the matched live comparison before changing the four-tool default; the
   six-task result did not clear the quality gate, so the default remains unchanged.
 
-- [x] Make Skein notebook and Prime-native PTC selectable behind one ADK tool, and
-  independently select optional trace-native or Pi-derived memory for matched ablations.
+- [x] Make Skein notebook PTC selectable behind one ADK tool, with optional
+  trace-native or Pi-derived memory for matched ablations.
 - [x] Add executable notebooks demonstrating PTC and all optional
   memory strategies without requiring credentials or a running sandbox.
 

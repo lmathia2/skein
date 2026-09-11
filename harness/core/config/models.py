@@ -201,10 +201,7 @@ class NotebookPtcConfig(FrozenModel):
     @model_validator(mode="before")
     @classmethod
     def reject_removed_implementation(cls, data: object) -> object:
-        if isinstance(data, Mapping) and data.get("implementation") in {
-            "adk_code_mode",
-            "prime_repl",
-        }:
+        if isinstance(data, Mapping) and data.get("implementation") == "adk_code_mode":
             raise NotImplementedError(
                 f"{data['implementation']} was removed; use Skein notebook PTC"
             )

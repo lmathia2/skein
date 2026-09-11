@@ -9,8 +9,8 @@ two evaluated profiles:
 - `notebook-ptc-jsonl.yaml`: one persistent `execute_code` tool with brokered
   capabilities and canonical JSONL evidence.
 
-The interactive terminal, WebSocket service, launcher variants, Prime PTC, ADK Code
-Mode, context experiment profiles, and custom pre-Harbor graders are not supported
+The interactive terminal, WebSocket service, launcher variants, ADK Code Mode,
+context experiment profiles, and custom pre-Harbor graders are not supported
 product surfaces and have been removed.
 
 ## Retained contracts
@@ -29,6 +29,8 @@ product surfaces and have been removed.
 - Notebook PTC exposes deterministic capability, kernel, CLI, and search manifests
   through `agent.help()`. Stable criterion rows and row-bound validation receipts
   keep requirement coverage under host control.
+- Oversized help catalogs degrade deterministically from full contracts to compact
+  signatures and finally a bounded names list with an exact-query pointer.
 - Complete nested capability results and truncated stdout/stderr are immutable,
   content-addressed artifacts. Internal result artifacts stay out of model responses;
   bounded task-scoped load/list operations recover them, while explicit publish adds

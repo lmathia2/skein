@@ -2898,7 +2898,7 @@ requires-dist = [
     { name = "pynb-cli", specifier = "==0.0.10" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
 ]
-provides-extras = ["eval", "memory-duckdb", "memory-search", "ptc-prime"]
+provides-extras = ["eval", "memory-duckdb", "memory-search"]
 
 [package.metadata.requires-dev]
 dev = [
