@@ -484,6 +484,7 @@ def _execute_cell(
     except BaseException as error:
         state_preserved = snapshot is not None and failure_stage == "execution"
         if state_preserved:
+            assert snapshot is not None
             _restore_snapshot(namespace, snapshot)
         error_line = getattr(error, "lineno", None) or next(
             (
