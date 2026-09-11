@@ -288,9 +288,13 @@ def build_notebook_session(
                 )
                 + "\n"
             ).encode()
-            result_artifact_uri = put_artifact(
-                settings.state_root / "artifacts" / "sha256",
-                result_bytes,
+            result_artifact_uri = (
+                None
+                if str(common["operation"]).startswith("artifacts.")
+                else put_artifact(
+                    settings.state_root / "artifacts" / "sha256",
+                    result_bytes,
+                )
             )
             operation_id = str(common["operation_id"])
             status = str(result.get("status", "error"))
@@ -311,27 +315,34 @@ def build_notebook_session(
                 if isinstance(value, str) and value.startswith(("artifact://", "file://"))
             }
             self.model_artifact_refs.update(refs)
-            refs.add(result_artifact_uri)
+            if result_artifact_uri is not None:
+                refs.add(result_artifact_uri)
             self.artifact_refs.update(refs)
             self.effects.append(effect)
             result_hash = hashlib.sha256(
                 json.dumps(result, sort_keys=True, separators=(",", ":"), default=str).encode()
             ).hexdigest()
+            payload = {
+                **common,
+                "status": status,
+                "effect": effect,
+                "result_hash": result_hash,
+                "artifact_refs": sorted(refs),
+                "truncated": bool(result.get("truncated")),
+                "omitted_bytes": max(0, int(result.get("omitted_bytes", 0))),
+            }
+            if result_artifact_uri is not None:
+                payload.update(
+                    {
+                        "result_artifact_uri": result_artifact_uri,
+                        "result_media_type": "application/json",
+                        "result_bytes": len(result_bytes),
+                    }
+                )
             active_event_store.append(
                 self.task_id,
                 kind,
-                {
-                    **common,
-                    "status": status,
-                    "effect": effect,
-                    "result_hash": result_hash,
-                    "result_artifact_uri": result_artifact_uri,
-                    "result_media_type": "application/json",
-                    "result_bytes": len(result_bytes),
-                    "artifact_refs": sorted(refs),
-                    "truncated": bool(result.get("truncated")),
-                    "omitted_bytes": max(0, int(result.get("omitted_bytes", 0))),
-                },
+                payload,
                 idempotency_key=f"capability:{operation_id}:terminal",
             )
             return result

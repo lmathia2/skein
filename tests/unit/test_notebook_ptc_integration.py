@@ -974,6 +974,7 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
         denied = await worker.execute_code(
             "agent.artifacts.load('artifact://sha256/' + ('0' * 64))"
         )
+        denied_name = await worker.execute_code("agent.artifacts.publish('x', '../../')")
     finally:
         assert worker.close is not None
         worker.close()
@@ -983,6 +984,7 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
     assert first["artifact_uris"] == second["artifact_uris"]
     assert "'published': True" in published["model_text"]
     assert "PermissionError" in denied["model_text"]
+    assert "ValueError" in denied_name["model_text"]
     publish_events = [
         event for event in events.read("task") if event.kind == EventKind.ARTIFACT_PUBLISHED
     ]
