@@ -31,9 +31,18 @@ only what is useful. `agent` is prebound; do not import or introspect it. Core s
 return mappings. Process the machine-readable `data` field in Python and expose only facts
 or short excerpts needed for the next decision; `model_text` is a bounded human rendering.
 Retain reusable intermediate values instead of spending a model turn on each trivial call.
+Read a file once into a variable, print only the range needed now, and slice the retained
+value in later cells instead of reading the file again. Use `search grep --pattern TEXT
+--path PATH --limit 20` through `agent.shell.run` before recursive grep or repeated
+exploratory reads.
 
 Compose work until new semantic judgment is required. Examples:
 ```
+result = agent.fs.read(path)
+src = result["data"]["text"] if result["status"] == "ok" else ""
+print(src[start:start + 4000])
+# In later cells, slice src again instead of rereading path.
+
 pages = agent.parallel([
     {"operation": "fs.read", "arguments": {"path": path}} for path in known_paths
 ])
@@ -44,9 +53,6 @@ errors = [p["model_text"] for p in pages if p["status"] != "ok"]
 changed = agent.fs.edit(path, old, new, expected_sha256=digest)
 check = agent.shell.run(targeted_check) if changed["status"] == "ok" else changed
 {"change": changed["status"], "check": check.get("exit_code"), "error": check.get("data", {}).get("stderr", "")[-2000:]}
-
-evidence = {criterion: collect_known_evidence(criterion) for criterion in weak_criteria}
-{criterion: rows for criterion, rows in evidence.items() if not rows}
 ```
 These illustrate orchestration, not permission to invent repairs or completion. Return to
 the model when results require interpretation; independent verification owns completion.

@@ -132,6 +132,32 @@ def _workspace_fingerprint(deps: SkeinWorkflowDependencies, task_id: str) -> str
     return deps.repository.fingerprint()
 
 
+def _work_batch_yield_update(
+    ledger: TaskLedger,
+    step: AgentStep,
+    batch_yield: dict[str, Any],
+) -> dict[str, Any]:
+    if batch_yield.get("reason") == "max_cells" and batch_yield.get("workspace_changed") is True:
+        return {
+            "phase": "implement",
+            "status": "active",
+            "next_action": "Continue implementation from the durable notebook.",
+        }
+    first_review = not ledger.counterexample_review_completed
+    update: dict[str, Any] = {
+        "phase": "review",
+        "status": "active",
+        "next_action": (
+            _criterion_review_action(ledger, step)
+            if first_review
+            else "Re-audit remaining criterion gaps, then verify or take the smallest fix."
+        ),
+    }
+    if first_review:
+        update["counterexample_review_completed"] = True
+    return update
+
+
 _LEDGER_DUPLICATE_EVENT_KINDS = {
     EventKind.TASK_CREATED,
     EventKind.LEDGER_PATCHED,
@@ -1375,18 +1401,7 @@ async def _orchestrate_owned(
         )
         if isinstance(batch_yield, dict):
             previous = ledger
-            first_review = not ledger.counterexample_review_completed
-            update: dict[str, Any] = {
-                "phase": "review",
-                "status": "active",
-                "next_action": (
-                    _criterion_review_action(ledger, step)
-                    if first_review
-                    else "Re-audit remaining criterion gaps, then verify or take the smallest fix."
-                ),
-            }
-            if first_review:
-                update["counterexample_review_completed"] = True
+            update = _work_batch_yield_update(ledger, step, batch_yield)
             ledger = TaskLedger.model_validate(
                 {**ledger.model_dump(mode="python"), **update}
             )

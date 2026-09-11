@@ -368,6 +368,37 @@ def test_composition_loads_project_instructions_only_after_explicit_trust(
     assert trusted.skill_roots == (workspace / ".agents" / "skills",)
 
 
+def test_ptc_prompt_teaches_read_once_and_search(tmp_path: Path) -> None:
+    composition = load_harness_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    configured = composition.model_copy(
+        update={
+            "harness": composition.harness.model_copy(
+                update={
+                    "config": config.model_copy(
+                        update={
+                            "notebook_ptc": config.notebook_ptc.model_copy(
+                                update={"enabled": True}
+                            )
+                        }
+                    )
+                }
+            )
+        }
+    )
+
+    instruction = settings_from_composition(
+        configured,
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
+    ).static_instruction
+
+    assert "Read a file once into a variable" in instruction
+    assert "result = agent.fs.read(path)" in instruction
+    assert "slice src again instead of rereading path" in instruction
+    assert "search grep --pattern TEXT" in instruction
+    assert "--path PATH --limit 20" in instruction
+
+
 def test_project_instruction_budget_is_executable_configuration(tmp_path: Path) -> None:
     composition = load_harness_composition()
     config = cast(SkeinConfig, composition.harness.config)
