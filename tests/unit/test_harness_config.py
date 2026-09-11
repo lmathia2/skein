@@ -192,7 +192,7 @@ def test_removed_ptc_implementations_have_a_helpful_migration_error(
         ("native", "native", True),
         ("notebook", "replay_safe", True),
         ("jsonl", "native", False),
-        ("native", "snapshot", False),
+        ("native", "snapshot", True),
     ],
 )
 def test_ptc_native_configuration_support_matrix(

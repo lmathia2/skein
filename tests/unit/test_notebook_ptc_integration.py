@@ -336,6 +336,31 @@ async def test_pre_execution_failure_preserves_kernel_state(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_snapshot_policy_restores_safe_heap_after_runtime_failure(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        ptc_config=config.notebook_ptc.model_copy(update={"state": "snapshot"}),
+    )
+    assert worker.execute_code is not None
+    try:
+        await worker.execute_code("value = [1, 2]")
+        failed = await worker.execute_code("value.append(3)\n1 / 0")
+        restored = await worker.execute_code("value")
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert failed["state_preserved"] is True
+    assert restored["model_text"] == "[1, 2]"
+
+
+@pytest.mark.asyncio
 async def test_conversation_notebook_restores_only_safe_cells_with_run_attribution(
     tmp_path: Path,
 ) -> None:

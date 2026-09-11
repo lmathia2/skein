@@ -13,6 +13,7 @@ import builtins
 import importlib
 import io
 import multiprocessing
+import pickle
 import platform
 import queue
 import threading
@@ -75,6 +76,7 @@ class PythonExecutionResult:
     state_count: int = 0
     state_delta: tuple[str, ...] = ()
     state_manifest: tuple[dict[str, Any], ...] = ()
+    state_preserved: bool = False
 
 
 class _BoundedText(io.TextIOBase):
@@ -308,6 +310,48 @@ def _state_manifest(
     ]
 
 
+def _snapshot_value(value: Any, seen: set[int], depth: int = 0) -> bool:
+    if type(value) in {type(None), bool, int, float, str, bytes}:
+        return True
+    if depth >= 20 or type(value) not in {list, tuple, dict, set, frozenset}:
+        return False
+    identity = id(value)
+    if identity in seen:
+        return False
+    seen.add(identity)
+    values = value.items() if type(value) is dict else value
+    if type(value) is dict:
+        valid = all(
+            type(key) is str and _snapshot_value(item, seen, depth + 1)
+            for key, item in values
+        )
+    else:
+        valid = all(_snapshot_value(item, seen, depth + 1) for item in values)
+    seen.remove(identity)
+    return valid
+
+
+def _snapshot_namespace(namespace: Mapping[str, Any], max_bytes: int) -> bytes:
+    selected: dict[str, Any] = {}
+    for name in sorted(namespace):
+        if name.startswith("__") or name in _RESERVED_NAMES:
+            continue
+        value = namespace[name]
+        if not _snapshot_value(value, set()):
+            continue
+        candidate = pickle.dumps({**selected, name: value}, protocol=5)
+        if len(candidate) <= max_bytes:
+            selected[name] = value
+    return pickle.dumps(selected, protocol=5)
+
+
+def _restore_snapshot(namespace: dict[str, Any], snapshot: bytes) -> None:
+    for name in tuple(namespace):
+        if not name.startswith("__") and name not in _RESERVED_NAMES:
+            del namespace[name]
+    namespace.update(pickle.loads(snapshot))
+
+
 class _StateProxy:
     def __init__(
         self,
@@ -377,10 +421,17 @@ def _execute_cell(
     cell_id: str = "unknown",
     replay_policy: str = "transient",
     state_metadata: dict[str, dict[str, str]] | None = None,
+    state_recovery: str = "replay_safe",
+    snapshot_max_bytes: int = 1_000_000,
 ) -> dict[str, Any]:
     stdout = _BoundedText(max_output_bytes)
     stderr = _BoundedText(max_output_bytes)
     failure_stage: Literal["parse", "source_validation", "execution"] = "parse"
+    snapshot = (
+        _snapshot_namespace(namespace, snapshot_max_bytes)
+        if state_recovery == "snapshot"
+        else None
+    )
     try:
         tree = ast.parse(code, filename="<agent-cell>", mode="exec")
         failure_stage = "source_validation"
@@ -431,6 +482,9 @@ def _execute_cell(
             "state_manifest": manifest[:64],
         }
     except BaseException as error:
+        state_preserved = snapshot is not None and failure_stage == "execution"
+        if state_preserved:
+            _restore_snapshot(namespace, snapshot)
         error_line = getattr(error, "lineno", None) or next(
             (
                 frame.lineno
@@ -454,6 +508,7 @@ def _execute_cell(
                 else None
             ),
             "traceback": tuple(traceback.format_exception_only(error)),
+            "state_preserved": state_preserved,
             "output_truncated": stdout.truncated or stderr.truncated,
         }
 
@@ -462,6 +517,8 @@ def _worker_main(
     connection: Connection,
     max_output_bytes: int,
     help_catalog: Mapping[str, Mapping[str, object]],
+    state_recovery: str,
+    snapshot_max_bytes: int,
 ) -> None:
     namespace: dict[str, Any] = {
         "__builtins__": _safe_builtins(),
@@ -487,6 +544,8 @@ def _worker_main(
             cell_id=str(request.get("cell_id", "unknown")),
             replay_policy=str(request.get("replay_policy", "transient")),
             state_metadata=state_metadata,
+            state_recovery=state_recovery,
+            snapshot_max_bytes=snapshot_max_bytes,
         )
         connection.send({"type": "execution_result", "id": request.get("id"), **result})
 
@@ -517,6 +576,8 @@ class PersistentPythonWorker:
         *,
         max_output_bytes: int = 64_000,
         help_catalog: Mapping[str, Mapping[str, object]] | None = None,
+        state_recovery: str = "replay_safe",
+        snapshot_max_bytes: int = 1_000_000,
     ) -> None:
         if max_output_bytes < 1_024:
             raise ValueError("max_output_bytes must be at least 1024")
@@ -525,6 +586,10 @@ class PersistentPythonWorker:
             name: dict(item)
             for name, item in sorted((help_catalog or default_help_catalog()).items())
         }
+        if state_recovery not in {"replay_safe", "snapshot"}:
+            raise ValueError("state_recovery must be replay_safe or snapshot")
+        self.state_recovery = state_recovery
+        self.snapshot_max_bytes = snapshot_max_bytes
         self._process: BaseProcess | None = None
         self._connection: Connection | None = None
         self._kernel_epoch: str | None = None
@@ -538,7 +603,13 @@ class PersistentPythonWorker:
         parent, child = context.Pipe(duplex=True)
         process = context.Process(
             target=_worker_main,
-            args=(child, self.max_output_bytes, self.help_catalog),
+            args=(
+                child,
+                self.max_output_bytes,
+                self.help_catalog,
+                self.state_recovery,
+                self.snapshot_max_bytes,
+            ),
             daemon=True,
             name="agent-cpython-worker",
         )
@@ -708,6 +779,7 @@ class PersistentPythonWorker:
                         state_count=int(response.get("state_count", 0)),
                         state_delta=tuple(str(name) for name in response.get("state_delta", ())),
                         state_manifest=tuple(response.get("state_manifest", ())),
+                        state_preserved=bool(response.get("state_preserved", False)),
                     )
             except (EOFError, BrokenPipeError, OSError) as error:
                 self._discard()

@@ -174,6 +174,16 @@ def test_timeout_discards_worker_state_and_marks_effect_unknown() -> None:
     assert after_restart.error_type == "NameError"
 
 
+def test_bounded_snapshot_restores_only_safe_values_after_runtime_failure() -> None:
+    with PersistentPythonWorker(state_recovery="snapshot", snapshot_max_bytes=4096) as worker:
+        worker.execute("kept = {'items': [1, 2]}", _Broker(), 5)
+        failed = worker.execute("kept['items'].append(3)\nnew = 4\n1 / 0", _Broker(), 5)
+        restored = worker.execute("kept, 'new' in dir()", _Broker(), 5)
+
+    assert failed.state_preserved is True
+    assert restored.value_repr == "({'items': [1, 2]}, False)"
+
+
 def test_timeout_during_broker_call_returns_without_waiting_for_late_result() -> None:
     entered = threading.Event()
     release = threading.Event()

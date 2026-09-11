@@ -166,6 +166,10 @@ def build_notebook_session(
     python_worker = PersistentPythonWorker(
         max_output_bytes=active_ptc_config.max_output_bytes,
         help_catalog=help_catalog,
+        state_recovery=(
+            "snapshot" if active_ptc_config.state == "snapshot" else "replay_safe"
+        ),
+        snapshot_max_bytes=active_ptc_config.snapshot_max_bytes,
     )
     restored_kernel_epoch: str | None = None
     active_notebooks: dict[str, str] = {}
@@ -698,7 +702,10 @@ def build_notebook_session(
             cell_id=cell_id,
             replay_policy=replay_policy,
         )
-        state_preserved = result.failure_stage in {"parse", "source_validation"}
+        state_preserved = result.state_preserved or result.failure_stage in {
+            "parse",
+            "source_validation",
+        }
         if result.status == "error" and not state_preserved:
             # A Python exception may follow successful assignments. Discard the
             # epoch so the next cell restores only previously committed safe cells.

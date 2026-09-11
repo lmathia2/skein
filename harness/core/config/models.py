@@ -175,6 +175,7 @@ class NotebookPtcConfig(FrozenModel):
     default_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
     max_timeout_seconds: int = Field(default=600, ge=1, le=3_600)
     max_output_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
+    snapshot_max_bytes: int = Field(default=1_000_000, ge=1_024, le=16_000_000)
     no_progress_cells_per_batch: int = Field(default=24, ge=1, le=256)
     max_cells_per_batch: int = Field(default=48, ge=1, le=256)
     max_parallel_reads: int = Field(default=4, ge=1, le=16)
@@ -216,10 +217,10 @@ class NotebookPtcConfig(FrozenModel):
                 f"Skein notebook PTC does not implement serialization={self.serialization}; "
                 "use serialization=native to preserve its existing persistence"
             )
-        if self.state not in {"native", "replay_safe"}:
+        if self.state not in {"native", "replay_safe", "snapshot"}:
             raise NotImplementedError(
                 f"Skein notebook PTC does not implement state={self.state}; "
-                "its native state policy is replay_safe"
+                "use replay_safe or the experimental snapshot policy"
             )
         if self.continuity == "conversation" and not self.enabled:
             raise ValueError("conversation continuity requires notebook PTC")
