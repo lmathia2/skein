@@ -735,6 +735,24 @@ def build_notebook_session(
         else:
             terminal_kind = EventKind.REPL_CELL_FAILED
         effect = "unknown" if result.effect_unknown else broker.effect
+        output_artifacts: list[dict[str, Any]] = []
+        for stream, complete in (
+            ("stdout", result.full_stdout),
+            ("stderr", result.full_stderr),
+        ):
+            if complete is None:
+                continue
+            content = complete.encode()
+            uri = put_artifact(settings.state_root / "artifacts" / "sha256", content)
+            broker.artifact_refs.add(uri)
+            output_artifacts.append(
+                {
+                    "stream": stream,
+                    "artifact_uri": uri,
+                    "byte_size": len(content),
+                    "media_type": "text/plain; charset=utf-8",
+                }
+            )
         display_data = result.display_data
         if display_data is not None:
             display_data, display_refs = externalize_mime_bundle(
@@ -753,6 +771,7 @@ def build_notebook_session(
             "stdout": result.stdout,
             "stderr": result.stderr,
             "artifact_refs": sorted(broker.artifact_refs),
+            "output_artifacts": output_artifacts,
             "capability_count": broker.call_index,
             "capability_operations": list(broker.operations),
             "state": {
@@ -806,8 +825,8 @@ def build_notebook_session(
         visible = "\n".join(
             part
             for part in (
-                result.stdout,
-                result.stderr,
+                result.full_stdout or result.stdout,
+                result.full_stderr or result.stderr,
                 result.value_repr,
                 (
                     f"{result.error_type}: {result.error_message}"
@@ -822,9 +841,20 @@ def build_notebook_session(
             max_chars=active_ptc_config.max_output_bytes,
             max_lines=400,
         )
+        model_text = bounded.text
+        if output_artifacts:
+            refs = ", ".join(item["artifact_uri"] for item in output_artifacts)
+            notice = f"\n[complete output artifacts: {refs}]"
+            preview = bound_output(
+                visible,
+                max_chars=max(1, active_ptc_config.max_output_bytes - len(notice)),
+                max_lines=400,
+            )
+            model_text = preview.text + notice
+            bounded = preview
         return {
             "status": result.status,
-            "model_text": bounded.text,
+            "model_text": model_text,
             "notebook_id": notebook_id,
             "cell_id": cell_id,
             "attempt_id": attempt_id,
@@ -833,6 +863,7 @@ def build_notebook_session(
             "notebook_path": str(notebook_path),
             "notebook_sha256": notebook_hash,
             "artifact_uris": sorted(broker.artifact_refs),
+            "output_artifacts": output_artifacts,
             "duration_ms": result.duration_ms,
             "truncated": result.output_truncated or bounded.truncated,
             "omitted_bytes": bounded.omitted_bytes,

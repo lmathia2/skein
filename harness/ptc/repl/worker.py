@@ -62,6 +62,8 @@ class PythonExecutionResult:
     status: Literal["ok", "error", "timeout"]
     stdout: str = ""
     stderr: str = ""
+    full_stdout: str | None = None
+    full_stderr: str | None = None
     value_repr: str | None = None
     display_data: dict[str, Any] | None = None
     error_type: str | None = None
@@ -83,6 +85,7 @@ class _BoundedText(io.TextIOBase):
     def __init__(self, limit: int) -> None:
         self._limit = limit
         self._parts: list[str] = []
+        self._full_parts: list[str] = []
         self._size = 0
         self.truncated = False
 
@@ -91,6 +94,7 @@ class _BoundedText(io.TextIOBase):
 
     def write(self, value: str) -> int:
         text = str(value)
+        self._full_parts.append(text)
         remaining = self._limit - self._size
         if remaining > 0:
             kept = text.encode("utf-8")[:remaining].decode("utf-8", errors="ignore")
@@ -102,6 +106,9 @@ class _BoundedText(io.TextIOBase):
 
     def getvalue(self) -> str:
         return "".join(self._parts)
+
+    def full_value(self) -> str | None:
+        return "".join(self._full_parts) if self.truncated else None
 
 
 _BLOCKED_MODULES = frozenset(
@@ -474,6 +481,8 @@ def _execute_cell(
             "status": "ok",
             "stdout": stdout.getvalue(),
             "stderr": stderr.getvalue(),
+            "full_stdout": stdout.full_value(),
+            "full_stderr": stderr.full_value(),
             "value_repr": value_repr,
             "display_data": display_data,
             "output_truncated": stdout.truncated or stderr.truncated,
@@ -499,6 +508,8 @@ def _execute_cell(
             "status": "error",
             "stdout": stdout.getvalue(),
             "stderr": stderr.getvalue(),
+            "full_stdout": stdout.full_value(),
+            "full_stderr": stderr.full_value(),
             "error_type": type(error).__name__,
             "error_message": str(error),
             "failure_stage": failure_stage,
@@ -767,6 +778,8 @@ class PersistentPythonWorker:
                         status=response["status"],
                         stdout=response.get("stdout", ""),
                         stderr=response.get("stderr", ""),
+                        full_stdout=response.get("full_stdout"),
+                        full_stderr=response.get("full_stderr"),
                         value_repr=response.get("value_repr"),
                         display_data=response.get("display_data"),
                         error_type=response.get("error_type"),

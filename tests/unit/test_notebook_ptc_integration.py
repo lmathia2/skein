@@ -894,6 +894,46 @@ async def test_nested_result_remains_in_python_state_until_explicitly_selected(
 
 
 @pytest.mark.asyncio
+async def test_truncated_cell_output_is_reloadable_from_an_artifact(tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    ptc_config = config.notebook_ptc.model_copy(update={"max_output_bytes": 1024})
+    events = JsonlEventStore(state_root / "events")
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=state_root, task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        ptc_config=ptc_config,
+        event_store=events,
+    )
+    assert worker.execute_code is not None
+    complete = "HEAD" + ("x" * 2000) + "TAIL\n"
+    try:
+        result = await worker.execute_code("print('HEAD' + ('x' * 2000) + 'TAIL')")
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert result["truncated"] is True
+    assert "HEAD" in result["model_text"] and "TAIL" in result["model_text"]
+    assert "complete output artifacts:" in result["model_text"]
+    terminal = next(
+        event
+        for event in events.read("task")
+        if event.kind == EventKind.REPL_CELL_COMPLETED
+    )
+    output = terminal.payload["output_artifacts"]
+    assert len(output) == 1 and output[0]["stream"] == "stdout"
+    uri = output[0]["artifact_uri"]
+    assert uri in result["artifact_uris"]
+    artifact = state_root / "artifacts" / "sha256" / uri.rsplit("/", 1)[-1]
+    assert artifact.read_text(encoding="utf-8") == complete
+
+
+@pytest.mark.asyncio
 async def test_provider_payload_growth_tracks_selected_egress_not_ptc_heap(
     tmp_path: Path,
 ) -> None:
