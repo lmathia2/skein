@@ -800,6 +800,7 @@ async def test_python_help_exposes_registered_capability_and_project_commands(
     assert "'effect': 'read'" in capability["model_text"]
     assert "'approval': 'automatic'" in capability["model_text"]
     assert "pyproject.toml" in cli["model_text"]
+    assert "search grep --pattern TEXT" in cli["model_text"]
 
 
 @pytest.mark.asyncio

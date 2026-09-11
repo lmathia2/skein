@@ -78,6 +78,7 @@ def test_ledger_projection_is_bounded_and_model_facing() -> None:
 
     assert projection["goal"] == "Fix it"
     assert projection["recent_progress"] == [f"progress-{index}" for index in range(18, 30)]
+    assert projection["phase_hint"] == "Choose the smallest coherent change and its check."
     assert "created_at" not in projection
     files_in_focus = projection["files_in_focus"]
     assert isinstance(files_in_focus, list)

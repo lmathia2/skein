@@ -196,6 +196,15 @@ class TaskLedger(StrictModel):
             (step.model_dump(mode="json") for step in self.plan if step.step_id == self.current_step_id),
             None,
         )
+        phase_hints = {
+            TaskPhase.UNDERSTAND: "Inspect only what is needed to identify the change.",
+            TaskPhase.PLAN: "Choose the smallest coherent change and its check.",
+            TaskPhase.IMPLEMENT: "Apply the selected change and targeted check.",
+            TaskPhase.VERIFY: "Run the selected independent verification.",
+            TaskPhase.REVIEW: "Close unresolved criterion rows or surface a blocker.",
+            TaskPhase.BLOCKED: "State the concrete blocker and required input.",
+            TaskPhase.COMPLETE: "No further execution is authorized.",
+        }
         return {
             "goal": self.goal,
             "mode": self.mode,
@@ -204,6 +213,7 @@ class TaskLedger(StrictModel):
             "constraints": self.constraints,
             "non_goals": self.non_goals,
             "phase": self.phase.value,
+            "phase_hint": phase_hints[self.phase],
             "status": self.status.value,
             "active_step": active_step,
             "completed_step_ids": self.completed_step_ids[-20:],

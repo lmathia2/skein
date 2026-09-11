@@ -152,6 +152,12 @@ def build_notebook_session(
     ]
     help_catalog["cli"] = {
         "description": "Project commands verified from repository manifests",
+        "search": {
+            "health": "search health",
+            "grep": "search grep --pattern TEXT [--path PATH] [--mode literal|regex] [--case-sensitive] [--context 0..20] [--limit 1..50]",
+            "find": "search find --pattern GLOB [--path PATH] [--limit 1..50]",
+            "continue": "search grep|find --cursor CURSOR",
+        },
         "commands": sorted(
             commands,
             key=lambda item: (item["kind"], item["command"], item["source"]),
