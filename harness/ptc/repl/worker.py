@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import ast
 import builtins
+import importlib
 import io
 import multiprocessing
+import platform
 import queue
 import threading
 import time
@@ -216,7 +218,8 @@ class _RemoteOperation:
         return response.get("result")
 
 
-_RESERVED_NAMES = frozenset({"agent"})
+_PRELOADED_MODULES = ("json", "math", "re")
+_RESERVED_NAMES = frozenset({"agent", *_PRELOADED_MODULES})
 _AGENT_HELP = {
     "fs.read": "agent.fs.read(path, offset=1, limit=400)",
     "fs.write": ("agent.fs.write(path, content, expected_sha256=None, expected_absent=False)"),
@@ -257,23 +260,23 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
 
 
 def _agent_help(
-    prefix: str | None = None, *, details: bool = False
+    catalog: Mapping[str, Mapping[str, object]],
+    prefix: str | None = None,
+    *,
+    details: bool = False,
 ) -> dict[str, str] | dict[str, dict[str, object]]:
     """Return bounded, deterministic capability signatures."""
 
     if prefix is not None and not isinstance(prefix, str):
         raise TypeError("help prefix must be a string or None")
     selected = {
-        name: signature
-        for name, signature in _AGENT_HELP.items()
+        name: item
+        for name, item in sorted(catalog.items())
         if prefix is None or name.startswith(prefix)
     }
     if not details:
-        return selected
-    return {
-        name: {"signature": signature, "result": _AGENT_RESULTS.get(name, {})}
-        for name, signature in selected.items()
-    }
+        return {name: str(item.get("signature", item.get("description", ""))) for name, item in selected.items()}
+    return {name: dict(item) for name, item in selected.items()}
 
 
 def _binding_description(
@@ -335,9 +338,12 @@ def _agent_proxy(
     connection: Connection,
     namespace: Mapping[str, Any],
     metadata: Mapping[str, Mapping[str, str]],
+    help_catalog: Mapping[str, Mapping[str, object]],
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        help=_agent_help,
+        help=lambda prefix=None, *, details=False: _agent_help(
+            help_catalog, prefix, details=details
+        ),
         parallel=_RemoteOperation(connection, "parallel"),
         fs=SimpleNamespace(
             read=_RemoteOperation(connection, "fs.read"),
@@ -452,13 +458,19 @@ def _execute_cell(
         }
 
 
-def _worker_main(connection: Connection, max_output_bytes: int) -> None:
+def _worker_main(
+    connection: Connection,
+    max_output_bytes: int,
+    help_catalog: Mapping[str, Mapping[str, object]],
+) -> None:
     namespace: dict[str, Any] = {
         "__builtins__": _safe_builtins(),
         "__name__": "__agent_repl__",
     }
     state_metadata: dict[str, dict[str, str]] = {}
-    namespace["agent"] = _agent_proxy(connection, namespace, state_metadata)
+    for name in _PRELOADED_MODULES:
+        namespace[name] = importlib.import_module(name)
+    namespace["agent"] = _agent_proxy(connection, namespace, state_metadata, help_catalog)
     while True:
         try:
             request = connection.recv()
@@ -479,13 +491,40 @@ def _worker_main(connection: Connection, max_output_bytes: int) -> None:
         connection.send({"type": "execution_result", "id": request.get("id"), **result})
 
 
+def default_help_catalog() -> dict[str, dict[str, object]]:
+    """Return the deterministic built-in capability and kernel catalog."""
+
+    catalog = {
+        name: {
+            "signature": signature,
+            "result": _AGENT_RESULTS.get(name, {}),
+        }
+        for name, signature in _AGENT_HELP.items()
+    }
+    catalog["kernel"] = {
+        "description": "Persistent CPython computation environment",
+        "python": platform.python_version(),
+        "preloaded_modules": list(_PRELOADED_MODULES),
+    }
+    return catalog
+
+
 class PersistentPythonWorker:
     """Own one restartable CPython subprocess and its durable-in-process namespace."""
 
-    def __init__(self, *, max_output_bytes: int = 64_000) -> None:
+    def __init__(
+        self,
+        *,
+        max_output_bytes: int = 64_000,
+        help_catalog: Mapping[str, Mapping[str, object]] | None = None,
+    ) -> None:
         if max_output_bytes < 1_024:
             raise ValueError("max_output_bytes must be at least 1024")
         self.max_output_bytes = max_output_bytes
+        self.help_catalog = {
+            name: dict(item)
+            for name, item in sorted((help_catalog or default_help_catalog()).items())
+        }
         self._process: BaseProcess | None = None
         self._connection: Connection | None = None
         self._kernel_epoch: str | None = None
@@ -499,7 +538,7 @@ class PersistentPythonWorker:
         parent, child = context.Pipe(duplex=True)
         process = context.Process(
             target=_worker_main,
-            args=(child, self.max_output_bytes),
+            args=(child, self.max_output_bytes, self.help_catalog),
             daemon=True,
             name="agent-cpython-worker",
         )
@@ -704,4 +743,9 @@ class PersistentPythonWorker:
         self.close()
 
 
-__all__ = ["PersistentPythonWorker", "PythonExecutionResult", "ReplBroker"]
+__all__ = [
+    "PersistentPythonWorker",
+    "PythonExecutionResult",
+    "ReplBroker",
+    "default_help_catalog",
+]

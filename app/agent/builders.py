@@ -28,7 +28,7 @@ from harness.execution.safety.redaction import SecretRedactor
 from harness.execution.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
 from .config import HarnessSettings
-from .ptc import build_notebook_session
+from .ptc import RegisteredCapability, build_notebook_session
 from .streaming import PublicReplies
 
 LOGGER = logging.getLogger(__name__)
@@ -58,7 +58,10 @@ def build_coding_worker(
     event_store: EventStore | None = None,
     approvals: ApprovalWaiter | None = None,
     replies: PublicReplies | None = None,
-    capabilities: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
+    capabilities: dict[
+        str, RegisteredCapability | Callable[[dict[str, Any]], dict[str, Any]]
+    ]
+    | None = None,
     conversation_notebook_id: str | None = None,
     prior_notebook_events: tuple[HarnessEvent, ...] = (),
     notebook_root: Path | None = None,

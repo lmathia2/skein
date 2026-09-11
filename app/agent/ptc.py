@@ -6,7 +6,7 @@ import ast
 import asyncio
 import hashlib
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +23,7 @@ from harness.evidence.state import EventKind, EventStore
 from harness.evidence.state.events import HarnessEvent
 from harness.execution.approvals.waiting import ApprovalWaiter
 from harness.execution.environment.async_call import run_managed_thread
+from harness.execution.repo import build_repository_manifest
 from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT
 from harness.execution.tools.adk_adapter import AdkCodingTools
 from harness.execution.tools.output import bound_output, compact_tool_result
@@ -33,7 +34,7 @@ from harness.ptc.notebook import (
     put_artifact,
     reduce_notebook,
 )
-from harness.ptc.repl import PersistentPythonWorker
+from harness.ptc.repl import PersistentPythonWorker, default_help_catalog
 from harness.verification.contracts import is_reusable_validation_command
 
 from .config import HarnessSettings
@@ -89,6 +90,16 @@ class PtcSession:
     after_agent: Callable[[CallbackContext], Awaitable[None]] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RegisteredCapability:
+    handler: Callable[[dict[str, Any]], dict[str, Any]]
+    description: str
+    arguments: Mapping[str, object]
+    result: Mapping[str, object]
+    effect: str = "unknown"
+    approval: str = "handler-owned"
+
+
 def build_notebook_session(
     settings: HarnessSettings,
     *,
@@ -97,7 +108,9 @@ def build_notebook_session(
     active_tools: AdkCodingTools,
     approvals: ApprovalWaiter | None,
     replies: PublicReplies | None,
-    capability_handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]],
+    capability_handlers: Mapping[
+        str, RegisteredCapability | Callable[[dict[str, Any]], dict[str, Any]]
+    ],
     conversation_notebook_id: str | None,
     prior_notebook_events: tuple[HarnessEvent, ...],
     notebook_root: Path | None,
@@ -109,7 +122,45 @@ def build_notebook_session(
 ) -> PtcSession:
     _runtime_identity = runtime_identity
     _require_verification = require_verification
-    python_worker = PersistentPythonWorker(max_output_bytes=active_ptc_config.max_output_bytes)
+    registered = {
+        name: (
+            value
+            if isinstance(value, RegisteredCapability)
+            else RegisteredCapability(
+                handler=value,
+                description="Registered external capability",
+                arguments={"type": "object"},
+                result={"type": "object"},
+            )
+        )
+        for name, value in sorted(capability_handlers.items())
+    }
+    help_catalog = default_help_catalog()
+    for name, capability in registered.items():
+        help_catalog[f"mcp.{name}"] = {
+            "signature": f"agent.mcp.call({name!r}, arguments)",
+            "description": capability.description,
+            "arguments": dict(capability.arguments),
+            "result": dict(capability.result),
+            "effect": capability.effect,
+            "approval": capability.approval,
+        }
+    commands = [
+        {"kind": item.kind, "command": item.command, "source": item.source}
+        for item in build_repository_manifest(settings.workspace).commands
+        if (settings.workspace / item.source).is_file()
+    ]
+    help_catalog["cli"] = {
+        "description": "Project commands verified from repository manifests",
+        "commands": sorted(
+            commands,
+            key=lambda item: (item["kind"], item["command"], item["source"]),
+        ),
+    }
+    python_worker = PersistentPythonWorker(
+        max_output_bytes=active_ptc_config.max_output_bytes,
+        help_catalog=help_catalog,
+    )
     restored_kernel_epoch: str | None = None
     active_notebooks: dict[str, str] = {}
     batch_cells: dict[tuple[str, str], int] = {}
@@ -443,8 +494,8 @@ def build_notebook_session(
             )
 
         def call(self, capability: str, arguments: dict[str, Any]) -> dict[str, Any]:
-            handler = capability_handlers.get(capability)
-            if handler is None:
+            registered_capability = registered.get(capability)
+            if registered_capability is None:
                 return self._call(
                     "mcp.call",
                     {"capability": capability},
@@ -461,7 +512,7 @@ def build_notebook_session(
                         json.dumps(arguments, sort_keys=True, default=str).encode()
                     ).hexdigest(),
                 },
-                lambda: handler(arguments),
+                lambda: registered_capability.handler(arguments),
             )
 
         @property

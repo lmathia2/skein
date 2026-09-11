@@ -92,6 +92,10 @@ def test_worker_exposes_bounded_capability_help() -> None:
     assert read_help.value_repr == "{'fs.read': 'agent.fs.read(path, offset=1, limit=400)'}"
     assert "exact redacted selected range" in (detailed.value_repr or "")
     assert "shell.run" not in (detailed.value_repr or "")
+    assert "preloaded_modules" in (
+        worker.execute("agent.help('kernel', details=True)", _Broker(), 5).value_repr or ""
+    )
+    assert worker.execute("json.dumps({'ok': True})", _Broker(), 5).value_repr == "'{\"ok\": true}'"
 
 
 def test_worker_returns_mime_bundle_as_rich_display() -> None:

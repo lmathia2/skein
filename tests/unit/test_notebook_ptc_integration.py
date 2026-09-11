@@ -17,6 +17,7 @@ from google.genai import types
 from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.factory import default_harness_registry
+from app.agent.ptc import RegisteredCapability
 from harness.adapters.providers.codex_responses import (
     build_codex_request_body,
     provider_request_profile,
@@ -755,6 +756,50 @@ async def test_python_routes_registered_mcp_capability_and_blocks_unknown(
     assert "blocked" in blocked["model_text"]
     assert worker.close is not None
     worker.close()
+
+
+@pytest.mark.asyncio
+async def test_python_help_exposes_registered_capability_and_project_commands(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0.1"\n[tool.pytest.ini_options]\n'
+    )
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=workspace, state_root=state_root, task_id="task-help"),
+        ),
+        cast(BaseLlm, "test-model"),
+        ptc_config=config.notebook_ptc,
+        capabilities={
+            "issues.search": RegisteredCapability(
+                handler=lambda arguments: {"status": "ok", "q": arguments["q"]},
+                description="Search issues",
+                arguments={"type": "object", "required": ["q"]},
+                result={"type": "object"},
+                effect="read",
+                approval="automatic",
+            )
+        },
+    )
+    assert worker.execute_code is not None
+    try:
+        capability = await worker.execute_code("agent.help('mcp.issues.search', details=True)")
+        cli = await worker.execute_code("agent.help('cli', details=True)")
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert "Search issues" in capability["model_text"]
+    assert "'effect': 'read'" in capability["model_text"]
+    assert "'approval': 'automatic'" in capability["model_text"]
+    assert "pyproject.toml" in cli["model_text"]
 
 
 @pytest.mark.asyncio
