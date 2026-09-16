@@ -1,4 +1,0 @@
-interface:
-  display_name: "Programmatic Tool Routing"
-  short_description: "Route high-fanout work through bounded shell programs"
-  default_prompt: "Use $programmatic-tool-routing to aggregate these repository records deterministically."
