@@ -188,7 +188,7 @@ labels remain. Required controls, selection order, output budgets, state validat
 recovery and verification do not change. Previously captured packets replay their
 original bytes; new publications identify the new renderer version and source hash.
 
-`continuation@11`, `work_batch_navigation@4` and `ptc_state_updates@4`
+`continuation@12`, `work_batch_navigation@5` and `ptc_state_updates@5`
 share the same live-binding projection. Broker registration records whether the
 unchanged value is the read-result envelope, its data mapping or its source text;
 the view supplies a `content_expression` for that attested form. It does not infer
@@ -201,6 +201,16 @@ projection, and invalidations retain priority under the unchanged byte/entry lim
 No expression runs automatically and no historical source becomes current merely
 because it remains in a live worker. This is a usability correction, not demonstrated
 live-model memory reuse.
+
+The new versions add stable live-epoch read recipes and a prompt-only evidence join.
+Each successful bounded text read remains addressable through
+`agent.state.reuse(handle)` even if the model overwrites its original variable;
+`agent.state.reads(path)` lists the path, version and captured range. At handoff, a
+current usable finding whose evidence references that exact artifact carries the
+matching live source recipe. Its existing finding text is the learned summary; no
+second summarizer or ungrounded description is introduced. Joined bindings are omitted
+as duplicate standalone entries. Mutation, worker loss, freshness, artifact recovery,
+budgets and completion authority retain their prior contracts.
 
 Note-checkpoint reminders use `note_checkpoint_delivery@1`, recorded as
 `context.note_checkpoint_exposed` before dispatch. Like steering delivery, the
@@ -935,6 +945,12 @@ live model uptake, prompt cost and held-out memory reliability remain unqualifie
 The combined unit/integration regression passes 1,244 tests with three skips at
 `.artifacts/ordinary-read-recovery-regression/pytest.xml`; lint and compilation pass,
 and typing has zero errors plus the existing `__all__` warning.
+
+Working-note authors may use a live PTC `read:N` handle while composing a finding, but
+the canonical note still stores only the resolved completed-read artifact URI. Resolution
+occurs inside the retained-state API (`agent.state.cite`), so the note service keeps its
+existing public-evidence validation and source-dependency construction. A lost, evicted or
+mutated live handle fails closed; no guessed hash or worker-local name enters memory.
 
 ## Rejected alternatives
 

@@ -154,7 +154,7 @@ def test_prompt_source_mapping_survives_separate_answer_reads_without_refetching
             text = self.files[path]
             return {"status": "ok", "data": {"path": path, "text": text, "offset": offset,
                     "returned_lines": 1, "complete": False, "next_offset": offset + 1},
-                    "read_reference": {"artifact_uri": "artifact://sha256/" + "a" * 64,
+                    "read_reference": {"artifact_uri": "artifact://sha256/" + hashlib.sha256(path.encode()).hexdigest(),
                         "path": path, "sha256": hashlib.sha256(text.encode()).hexdigest(),
                         "offset": offset, "returned_lines": 1}}
 
@@ -178,9 +178,13 @@ def test_prompt_source_mapping_survives_separate_answer_reads_without_refetching
             "json.dumps(agent.state.describe('source_reads', selector=('config.json',)))", broker, 5)
         assert descriptor.status == "ok"
         # The source still has its original partial-range receipt; no full-file claim.
-        entry = next(row for row in reused.state_manifest if row.get("name") == "source_reads")
+        entry = next(row for row in reused.state_manifest if row.get("availability") == "live_retained_read"
+                     and row["read_reference"]["path"] == "config.json")
         assert entry["read_reference"]["path"] == "config.json"
         assert entry["read_reference"]["returned_lines"] == 1
+        retained = worker.execute(
+            f"agent.state.reuse({entry['read_reference']['artifact_uri']!r})['data']['text']", broker, 5)
+        assert retained.value_repr == repr('{"price": 7}')
         assert worker.execute("source_reads['config.json']['data']['complete']", broker, 5).value_repr == "False"
     assert broker.calls == [("read", ("config.json", 1, 400)), ("read", ("answer.json", 1, 400))]
 

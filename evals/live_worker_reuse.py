@@ -14,6 +14,10 @@ LIVE_WORKER_CASES = (
     "live_worker_config",
     "live_worker_reconcile",
     "live_worker_missing_range",
+    "live_worker_holdout_routes",
+    "live_worker_holdout_changed",
+    "live_worker_holdout_validation",
+    "live_worker_holdout_missing",
 )
 LIVE_WORKER_ARMS = ("baseline", "on_demand", "locator")
 
@@ -21,6 +25,14 @@ LIVE_WORKER_ARMS = ("baseline", "on_demand", "locator")
 def _source_case(case: str) -> str:
     if case not in LIVE_WORKER_CASES:
         raise ValueError("unknown live-worker fixture")
+    holdout = {
+        "live_worker_holdout_routes": "qualification_routes_2",
+        "live_worker_holdout_changed": "qualification_changed_2",
+        "live_worker_holdout_validation": "qualification_validation_1",
+        "live_worker_holdout_missing": "qualification_partial_2",
+    }
+    if case in holdout:
+        return holdout[case]
     return ("qualification_partial_1" if case == "live_worker_missing_range"
             else "reuse_" + case.removeprefix("live_worker_") + "_3")
 
@@ -32,6 +44,10 @@ def live_worker_fixture(case: str) -> dict:
     fixture["checkpoint_mode"] = "live_worker"
     fixture["stages"] = [{**stage, "worker_loss": False, "reuse_checkpoint": False}
                          for stage in fixture["stages"]]
+    for stage in fixture["stages"]:
+        stage["followup"] = stage["followup"].replace(
+            "worker-loss context cut", "acknowledgement in the same live worker"
+        ).replace("context cut", "same-worker boundary")
     prefix = fixture["goal"].split("Preserve useful public findings", 1)[0].split(
         "Checkpoint learned evidence", 1)[0]
     fixture["goal"] = (

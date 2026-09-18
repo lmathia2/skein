@@ -274,6 +274,9 @@ _AGENT_HELP = {
     "mcp.call": "agent.mcp.call(capability, arguments)",
     "parallel": "agent.parallel([{'operation': 'fs.read', 'arguments': {...}}, ...])",
     "state.list": "agent.state.list()",
+    "state.reads": "agent.state.reads(path=None)",
+    "state.reuse": "agent.state.reuse(handle_or_artifact_uri)",
+    "state.cite": "agent.state.cite(handle_or_artifact_uri)",
     "state.describe": "agent.state.describe(name, selector=(), preview=False)",
     "state.annotate": "agent.state.annotate(name, description, selector=())",
     "artifacts.load": "agent.artifacts.load(uri, offset=0, limit=16000)",
@@ -301,6 +304,13 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
             "source_coverage": {"whole_file": "bool|null", "total_lines": "int|null",
                                 "next_unread_offset": "int|null"},
         },
+        "read_handle": "read:N (live-worker shorthand; resolve with agent.state.cite)",
+        "read_reuse": {
+            "scope": "present when current-version catalog coverage was used",
+            "reused_lines": "int", "source_read_lines": "int",
+            "identity_probe_lines": "int", "reused_ranges": "inclusive line ranges",
+            "source_read_ranges": "inclusive line ranges",
+        },
     },
     "shell.run": {
         "result_kind": "process|managed (route, not proof of execution or success)",
@@ -322,6 +332,22 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
         "name": "str", "type": "str", "preview": "optional bounded display, not full content",
         "read_reference": "optional broker-established historical source reference",
         "unavailable": "raises KeyError for an unavailable binding/selector; inspect state.list or catch KeyError",
+    },
+    "state.reads": {
+        "shape": "bounded list of broker-attested reads retained in the live worker epoch",
+        "scope": "historical captured ranges; entries are not current-freshness claims",
+        "content_expression": "exact executable expression for the retained source text",
+    },
+    "state.reuse": {
+        "shape": "original successful fs.read result mapping retained in the live worker epoch",
+        "argument": "compact handle from state.reads, or an exact completed fs.read artifact_uri",
+        "unavailable": "raises KeyError after worker loss, eviction, or in-place mutation",
+    },
+    "state.cite": {
+        "shape": "exact completed fs.read artifact URI for a live retained read",
+        "argument": "compact read:N handle from the read result or state.reads",
+        "use": "put the returned URI in a source-dependent finding's evidence_refs",
+        "unavailable": "raises KeyError after worker loss, eviction, or in-place mutation",
     },
     "fs.write": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
     "fs.edit": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
@@ -534,7 +560,12 @@ class _StateProxy:
         self._namespace = namespace
         self._metadata = metadata
         self._sources: dict[int, tuple[Any, str, dict[str, Any], str]] = {}
+        self._reads: dict[str, tuple[dict[str, Any], str, dict[str, Any]]] = {}
+        self._read_handles_by_uri: dict[str, str] = {}
+        self._next_read_handle = 1
+        self._read_descriptions: dict[str, str] = {}
         self._annotations: dict[tuple[str, tuple[str | int, ...]], tuple[Any, str, str]] = {}
+        self._output_replacements: list[tuple[str, str]] = []
 
     def register_read(self, result: Any) -> None:
         """Called only on a host broker response, before returning it to code."""
@@ -546,6 +577,34 @@ class _StateProxy:
             return
         # Detach the attestation from all model-mutable result containers.
         reference = json.loads(json.dumps(reference))
+        uri = reference.get("artifact_uri")
+        if isinstance(uri, str) and uri.startswith("artifact://sha256/"):
+            handle = self._read_handles_by_uri.get(uri)
+            if handle is None:
+                handle = f"read:{self._next_read_handle}"
+                self._next_read_handle += 1
+                self._read_handles_by_uri[uri] = handle
+            result["read_handle"] = handle
+            result_digest = _value_fingerprint(result)
+            if result_digest is None:
+                return
+            self._reads[handle] = (result, result_digest, reference)
+            # ponytail: live-epoch LRU by insertion order; add persistence only if
+            # artifact recovery proves too costly after real worker loss.
+            while len(self._reads) > 64:
+                evicted = next(iter(self._reads))
+                evicted_uri = self._reads.pop(evicted)[2]["artifact_uri"]
+                self._read_handles_by_uri.pop(evicted_uri, None)
+                self._read_descriptions.pop(evicted_uri, None)
+        reuse = result.get("read_reuse")
+        if isinstance(reuse, dict):
+            for prior_uri in reuse.get("reused_artifact_uris", []):
+                prior_handle = self._read_handles_by_uri.get(prior_uri)
+                prior = self._reads.get(prior_handle) if prior_handle else None
+                text = prior[0].get("data", {}).get("text") if prior else None
+                if isinstance(text, str) and len(text.encode()) >= 256:
+                    notice = f"[source already retained as {prior_handle}; use agent.state.reuse({prior_handle!r}) without printing it]"
+                    self._output_replacements.extend(((text, notice), (repr(text), repr(notice))))
         for value, kind in ((result, "result"), (data, "data"), (data.get("text"), "text")):
             digest = _value_fingerprint(value)
             if digest is None:
@@ -556,9 +615,21 @@ class _StateProxy:
                 self._sources.pop(next(iter(self._sources)))
 
     def begin_cell(self, assigned_names: set[str]) -> None:
+        self._output_replacements.clear()
         for key in tuple(self._annotations):
             if key[0] in assigned_names:
                 self._annotations.pop(key, None)
+
+    def sanitize_output(self, text: str | None) -> str | None:
+        if text is None:
+            return None
+        for captured, notice in sorted(set(self._output_replacements), key=lambda item: -len(item[0])):
+            text = text.replace(captured, notice)
+        return text
+
+    def cite(self, handle_or_artifact_uri: str) -> str:
+        """Resolve a live read handle to its broker-attested evidence URI."""
+        return str(self.reuse(handle_or_artifact_uri)["read_reference"]["artifact_uri"])
 
     def annotate(self, name: str, description: str, selector: tuple[str | int, ...] = ()) -> dict[str, Any]:
         """Describe one current value; the annotation is advisory, not a fact."""
@@ -576,6 +647,11 @@ class _StateProxy:
         if key not in self._annotations and len(self._annotations) >= 64:
             return {"status": "unavailable", "reason": "at most 64 live annotations are supported"}
         self._annotations[key] = (value, digest, description)
+        source = self._sources.get(id(value))
+        if source and source[0] is value and source[1] == digest:
+            uri = source[2].get("artifact_uri")
+            if isinstance(uri, str) and uri in self._read_handles_by_uri:
+                self._read_descriptions[uri] = description
         return {"status": "ok", **self.describe(name, selector)}
 
     def list(self) -> list[dict[str, Any]]:
@@ -631,7 +707,56 @@ class _StateProxy:
             except KeyError:
                 self._annotations.pop((name, selector), None)
                 result.append({"name": name, "selector": list(selector), "availability": "unavailable"})
-        return result
+        retained = self.reads()
+        ordinary = [item for item in result if not item.get("read_reference")]
+        ordinary.sort(key=lambda item: (not bool(item.get("description")), item.get("name", "")))
+        combined = [*retained, *ordinary]
+        combined.sort(key=lambda item: (not bool(item.get("description")),
+                                        not bool(item.get("read_reference"))))
+        return combined[:64]
+
+    def reads(self, path: str | None = None) -> list[dict[str, Any]]:
+        """List stable access recipes for broker-attested reads in this live epoch."""
+        if path is not None and (type(path) is not str or not path):
+            raise ValueError("path must be a nonempty string or None")
+        entries = []
+        for handle, (value, digest, reference) in tuple(self._reads.items()):
+            uri = reference["artifact_uri"]
+            if _value_fingerprint(value) != digest:
+                self._reads.pop(handle, None)
+                self._read_handles_by_uri.pop(uri, None)
+                self._read_descriptions.pop(uri, None)
+                continue
+            if path is not None and reference.get("path") != path:
+                continue
+            access = f"agent.state.reuse({handle!r})"
+            entries.append({
+                "name": "agent.state.reuse", "selector": [handle], "handle": handle,
+                "access_expression": access,
+                "inspect_expression": f"agent.state.reads(path={reference.get('path')!r})",
+                "type": "dict", "read_value_kind": "result",
+                "availability": "live_retained_read", "freshness": "historical_snapshot",
+                "read_reference": json.loads(json.dumps(reference)),
+                "value_fingerprint": digest,
+                **({"description": self._read_descriptions[uri], "description_authority": "advisory"}
+                   if uri in self._read_descriptions else {}),
+            })
+        return entries
+
+    def reuse(self, handle_or_artifact_uri: str) -> dict[str, Any]:
+        """Return an unchanged broker-attested read retained in this live epoch."""
+        if type(handle_or_artifact_uri) is not str:
+            raise KeyError("unknown retained read")
+        handle = self._read_handles_by_uri.get(handle_or_artifact_uri, handle_or_artifact_uri)
+        retained = self._reads.get(handle)
+        if retained is None or _value_fingerprint(retained[0]) != retained[1]:
+            self._reads.pop(handle, None)
+            uri = retained[2].get("artifact_uri") if retained else handle_or_artifact_uri
+            if isinstance(uri, str):
+                self._read_handles_by_uri.pop(uri, None)
+                self._read_descriptions.pop(uri, None)
+            raise KeyError("unknown retained read")
+        return retained[0]
 
     def _resolve(self, name: str, selector: tuple[str | int, ...]) -> Any:
         if type(name) is not str or not name.isidentifier() or name.startswith("__") or name in _RESERVED_NAMES:
@@ -726,7 +851,8 @@ def _agent_proxy(
             list=_RemoteOperation(connection, "artifacts.list"),
             publish=_RemoteOperation(connection, "artifacts.publish"),
         ),
-        state=SimpleNamespace(list=state.list, describe=state.describe, annotate=state.annotate),
+        state=SimpleNamespace(list=state.list, reads=state.reads, reuse=state.reuse, cite=state.cite,
+                              describe=state.describe, annotate=state.annotate),
     )
 
 
@@ -759,6 +885,7 @@ def _execute_cell(
     stderr = _BoundedText(max_output_bytes)
     failure_stage: Literal["parse", "source_validation", "execution"] = "parse"
     annotation_checkpoint = dict(state_catalog._annotations) if state_catalog is not None else None
+    read_description_checkpoint = dict(state_catalog._read_descriptions) if state_catalog is not None else None
     snapshot = (
         _snapshot_namespace(namespace, snapshot_max_bytes)
         if state_recovery == "snapshot"
@@ -808,11 +935,14 @@ def _execute_cell(
             else:
                 metadata.pop(name, None)
         manifest = state_catalog.list() if state_catalog is not None else _state_manifest(namespace, metadata)
+        selected_stdout = state_catalog.sanitize_output(stdout.getvalue()) if state_catalog else stdout.getvalue()
+        selected_full_stdout = state_catalog.sanitize_output(stdout.full_value()) if state_catalog else stdout.full_value()
+        value_repr = state_catalog.sanitize_output(value_repr) if state_catalog else value_repr
         return {
             "status": "ok",
-            "stdout": stdout.getvalue(),
+            "stdout": selected_stdout,
             "stderr": stderr.getvalue(),
-            "full_stdout": stdout.full_value(),
+            "full_stdout": selected_full_stdout,
             "full_stderr": stderr.full_value(),
             "value_repr": value_repr,
             "display_data": display_data,
@@ -824,6 +954,8 @@ def _execute_cell(
     except BaseException as error:
         if state_catalog is not None and annotation_checkpoint is not None:
             state_catalog._annotations = annotation_checkpoint
+            assert read_description_checkpoint is not None
+            state_catalog._read_descriptions = read_description_checkpoint
         state_preserved = snapshot is not None and failure_stage == "execution"
         if state_preserved:
             assert snapshot is not None
@@ -839,11 +971,13 @@ def _execute_cell(
             None,
         )
         lines = code.splitlines()
+        selected_stdout = state_catalog.sanitize_output(stdout.getvalue()) if state_catalog else stdout.getvalue()
+        selected_full_stdout = state_catalog.sanitize_output(stdout.full_value()) if state_catalog else stdout.full_value()
         return {
             "status": "error",
-            "stdout": stdout.getvalue(),
+            "stdout": selected_stdout,
             "stderr": stderr.getvalue(),
-            "full_stdout": stdout.full_value(),
+            "full_stdout": selected_full_stdout,
             "full_stderr": stderr.full_value(),
             "error_type": type(error).__name__,
             "error_message": str(error),

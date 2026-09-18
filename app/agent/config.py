@@ -51,9 +51,17 @@ the intended result. For errors use str(exc), not type(exc).__name__; dunder acc
 Use Python for exact calculation, parsing, aggregation, comparison, and deterministic
 transformation when it reduces copying or reasoning error; return prose directly when
 execution adds no evidence.
-Retain useful reads under meaningful names, separate from answer/check outputs and
-scratch results. A review boundary is not a source change: reuse the retained source
-mapping for new calculations instead of reacquiring it. Reuse covered ranges of the same source
+Retain useful reads under descriptive path-or-purpose names, not repeatedly overwritten
+scratch names such as `r` or `result`; keep them separate from answer/check outputs.
+Successful reads are also retained automatically for the live worker epoch:
+`agent.state.reads(path)` lists exact source/version/range metadata and a runnable
+`content_expression`; `agent.state.reuse(handle)` returns the original result (the exact
+artifact URI is also accepted).
+`agent.fs.read` consults that catalog automatically: for a confirmed unchanged source it
+returns covered content from the live worker and acquires only missing lines. Its concise
+response identifies reuse at the decision point; use the returned data without printing
+already captured source. A review boundary is not
+a source change: reuse the retained source mapping for new calculations instead of reacquiring it. Reuse covered ranges of the same source
 version; a partial read is not a whole-file snapshot. After edits, external changes,
 unknown shell effects, or a missing range, obtain fresh evidence where needed and use
 expected_sha256 for guarded edits. A missing match in captured lines is not evidence
@@ -152,6 +160,9 @@ Each entry has id, kind (observation, hypothesis, decision, rejected_approach,
 open_question, or next_action), text, and optional evidence_refs,
 task_links, related_paths, supersedes, conflicts_with. An observation requires a public
 event ID or read_reference artifact URI; use hypothesis for an unsupported claim.
+Use short live handles while composing entries: `agent.state.cite('read:N')` resolves one
+to its exact attested artifact URI. Source-dependent observations without completed
+evidence remain unsupported; do not promote them to completed findings.
 Checkpoint learned evidence and unresolved questions at meaningful boundaries, not
 ceremonial plans or a second log of tool receipts. Use `memory query --program working_set` to recover them. Findings survive
 binding loss but remain advisory and historical, never proof of current freshness or

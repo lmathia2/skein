@@ -369,6 +369,13 @@ PII tokenization for opaque cross-MCP transfer and must not claim that stronger 
 property. Such a data-flow policy requires explicit source/destination authorization and
 an independently protected token vault before activation.
 
+Within one live worker epoch, brokered `fs.read` is catalog-aware. Before reusing captured
+lines it confirms the current path/hash, then composes the requested range from attested
+coverage and fresh reads of only missing intervals. Changed or uncertain identity uses the
+ordinary full-read path. The completed capability receipt remains one logical read and
+records reused lines, newly selected source lines and the identity probe separately; it
+does not relabel historical content as current or suppress required freshness checks.
+
 The shipped notebook kernel is persistent within its owned run and intentionally differs
 from stateless hosted calculation tools. Its trusted-local adapter is not a production
 security sandbox, package availability is reported by `agent.help("kernel")`, and model
@@ -443,8 +450,17 @@ for supported successful text reads. Only an unchanged attested object exposes t
 form. Shared prompt projections derive its exact source-content expression; full
 state inspection retains the original locator, fingerprint and structural metadata.
 
+The live worker also retains up to 64 unchanged successful read envelopes under their
+existing artifact URIs. `agent.state.reads(path=None)` exposes bounded path/version/range
+metadata and a compact epoch-local handle; `agent.state.reuse(handle)` returns the
+original result without depending on a model-chosen variable name. Reassignment or
+deletion of `r`, `result`, or another user binding therefore does not erase the access
+path. In-place mutation, eviction, or worker loss makes the handle unavailable. This is
+ephemeral runtime state, not a cache, freshness claim, or second historical authority.
+
 Descriptions and provenance require both the recorded object and a matching bounded
-content fingerprint. Reassignment clears the affected annotation; same-size in-place
+content fingerprint. A description attached to an attested read is also retained with
+that read for the live epoch; other reassignment clears the affected annotation. Same-size in-place
 mutation invalidates its description and the relevant read association. Aliases can
 reuse an unchanged registered object, while a separately retained original string can
 remain valid historical evidence after its parent mapping changes. Nested descriptors
@@ -506,7 +522,11 @@ controlled comparison without changing broker authority. Focused tests cover the
 changed-only notices and whole-entry handoff construction; these checks do not establish
 that the complete continuity mechanism or its live quality gate has passed.
 
-Eager per-cell state notices are disabled by default. Two live four-family warm-worker
+Grounded working-set findings are joined at handoff to matching live read recipes by
+their exact evidence artifact URI. The finding supplies the learned summary and the
+PTC catalog supplies the executable value; unsupported prose is never promoted into a
+summary. A joined source is not emitted again as a standalone binding. Eager per-cell
+state notices remain disabled by default. Two live four-family warm-worker
 cohorts produced zero avoidable source rereads in the no-notice arm; the notice arm did
 not improve that floor and increased aggregate cost in both cohorts. The canonical
 manifest, explicit `agent.state` inspection and phase handoff still expose the same

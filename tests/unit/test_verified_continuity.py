@@ -53,8 +53,11 @@ async def test_root_review_control_survives_small_section_target_in_provider_req
                         metadata = json.loads(required.removeprefix("Required continuation metadata:\n"))
                         assert metadata["navigation"]["parameters"]["phase"] == "review"
                         entries = json.loads(advisory)["entries"]
-                        retained = next(e["value"] for e in entries if e["kind"] == "live_bindings"
-                                        and e["value"].get("content_expression") == "reads[0]['data']['text']")
+                        available = [e["value"] for e in entries if e["kind"] == "live_bindings"]
+                        available += [source for e in entries if e["kind"] == "findings"
+                                      for source in e["value"].get("live_sources", [])]
+                        retained = next(value for value in available
+                                        if value.get("read_reference", {}).get("path") == "config/route_00.toml")
                         assert retained["read_reference"]["path"] == "config/route_00.toml"
                         assert retained["read_reference"]["artifact_uri"].startswith("artifact://sha256/")
                         retained_access = retained["content_expression"]
@@ -116,7 +119,7 @@ async def test_worker_loss_notice_supplies_direct_recovery_for_verified_answer(t
             assert failure["kernel"]["live"] is False and failure["effect"] == ("observed" if same_cell else "none")
             notice, _ = json.JSONDecoder().raw_decode(failure["model_text"].split(
                 "State updates (advisory; sources historical):\n", 1)[1])
-            assert notice["program"] == "ptc_state_updates@4"
+            assert notice["program"] == "ptc_state_updates@5"
             handle = next(row for row in notice["entries"] if row.get("historical_read", {}).get("path") == "config/route_00.toml")
             recovery_handles.append(handle)
             code = (
@@ -610,6 +613,17 @@ def test_live_worker_manifest_is_isolated_and_bounded(tmp_path, monkeypatch):
     assert "on_demand" in manifest["live_worker_contract"]
     assert manifest["live_worker_contract"]["excluded"] == [
         "context compaction", "worker loss", "working notes", "prior recall"]
+
+
+def test_live_worker_holdouts_cover_reuse_and_freshness_controls():
+    from evals.live_worker_reuse import live_worker_fixture
+
+    expected_stages = {"routes": 3, "changed": 2, "validation": 2, "missing": 1}
+    for family, count in expected_stages.items():
+        fixture = live_worker_fixture(f"live_worker_holdout_{family}")
+        assert len(fixture["stages"]) == count
+        assert all(not stage["worker_loss"] and not stage["reuse_checkpoint"] for stage in fixture["stages"])
+        assert "context cut" not in " ".join(stage["followup"] for stage in fixture["stages"])
 
 
 def test_live_worker_integrity_rejects_failed_cell_and_epoch_change():

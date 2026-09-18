@@ -262,6 +262,32 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
         ) if key in working}
     candidates: list[tuple[str, Any]] = []
     manifest = details.get("evidence_manifest", {})
+    notebook = details.get("notebook", {})
+    binding_candidates: list[dict[str, Any]] = []
+    duplicate_aliases = 0
+    if notebook.get("availability") == "live":
+        bindings = [item for item in notebook.get("state", {}).get("manifest", [])
+                    if item.get("description") or item.get("read_reference")]
+        if details.get("navigation"):
+            focus = details["navigation"]["parameters"]["focus_paths"]
+            bindings.sort(key=lambda item: (item.get("read_reference", {}).get("path") not in focus,
+                                           not bool(item.get("description")),
+                                           len(item.get("access_expression", item.get("name", "")))))
+        seen_references: set[str] = set()
+        for item in bindings:
+            reference = canonical_json(item["read_reference"]) if item.get("read_reference") else ""
+            if details.get("navigation") and reference and reference in seen_references:
+                duplicate_aliases += 1
+                continue
+            seen_references.add(reference)
+            binding_candidates.append(project_live_binding(item))
+    live_by_artifact = {
+        item["read_reference"]["artifact_uri"]: item
+        for item in binding_candidates
+        if isinstance(item.get("read_reference"), dict)
+        and isinstance(item["read_reference"].get("artifact_uri"), str)
+    }
+    attached_live_sources: set[str] = set()
     for item in working.get("data", {}).get("findings", []):
         consumer_status = item.get("consumer_versions", {}).get("status")
         invalidated = consumer_status in {"changed_since_capture", "revalidation_required"} or (
@@ -284,7 +310,10 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
                 "newer_recorded_captures": captures,
             }))
         else:
-            candidates.append(("findings", item))
+            references = item.get("finding", {}).get("evidence_refs", [])
+            live_sources = [live_by_artifact[reference] for reference in references if reference in live_by_artifact]
+            attached_live_sources.update(reference for reference in references if reference in live_by_artifact)
+            candidates.append(("findings", {**item, **({"live_sources": live_sources} if live_sources else {})}))
     required = "Required continuation metadata:\n" + json.dumps(critical, sort_keys=True, ensure_ascii=False)
     if details.get("note"):
         candidates.append(("note", details["note"]))
@@ -294,23 +323,10 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
                 "reason": "Unstructured note text may repeat invalidated conclusions; recover historical context with memory note read."}))
         else:
             candidates.append(("note_excerpt", details["note_excerpt"]))
-    duplicate_aliases = 0
-    if notebook.get("availability") == "live":
-        bindings = [item for item in notebook.get("state", {}).get("manifest", [])
-                    if item.get("description") or item.get("read_reference")]
-        if details.get("navigation"):
-            focus = details["navigation"]["parameters"]["focus_paths"]
-            bindings.sort(key=lambda item: (item.get("read_reference", {}).get("path") not in focus,
-                                           not bool(item.get("description")),
-                                           len(item.get("access_expression", item.get("name", "")))))
-        seen_references: set[str] = set()
-        for item in bindings:
-            reference = canonical_json(item["read_reference"]) if item.get("read_reference") else ""
-            if details.get("navigation") and reference and reference in seen_references:
-                duplicate_aliases += 1
-                continue
-            seen_references.add(reference)
-            candidates.append(("live_bindings", project_live_binding(item)))
+    for item in binding_candidates:
+        uri = item.get("read_reference", {}).get("artifact_uri")
+        if uri not in attached_live_sources:
+            candidates.append(("live_bindings", item))
     for key in ("touched_paths", "modified_paths", "validations_newest_first", "reads_newest_first"):
         candidates.extend((key, item) for item in manifest.get(key, []))
     advisory: dict[str, Any] = {"entries": [], "omitted_count": len(candidates),
@@ -626,7 +642,7 @@ class ContextWindowPlugin(BasePlugin):
                                       inspect.getsource(_project_advisory) + inspect.getsource(_evidence_manifest) +
                                       inspect.getsource(unresolved_execution) + inspect.getsource(project_live_binding) + _CUT_READ_RECIPE).encode()).hexdigest()
         details["navigation"] = {
-            "program": "work_batch_navigation@4", "program_hash": program_hash,
+            "program": "work_batch_navigation@5", "program_hash": program_hash,
             "parameters": parameters, "source_watermark": events[-1].sequence,
             "source_clock": "task_harness_event_sequence",
             "scope": "Historical snapshot at this host work-batch boundary, not a live heap or freshness guarantee. "
@@ -947,7 +963,7 @@ class ContextWindowPlugin(BasePlugin):
                  "note_stale": bool(details.get("note_stale")),
                  "checkpoint_requested": checkpoint_requested,
                  "history_watermark": events[-1].sequence,
-                 "handoff_program": "continuation@11",
+                 "handoff_program": "continuation@12",
                  "handoff_program_hash": hashlib.sha256((inspect.getsource(render_handoff) +
                                                           inspect.getsource(continuation_details) +
                                                           inspect.getsource(_project_advisory) +

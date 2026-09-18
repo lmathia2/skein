@@ -182,7 +182,23 @@ Implementation ownership, dependencies, and acceptance gates are in the
     Across three four-family paired cohorts, the on-demand/no-notice path kept one
     epoch in 12/12 trials and reused completed values for 30/30 delayed questions
     with zero avoidable source rereads. Eager binding notices had no reread benefit,
-    lost the epoch in 2/12 trials, and cost 16.2% more; keep them opt-in.
+    lost the epoch in 2/12 trials, and cost 16.2% more; keep them opt-in. A final
+    four-family confirmation split brought on-demand to 16/16 intact trials and
+    38/38 eligible windows, again with only justified changed/missing acquisitions.
+  - [x] Add stable live-epoch read handles independent of model variable names, teach
+    descriptive naming and catalog lookup, and join grounded findings to matching
+    executable source recipes without duplicating prompt entries.
+  - [x] Make PTC reads catalog-aware at the broker boundary: confirm current source
+    identity, reuse covered live-epoch lines, acquire only missing intervals, expose
+    short citation handles, and trace reuse separately from acquisition. Changed or
+    uncertain sources still take the ordinary fresh-read path.
+    - [x] Run the six-task live screen. Forty-two catalog hits reused 4,871 selected
+      lines, but quality fell from 1/6 to 0/6 and Ofetch bypassed reuse because absolute
+      request paths were compared with normalized catalog paths.
+    - [x] Normalize request paths before catalog lookup using the configured workspace
+      boundary; absolute and relative requests now share the completed-read catalog key.
+    - [x] Run one bounded Ofetch canary. Ten reads reused 1,047 selected lines, including
+      872 from `src/fetch.ts`; the task still produced no patch and scored 0/47 F2P.
   - [ ] Demonstrate evidence-use and actual reread improvements on new held-out
     continuations; distinguish first proposals, verifier rejection/recovery, and
     independently accepted outcomes. Earlier fixture loops bypassed outer verification.

@@ -2569,3 +2569,21 @@ reads to shell reads a demonstrated reread reduction. A successful quoted execut
 does not establish its semantic result is right. Preserve task-specific independent
 verification and unsupported-answer negatives. Do not add a second paid diagnostic
 automatically if this pair fails; inspect the failure mechanism first.
+
+#### Stable live read catalog and grounded summary join
+
+The warm-worker follow-up removes dependence on model-chosen variable names. Successful
+bounded text reads are retained for the current kernel epoch under their existing
+artifact URIs and exposed through `agent.state.reads(path)` and
+`agent.state.reuse(handle)`. The prompt requests descriptive path/purpose names,
+but correctness no longer depends on that convention. Reassignment preserves the
+host-held access path; mutation, bounded eviction and worker loss invalidate it.
+
+At normal handoff, current usable findings are joined to exact matching live reads by
+their authorized evidence artifact URI. Existing finding text supplies the semantic
+summary and the catalog supplies the executable content expression; unsupported prose
+is not upgraded. Joined reads are not emitted twice. Program identities advance to
+`ptc_state_updates@5`, `continuation@12` and `work_batch_navigation@5`. Focused tests
+cover overwrite/reuse, mutation rejection, annotation carry-forward, grounded joining,
+duplicate omission, worker-loss recovery and independent verified completion. Live
+uptake and reread reduction remain an S6 evaluation gate.

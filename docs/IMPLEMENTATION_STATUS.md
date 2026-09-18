@@ -1166,3 +1166,34 @@ are retained. This patch has not received a full-suite rerun or live evaluation.
 Per user request, stop further implementation/paid experiments after this validation
 and analyze the failed recovery uptake. See
 `docs/audits/recovery-uptake-2026-09-13.md`; the broad goal remains unproven.
+
+PTC now additionally retains up to 64 unchanged successful read envelopes under their
+existing artifact URIs for the live worker epoch. `agent.state.reads(path)` exposes
+bounded path/version/range metadata and `agent.state.reuse(handle)` returns the
+original result after disposable model variables are overwritten. Read annotations
+remain attached to the retained catalog entry, while mutation, eviction and worker loss
+invalidate live reuse. The static instruction prefers descriptive path/purpose names.
+`continuation@12` and `work_batch_navigation@5` join usable evidence-backed finding text
+to matching live source recipes and omit the duplicate standalone binding;
+`ptc_state_updates@5` preserves newest-first recovery when an epoch is lost. Focused
+worker, projection and real verified-workflow tests pass. This establishes mechanism,
+not live-model reread reduction or default promotion.
+
+The PTC broker now applies that catalog on every read. It performs a bounded identity
+probe, returns already covered lines from the retained envelope, and reads only missing
+contiguous intervals; a changed hash, failed probe, inconsistent response or new worker
+epoch falls back to a full fresh read. Results carry separate reused, newly selected and
+identity-probe line counts, and the read audit preserves both logical overlap and actual
+catalog reuse. Large repeated source output is replaced at egress with its live `read:N`
+recipe while full content remains available to Python. `agent.state.cite('read:N')`
+resolves the handle to the canonical artifact URI accepted by evidence-linked working
+notes. Deterministic exact/partial/changed-source and completion-evidence checks pass;
+the six-task live rerun produced 42 catalog hits and reused 4,871 selected source lines,
+but failed quality at 0/6 versus 1/6 before. Ofetch exposed an absolute-versus-normalized
+path-key miss. Catalog lookup now normalizes requests through the configured workspace
+boundary and has a deterministic absolute-path regression. A bounded Ofetch canary then
+reused 1,047 selected lines across ten positive reuse receipts, including 872 lines from
+`src/fetch.ts`, but again produced no patch and scored 0/47 F2P. The sample used relative
+paths, so live absolute-path uptake remains unisolated. No run used citation handles or
+grounded working-note findings. See
+`docs/audits/ptc-read-catalog-live-2026-09-13.md`; defaults remain unqualified.

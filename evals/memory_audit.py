@@ -17,7 +17,7 @@ from evals.prior_evidence import PriorEvidence
 from harness.evidence.ledger import LedgerEvent
 from harness.evidence.memory.models import ReadEvidence
 
-VERSION = "read-coverage-v1"
+VERSION = "read-coverage-v2"
 EXPOSURE_VERSION = "source-equivalent-exposure-v2"
 
 
@@ -281,12 +281,20 @@ def audit_reads(events: Iterable[LedgerEvent], *, cut_sequence: int) -> dict[str
             counts[category] += 1
             counts["post_cut_reads"] += 1
             counts["returned_lines"] += end - start
+            reuse = event.payload.get("read_reuse")
+            if isinstance(reuse, dict):
+                counts["catalog_reused_lines"] += int(reuse.get("reused_lines", 0))
+                counts["source_read_lines"] += int(reuse.get("source_read_lines", 0))
+                counts["identity_probe_lines"] += int(reuse.get("identity_probe_lines", 0))
+            else:
+                counts["source_read_lines"] += end - start
             counts["pre_cut_overlap_lines"] += overlap
             counts["all_earlier_overlap_lines"] += earlier_overlap
             rows.append({"event_id": event.event_id, "sequence": event.sequence,
                          **evidence.model_dump(), "category": category,
                          "pre_cut_overlap_lines": overlap,
-                         "all_earlier_overlap_lines": earlier_overlap})
+                         "all_earlier_overlap_lines": earlier_overlap,
+                         **({"read_reuse": reuse} if isinstance(reuse, dict) else {})})
         else:
             prior[key] = merged([*prior[key], (start, end)])
             prior_paths.add(evidence.path)

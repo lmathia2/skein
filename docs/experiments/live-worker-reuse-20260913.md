@@ -1,6 +1,6 @@
 # Live-worker reuse diagnostic
 
-Status: complete after 3 of at most 4 iterations; iteration 4 was not needed.
+Status: complete after the budgeted 4 iterations.
 
 ## Isolated question
 
@@ -108,6 +108,29 @@ the control is already at zero, while notices regress cost and worker reliabilit
 This closes only live-worker reuse. It does not qualify learned findings, compaction,
 worker-loss recovery, working notes or prior-run recall; those require separate goals
 with their own failure-inducing boundaries.
+
+## Iteration 4: confirmation split
+
+The selected on-demand default ran alone on four fresh-state cases that were not used
+to choose it: a six-branch/18-module routing graph, an authorized shipment revision,
+a completed-validation dependency, and a different partial-range fixture. All 4/4
+trials passed first verification with one kernel epoch, no disruptive cell, cut, note,
+unresolved execution, missing accounting or extra provider attempt. All eight delayed
+answer/update windows had completed applicable evidence.
+
+The routing case reused all 18 initially captured modules for three answers and made
+no later source read. The changed-source case read only the new `shipment.toml` version
+and retained the rates, pricing and rule evidence. The validation case acquired the
+previously withheld `records.csv` and observed the required successful validation;
+the missing-range case acquired only the unseen `settings.toml` tail while retaining
+`dispatch.toml`. Answer-file reads used for final checks are not source rereads.
+Submitted cells directly referenced retained source/result bindings in every family.
+
+This final split used 39 model calls, 460,357 input tokens (77,813 uncached), and
+$0.06541668. Across all four iterations, the selected no-notice/on-demand path is
+16/16 intact and 38/38 eligible windows with zero avoidable source reread lines.
+The result satisfies this isolated same-worker goal; it does not imply that semantic
+memory works after compaction or worker loss.
 
 ## Gates and iteration budget
 

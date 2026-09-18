@@ -26,11 +26,31 @@ def test_interval_union_and_read_versions(tmp_path: Path):
     assert merged([(1, 11), (5, 15), (15, 20)]) == [(1, 20)]
     assert result["counts"]["pre_cut_overlap_lines"] == 13
     assert result["counts"]["all_earlier_overlap_lines"] == 18
+    assert result["counts"]["source_read_lines"] == 41
     assert result["counts"]["fully_covered"] == 1
     assert result["counts"]["new_range"] == 2
     assert result["counts"]["different_version"] == 1
     assert result["exposure"]["model_visible_duplicate_lines"] is None
     assert audit_reads(store.read("task"), cut_sequence=cut.sequence) == result
+
+
+def test_read_audit_separates_catalog_reuse_from_source_acquisition(tmp_path: Path):
+    store = JsonlLedgerStore(tmp_path / "ledger")
+    first = store.append(task_id="task", source="harness", source_id="first",
+                         kind="capability.completed", payload={"operation": "fs.read",
+                         "read_evidence": {"path": "a", "sha256": "a" * 64,
+                                           "offset": 1, "returned_lines": 10}})
+    store.append(task_id="task", source="harness", source_id="second",
+                 kind="capability.completed", payload={"operation": "fs.read",
+                 "read_evidence": {"path": "a", "sha256": "a" * 64,
+                                   "offset": 1, "returned_lines": 10},
+                 "read_reuse": {"reused_lines": 8, "source_read_lines": 2,
+                                "identity_probe_lines": 1}})
+    counts = audit_reads(store.read("task"), cut_sequence=first.sequence)["counts"]
+    assert counts["returned_lines"] == 10
+    assert counts["catalog_reused_lines"] == 8
+    assert counts["source_read_lines"] == 2
+    assert counts["identity_probe_lines"] == 1
 
 
 def test_invalid_read_evidence_is_not_silently_counted():

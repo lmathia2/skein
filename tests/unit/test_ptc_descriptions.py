@@ -155,13 +155,16 @@ def test_nested_selectors_and_deletion_are_safe():
     assert described["access_expression"] == "sources['main']['data']['text']"
     assert described["inspect_expression"] == "agent.state.describe('sources', selector=('main', 'data', 'text'), preview=True)"
     namespace["sources"].clear()
-    assert state.list()[0]["availability"] == "unavailable"
+    assert state.list()[0]["availability"] == "live_retained_read"
+    assert state.list()[0]["description"] == "Relevant module"
+    assert state.reuse(read["read_reference"]["artifact_uri"])["data"]["text"] == "source\n"
     assert state.annotate("sources", "missing", selector=("main",))["status"] == "unavailable"
 
 
 def test_catalog_discovers_attested_container_values_without_annotations_or_reads():
     first, second = source_result(), source_result()
-    second["read_reference"] = {**second["read_reference"], "path": "src/other.py", "sha256": "c" * 64}
+    second["read_reference"] = {**second["read_reference"], "artifact_uri": "artifact://sha256/" + "d" * 64,
+                                "path": "src/other.py", "sha256": "c" * 64}
     namespace = {"reads": [first, {"other": second}], "copied": json.loads(json.dumps(first))}
     state = _StateProxy(namespace, {"reads": {"cell_id": "completed-cell", "replay": "never"}})
     state.register_read(first)
@@ -169,24 +172,25 @@ def test_catalog_discovers_attested_container_values_without_annotations_or_read
     catalog = state.list()
     assert catalog == state.list()
     entries = [row for row in catalog if row.get("read_reference")]
-    assert [row["access_expression"] for row in entries] == ["reads[0]", "reads[1]['other']"]
+    assert [row["access_expression"] for row in entries] == [
+        "agent.state.reuse('read:1')",
+        "agent.state.reuse('read:2')",
+    ]
     assert [row["read_reference"] for row in entries] == [first["read_reference"], second["read_reference"]]
-    assert all(row["cell_id"] == "completed-cell" and row["binding_type"] == "list" for row in entries)
+    assert all(row["availability"] == "live_retained_read" for row in entries)
     assert all("preview" not in row and row["freshness"] == "historical_snapshot" for row in entries)
     assert all(row.get("name") != "copied" for row in entries)
 
     first["data"]["text"] = "changed\n"
     current = state.list()
-    assert [row["access_expression"] for row in current if row.get("read_reference")] == ["reads[1]['other']"]
+    assert [row["access_expression"] for row in current if row.get("read_reference")] == [
+        "agent.state.reuse('read:2')"]
     from app.agent.ptc import _state_updates
     updates = _state_updates(catalog, current, 2048)
-    assert len(updates) == 1
-    assert updates[0]["name"] == "reads" and updates[0]["selector"] == [0]
-    assert updates[0]["availability"] == "association_invalidated"
+    assert len(updates) == 1 and updates[0]["availability"] == "association_invalidated"
     assert updates[0]["historical_read"] == first["read_reference"]
-    assert "read_reference" not in updates[0] and "access_expression" not in updates[0]
     namespace["reads"].clear()
-    assert not any(row.get("read_reference") for row in state.list())
+    assert [row["read_reference"] for row in state.list() if row.get("read_reference")] == [second["read_reference"]]
     # A new epoch cannot reconstruct live attestations from self-described values.
     assert not any(row.get("read_reference") for row in _StateProxy({"reads": [second]}, {}).list())
 
@@ -198,13 +202,32 @@ def test_automatic_source_navigation_is_bounded_and_deduplicates_aliases():
     state = _StateProxy({"reads": [read] * 100, "cycle": cycle}, {})
     state.register_read(read)
     refs = [row for row in state.list() if row.get("read_reference")]
-    assert len(refs) == 1 and refs[0]["access_expression"] == "reads[0]"
+    assert len(refs) == 1 and refs[0]["access_expression"].startswith("agent.state.reuse(")
     # Width/depth/long-key omissions are navigable by an explicit supported selector.
     state = _StateProxy({"wide": [None] * 64 + [read], "long": {"x" * 129: read}}, {})
     state.register_read(read)
-    assert not any(row.get("read_reference") for row in state.list())
+    assert len([row for row in state.list() if row.get("read_reference")]) == 1
     assert state.describe("wide", (64,))["read_reference"] == read["read_reference"]
     assert state.describe("long", ("x" * 129,))["read_reference"] == read["read_reference"]
+
+
+def test_retained_read_catalog_survives_reassignment_and_rejects_mutation():
+    read = source_result()
+    namespace = {"r": read}
+    state = _StateProxy(namespace, {})
+    state.register_read(read)
+    uri = read["read_reference"]["artifact_uri"]
+
+    namespace["r"] = None
+    entry = state.reads(path="src/main.py")[0]
+    assert entry["access_expression"] == "agent.state.reuse('read:1')"
+    assert state.reuse("read:1") is read
+    assert state.reuse(uri) is read
+
+    read["data"]["text"] = "changed\n"
+    assert state.reads() == []
+    with pytest.raises(KeyError, match="unknown retained read"):
+        state.reuse(uri)
 
 
 def test_selector_recipes_quote_plain_keys_and_reject_unbounded_representation():

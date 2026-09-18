@@ -261,6 +261,74 @@ async def test_parallel_reads_overlap_and_keep_ordered_receipts(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
+async def test_ptc_read_catalog_reuses_exact_and_partial_ranges_but_not_changed_source(
+    tmp_path: Path,
+) -> None:
+    workspace, state = tmp_path / "workspace", tmp_path / "state"
+    workspace.mkdir()
+    original = "".join(f"line {index} " + "x" * 100 + "\n" for index in range(1, 7))
+    changed = original.replace("line 1", "changed 1")
+    (workspace / "source.txt").write_text(original)
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(state / "events")
+    base = create_adk_tools(workspace, state_root=state, task_scope="task")
+    calls: list[tuple[int, int]] = []
+
+    def tracked_read(*, path: str, offset: int = 1, limit: int = 400):
+        calls.append((offset, limit))
+        return base.read(path=path, offset=offset, limit=limit)
+
+    tools = AdkCodingTools(read=tracked_read, bash=base.bash, edit=base.edit, write=base.write)
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=workspace, state_root=state, task_id="task")),
+        cast(BaseLlm, "test-model"), tools=tools,
+        ptc_config=config.notebook_ptc, event_store=events,
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        first = await worker.execute_code("source_module = agent.fs.read('source.txt', 1, 3)")
+        assert first["status"] == "ok"
+        exact = await worker.execute_code(
+            f"same_source = agent.fs.read({str(workspace / 'source.txt')!r}, 1, 3)\n"
+            "assert same_source['data']['text'] == source_module['data']['text']\n"
+            "assert agent.state.cite(source_module['read_handle']) == source_module['read_reference']['artifact_uri']\n"
+            "print(same_source['data']['text'])"
+        )
+        assert exact["status"] == "ok"
+        assert original[:200] not in exact["model_text"]
+        assert "source already retained as read:1" in exact["model_text"]
+
+        partial = await worker.execute_code("wider_source = agent.fs.read('source.txt', 1, 5)")
+        assert partial["status"] == "ok"
+        assert (await worker.execute_code(
+            "assert wider_source['data']['text'] == " + repr("".join(original.splitlines(keepends=True)[:5]))
+        ))["status"] == "ok"
+        (workspace / "source.txt").write_text(changed)
+        refreshed = await worker.execute_code("changed_source = agent.fs.read('source.txt', 1, 5)")
+        assert refreshed["status"] == "ok"
+        assert (await worker.execute_code(
+            "assert changed_source['data']['text'].startswith('changed 1')"
+        ))["status"] == "ok"
+    finally:
+        worker.close()
+
+    assert calls == [(1, 3), (1, 1), (1, 1), (4, 2), (1, 1), (1, 5)]
+    reads = [event.payload for event in events.read("task")
+             if event.kind == EventKind.CAPABILITY_COMPLETED and event.payload.get("operation") == "fs.read"]
+    assert reads[1]["read_reuse"] == {
+        "reused_lines": 3, "source_read_lines": 0,
+        "identity_probe_lines": 1,
+        "reused_ranges": [[1, 3]], "source_read_ranges": [],
+        "reused_artifact_uris": [reads[0]["result_artifact_uri"]],
+    }
+    assert reads[2]["read_reuse"]["reused_ranges"] == [[1, 3]]
+    assert reads[2]["read_reuse"]["source_read_ranges"] == [[4, 5]]
+    assert "read_reuse" not in reads[3]
+
+
+@pytest.mark.asyncio
 async def test_parallel_rejects_effects_before_dispatch(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
@@ -1526,7 +1594,7 @@ async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_
             initial = await worker.execute_code(
                 "reads = agent.parallel([{'operation': 'fs.read', 'arguments': {'path': 'note.txt'}}])")
             assert initial["status"] == "ok", initial
-            assert "\"content_expression\":\"reads[0]['data']['text']\"" in initial["model_text"]
+            assert "\"content_expression\":\"agent.state.reuse('read:1')['data']['text']\"" in initial["model_text"]
             assert "historical source" not in initial["model_text"]
             await worker.execute_code("source = reads[0]")
         else:

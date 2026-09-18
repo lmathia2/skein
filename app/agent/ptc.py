@@ -49,6 +49,17 @@ from .config import HarnessSettings
 from .streaming import PublicReplies
 
 
+def _line_ranges(lines: list[int]) -> list[list[int]]:
+    """Return inclusive ranges for sorted line numbers."""
+    ranges: list[list[int]] = []
+    for line in lines:
+        if ranges and ranges[-1][1] + 1 == line:
+            ranges[-1][1] = line
+        else:
+            ranges.append([line, line])
+    return ranges
+
+
 def _replay_policy(code: str) -> str:
     try:
         tree = ast.parse(code)
@@ -142,9 +153,15 @@ def _state_updates(previous: list[dict[str, Any]], current: list[dict[str, Any]]
 
     before = {key(item): item for item in previous if item.get("description") or item.get("read_reference")}
     after = {key(item): item for item in current}
+    before_order = {key(item): index for index, item in enumerate(previous)}
     updates = []
     for identity in sorted(set(before) | set(after), key=lambda identity: (
-        identity not in before, not bool(after.get(identity, {}).get("description")), identity
+        not (identity in before and identity not in after),
+        -before_order.get(identity, -1)
+        if identity in before and identity not in after
+        and before[identity].get("availability") == "live_retained_read" else 0,
+        not bool((after.get(identity) or before.get(identity, {})).get("description")),
+        identity,
     )):
         item = after.get(identity)
         if item == before.get(identity):
@@ -202,7 +219,7 @@ def _state_updates(previous: list[dict[str, Any]], current: list[dict[str, Any]]
 def _state_update_notice(updates: list[dict[str, Any]], kernel_epoch: str, cell_id: str,
                          max_bytes: int, state_lost: bool) -> dict[str, Any]:
     historical = any(item.get("historical_read") for item in updates)
-    notice = {"program": "ptc_state_updates@4", "kernel_epoch": kernel_epoch,
+    notice = {"program": "ptc_state_updates@5", "kernel_epoch": kernel_epoch,
               "cell_id": cell_id, "entries": updates,
               "more": ("agent.artifacts.list(); agent.help('artifacts.load', details=True)"
                        if historical or state_lost else "agent.state.list(); agent.state.describe(name, preview=True)")}
@@ -318,6 +335,7 @@ def build_notebook_session(
     active_notebooks: dict[str, str] = {}
     batch_cells: dict[tuple[str, str], int] = {}
     batch_changed: set[tuple[str, str]] = set()
+    retained_reads: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
 
     def notebook_events(task_id: str) -> list[HarnessEvent]:
         return [*prior_notebook_events, *active_event_store.read(task_id)]
@@ -354,6 +372,7 @@ def build_notebook_session(
             cell_id: str,
             attempt_id: str,
             work_batch_id: str,
+            kernel_epoch: str,
             event_loop: asyncio.AbstractEventLoop,
         ) -> None:
             self.task_id = task_id
@@ -362,6 +381,7 @@ def build_notebook_session(
             self.cell_id = cell_id
             self.attempt_id = attempt_id
             self.work_batch_id = work_batch_id
+            self.kernel_epoch = kernel_epoch
             self.event_loop = event_loop
             self.call_index = 0
             self.operations: list[str] = []
@@ -510,6 +530,8 @@ def build_notebook_session(
                     }
                     payload["source_coverage"] = ReadEvidence.model_validate(
                         payload["read_evidence"]).source_coverage(data.get("total_lines"))
+                if isinstance(result.get("read_reuse"), dict):
+                    payload["read_reuse"] = result["read_reuse"]
             if result_artifact_uri is not None:
                 payload.update(
                     {
@@ -526,7 +548,121 @@ def build_notebook_session(
             )
             if "read_evidence" in payload and result_artifact_uri is not None:
                 result = {**result, "read_reference": _read_reference(self.task_id, payload)}
+                data = result.get("data", {})
+                key = (self.kernel_epoch, str(data.get("path", "")), str(data.get("sha256", "")))
+                retained_reads.setdefault(key, []).append(result)
+                while sum(map(len, retained_reads.values())) > 64:
+                    oldest = next(iter(retained_reads))
+                    retained_reads[oldest].pop(0)
+                    if not retained_reads[oldest]:
+                        retained_reads.pop(oldest)
             return result
+
+        def _catalog_read(self, path: str, offset: int, limit: int) -> dict[str, Any]:
+            """Reuse current-version captured lines; acquire only uncovered intervals."""
+            if type(offset) is not int or type(limit) is not int or offset < 1 or not 1 <= limit <= 400:
+                return active_tools.read(path=path, offset=offset, limit=limit)
+            try:
+                candidate = Path(path)
+                candidate = candidate if candidate.is_absolute() else settings.workspace / candidate
+                catalog_path = candidate.resolve(strict=False).relative_to(
+                    settings.workspace.resolve()
+                ).as_posix()
+            except (OSError, ValueError):
+                catalog_path = path
+            if not any(epoch == self.kernel_epoch and saved_path == catalog_path
+                       for epoch, saved_path, _digest in retained_reads):
+                return active_tools.read(path=path, offset=offset, limit=limit)
+            probe = active_tools.read(path=path, offset=1, limit=1)
+            probe_data = probe.get("data", {}) if isinstance(probe, dict) else {}
+            if probe.get("status") != "ok" or not all(
+                isinstance(probe_data.get(key), expected)
+                for key, expected in (("path", str), ("sha256", str), ("total_lines", int))
+            ):
+                return active_tools.read(path=path, offset=offset, limit=limit)
+            key = (self.kernel_epoch, probe_data["path"], probe_data["sha256"])
+            prior = retained_reads.get(key, [])
+            if not prior:
+                return probe if offset == 1 and limit == 1 else active_tools.read(
+                    path=path, offset=offset, limit=limit
+                )
+
+            total = probe_data["total_lines"]
+            start = min(offset - 1, total) + 1
+            end = min(start + limit, total + 1)
+            lines: dict[int, str] = {}
+            sources: dict[int, str] = {}
+            for saved in prior:
+                data = saved.get("data", {})
+                reference = saved.get("read_reference", {})
+                if not isinstance(data, dict) or not isinstance(data.get("text"), str):
+                    continue
+                captured_start = data.get("offset")
+                uri = reference.get("artifact_uri") if isinstance(reference, dict) else None
+                if not isinstance(captured_start, int) or not isinstance(uri, str):
+                    continue
+                for index, text in enumerate(data["text"].splitlines(keepends=True)):
+                    line = captured_start + index
+                    if start <= line < end:
+                        lines.setdefault(line, text)
+                        sources.setdefault(line, uri)
+
+            missing = [line for line in range(start, end) if line not in lines]
+            ranges: list[tuple[int, int]] = []
+            for line in missing:
+                if ranges and ranges[-1][1] == line:
+                    ranges[-1] = (ranges[-1][0], line + 1)
+                else:
+                    ranges.append((line, line + 1))
+            fresh_results = [
+                active_tools.read(path=path, offset=lo, limit=hi - lo) for lo, hi in ranges
+            ]
+            if any(result.get("status") != "ok" for result in fresh_results):
+                return active_tools.read(path=path, offset=offset, limit=limit)
+            for result in fresh_results:
+                data = result.get("data", {})
+                if (data.get("path") != key[1] or data.get("sha256") != key[2]
+                        or not isinstance(data.get("offset"), int)
+                        or not isinstance(data.get("text"), str)):
+                    return active_tools.read(path=path, offset=offset, limit=limit)
+                for index, text in enumerate(data["text"].splitlines(keepends=True)):
+                    lines[data["offset"] + index] = text
+            if any(line not in lines for line in range(start, end)):
+                return active_tools.read(path=path, offset=offset, limit=limit)
+
+            reused_lines = [line for line in range(start, end) if line in sources]
+            reused_uris = sorted({sources[line] for line in reused_lines})
+            reuse = {
+                "reused_lines": len(reused_lines),
+                "source_read_lines": len(missing),
+                "identity_probe_lines": int(total > 0),
+                "reused_ranges": _line_ranges(reused_lines),
+                "source_read_ranges": _line_ranges(missing),
+                "reused_artifact_uris": reused_uris,
+            }
+            fresh_text = "\n".join(
+                str(result.get("model_text", "")) for result in fresh_results if result.get("model_text")
+            )
+            guidance = (
+                f"{key[1]} lines {start}-{max(start, end - 1)}: reused {len(reused_lines)} "
+                f"captured line(s), read {len(missing)} new line(s). "
+                "Use the retained result for analysis; do not print already captured source. "
+                "Resolve its returned read_handle with agent.state.cite(...) when citing a finding."
+            )
+            return {
+                "status": "ok",
+                "model_text": "\n\n".join(part for part in (guidance, fresh_text) if part),
+                "data": {
+                    "path": key[1], "text": "".join(lines[line] for line in range(start, end)),
+                    "offset": start, "returned_lines": end - start, "total_lines": total,
+                    "complete": start == 1 and end == total + 1,
+                    "next_offset": end if end < total + 1 else None, "sha256": key[2],
+                },
+                "content_hashes": {key[1]: key[2]},
+                "ui_details": {"path": key[1], "total_lines": total, "read_reuse": reuse},
+                "read_reuse": reuse,
+                "effect": "observed",
+            }
 
         def _call(
             self,
@@ -574,10 +710,9 @@ def build_notebook_session(
                 )
 
             def invoke(arguments: dict[str, Any]) -> dict[str, Any]:
-                return active_tools.read(
-                    path=arguments["path"],
-                    offset=arguments.get("offset", 1),
-                    limit=arguments.get("limit", read_default_lines),
+                return self._catalog_read(
+                    arguments["path"], arguments.get("offset", 1),
+                    arguments.get("limit", read_default_lines),
                 )
 
             reserved = [self._reserve("fs.read", arguments) for arguments in normalized]
@@ -604,7 +739,7 @@ def build_notebook_session(
             return self._call(
                 "fs.read",
                 {"path": path, "offset": offset, "limit": limit},
-                lambda: active_tools.read(path=path, offset=offset, limit=limit),
+                lambda: self._catalog_read(path, offset, limit),
             )
 
         def bash(self, command: str, timeout_seconds: int = bash_default_timeout) -> dict[str, Any]:
@@ -1067,6 +1202,7 @@ def build_notebook_session(
             cell_id=cell_id,
             attempt_id=attempt_id,
             work_batch_id=work_batch_id,
+            kernel_epoch=kernel_epoch,
             event_loop=asyncio.get_running_loop(),
         )
         result = await run_managed_thread(
@@ -1173,7 +1309,7 @@ def build_notebook_session(
                                             result.status != "ok" and not state_preserved)
         terminal_payload["state_updates"] = updates
         terminal_payload["state_updates_view"] = {
-            "program": "ptc_state_updates@4", "program_hash": _STATE_UPDATES_PROGRAM_HASH,
+            "program": "ptc_state_updates@5", "program_hash": _STATE_UPDATES_PROGRAM_HASH,
             "source_watermark": state_events[-1].sequence if state_events else 0,
             "prior_state_event_id": prior_state_event.event_id if prior_state_event else None,
             "current_state_policy": "prior" if execution_started is False else

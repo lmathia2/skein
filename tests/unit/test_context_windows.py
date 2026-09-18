@@ -924,7 +924,7 @@ async def test_work_batch_navigation_appends_once_and_replays_captured_bytes(tmp
     published = [e for e in events.read("task") if e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED]
     assert len(published) == 1
     payload = published[0].payload
-    assert payload["program"] == "work_batch_navigation@4"
+    assert payload["program"] == "work_batch_navigation@5"
     assert payload["source_watermark"] >= read.sequence
     assert payload["parameters"]["work_batch_id"] == "2"
     assert render_handoff(payload["inputs"], max_tokens=2000) == snapshot
@@ -1017,6 +1017,32 @@ def test_boundary_prefers_focused_bindings_and_collapses_only_identical_read_ref
     assert names == ["annotated", "different_range", "different_version", "irrelevant"]
     assert advisory["upstream_omitted_count"] == 40
     assert details == original and render_handoff(details, max_tokens=2000) == rendered
+
+
+def test_grounded_finding_carries_matching_live_read_recipe_without_duplicate_entry():
+    uri = "artifact://sha256/" + "b" * 64
+    reference = {"path": "src/rules.py", "sha256": "a" * 64, "offset": 1,
+                 "returned_lines": 20, "artifact_uri": uri}
+    binding = {"name": "agent.state.reuse", "selector": [uri],
+               "access_expression": f"agent.state.reuse({uri!r})", "read_value_kind": "result",
+               "availability": "live_retained_read", "freshness": "historical_snapshot",
+               "read_reference": reference}
+    finding = {"finding": {"id": "routing-rule", "kind": "observation",
+                            "text": "Fallback routing prefers the first healthy provider.",
+                            "evidence_refs": [uri], "related_paths": ["src/rules.py"]},
+               "source_dependencies": [{**reference, "status": "historical_snapshot"}],
+               "source_task_id": "task", "provenance": "available"}
+    details = {"working_set": {"data": {"findings": [finding]}},
+               "notebook": {"availability": "live", "state": {"manifest": [binding]}}}
+
+    body = json.loads(render_handoff(details, max_tokens=2000).split(
+        "Advisory memory (not execution authority):\n")[1])
+    entries = body["entries"]
+    value = next(entry["value"] for entry in entries if entry["kind"] == "findings")
+    assert value["finding"]["text"] == finding["finding"]["text"]
+    assert value["live_sources"][0]["content_expression"] == (
+        f"agent.state.reuse({uri!r})['data']['text']")
+    assert not any(entry["kind"] == "live_bindings" for entry in entries)
 
 
 @pytest.mark.parametrize("access", ["sources['odd\\\"path.py']", "", None])
