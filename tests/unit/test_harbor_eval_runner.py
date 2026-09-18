@@ -51,6 +51,7 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
         "max_task_input_tokens": 200_000,
         "max_iterations": 1_000,
         "api_key_env": "OPENROUTER_API_KEY",
+        "agent_import_path": "harness.adapters.pier:SkeinPierAgent",
     })()
 
     command = runner.run_command(
@@ -88,6 +89,7 @@ def test_provider_defaults_omit_reasoning_and_output_limit(tmp_path: Path) -> No
         "max_task_input_tokens": 200_000,
         "max_iterations": 1_000,
         "api_key_env": "OPENROUTER_API_KEY",
+        "agent_import_path": "harness.adapters.pier:SkeinPierAgent",
     })()
 
     command = runner.run_command(
@@ -102,6 +104,20 @@ def test_provider_defaults_omit_reasoning_and_output_limit(tmp_path: Path) -> No
     assert not any("max_output_tokens=" in value for value in command)
 
 
+def test_pi_adapter_receives_the_same_output_limit(tmp_path: Path) -> None:
+    runner = load_runner()
+    args = type("Args", (), {
+        "model": "meta/muse-spark-1.3-contributor", "provider": "openrouter",
+        "reasoning": "xhigh", "config": "harness/core/config/profiles/four-tool.yaml",
+        "max_output_tokens": 32_768, "max_task_input_tokens": 200_000,
+        "max_iterations": 1_000, "api_key_env": "OPENROUTER_API_KEY",
+        "agent_import_path": "scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent",
+    })()
+    command = runner.run_command(
+        {"expected_runtime_seconds": 10_800}, args, 1, tmp_path / "job", tmp_path / "task")
+    assert "max_output_tokens=32768" in command
+
+
 def test_deepswe_tasks_enable_submission_commit_packaging(tmp_path: Path) -> None:
     runner = load_runner()
     args = type("Args", (), {
@@ -109,6 +125,7 @@ def test_deepswe_tasks_enable_submission_commit_packaging(tmp_path: Path) -> Non
         "config": "harness/core/config/profiles/four-tool.yaml", "max_output_tokens": None,
         "max_task_input_tokens": 200_000, "max_iterations": 1_000,
         "api_key_env": "OPENROUTER_API_KEY",
+        "agent_import_path": "harness.adapters.pier:SkeinPierAgent",
     })()
     command = runner.run_command(
         {"benchmark": "deep_swe", "expected_runtime_seconds": 10_800}, args, 1,
@@ -138,6 +155,49 @@ def test_plan_accepts_bounded_campaign_concurrency() -> None:
     plan = json.loads(completed.stdout)
     assert plan["concurrency"] == 3
     assert plan["max_task_input_tokens"] == 200_000
+
+
+def test_trackio_metrics_use_the_ledger_record() -> None:
+    runner = load_runner()
+
+    metrics = runner.trial_tracking_metrics(
+        {
+            "task_index": 4,
+            "retry": 1,
+            "status": "complete",
+            "timed_out": False,
+            "trial_metrics": [
+                {
+                    "official_reward": 1,
+                    "cost_usd": 0.12,
+                    "input_tokens": 100,
+                    "cache_read_tokens": 80,
+                    "output_tokens": 20,
+                    "active_wall_time_seconds": 30,
+                    "end_to_end_wall_time_seconds": 40,
+                }
+            ],
+        }
+    )
+
+    assert metrics == {
+        "task_index": 4.0,
+        "retry": 1.0,
+        "complete": 1.0,
+        "timed_out": 0.0,
+        "error_count": 0.0,
+        "returncode": 0.0,
+        "recovered": 0.0,
+        "resumed": 0.0,
+        "trial_count": 1.0,
+        "official_reward": 1.0,
+        "cost_usd": 0.12,
+        "input_tokens": 100.0,
+        "cache_read_tokens": 80.0,
+        "output_tokens": 20.0,
+        "active_wall_time_seconds": 30.0,
+        "end_to_end_wall_time_seconds": 40.0,
+    }
 
 
 def test_plan_accepts_fail_fast_with_concurrency() -> None:

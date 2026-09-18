@@ -1,0 +1,584 @@
+{
+  "exclusions": [
+    {
+      "reason": "OpenRouter HTTP 402 interruptions; superseded by the clean Luna PTC rerun",
+      "run": "old PTC control"
+    }
+  ],
+  "manifest_sha256": "7b48b456890fb72931c25b39eae0d4625440b409a81e4d0daa66374d262b7db4",
+  "metrics": {
+    "cost": [
+      "provider cost USD",
+      "cost per task",
+      "cost per official pass"
+    ],
+    "efficiency": [
+      "input tokens",
+      "cache-read tokens",
+      "uncached input tokens",
+      "output tokens",
+      "model/code calls",
+      "PTC cells and inner tool calls",
+      "batch count"
+    ],
+    "latency": [
+      "active wall time",
+      "end-to-end wall time",
+      "median and p95 per-trial wall time",
+      "concurrent campaign span"
+    ],
+    "quality": [
+      "official pass rate",
+      "per-task paired wins/losses/ties",
+      "F2P passed/total",
+      "P2P passed/total",
+      "mean verifier partial credit"
+    ],
+    "trace_analysis": [
+      "tool errors",
+      "batch width",
+      "variable/binding reuse",
+      "repeated reads",
+      "tool-result bytes returned to model",
+      "verification attempts",
+      "terminal reason"
+    ]
+  },
+  "name": "e13-code-mode-deep-swe-20-v1",
+  "panel": {
+    "excluded_prior_task_ids": [
+      "arcane-drift-detection-baselines",
+      "cliffy-config-file-parsing",
+      "dasel-html-document-format",
+      "katex-multicolumn-array-spans",
+      "pest-character-class-coalescing",
+      "returns-validated-error-accumulation"
+    ],
+    "selection_rule": "Exclude all six E13 screen tasks. Select unique repositories by ascending source selection_rank within fixed language/difficulty strata: Python 3 easy/2 medium/1 hard; TypeScript 2 easy/3 medium/2 hard; Go 2 easy/2 medium/1 hard; Rust 1 hard; JavaScript 1 easy.",
+    "target_distribution": {
+      "difficulty": {
+        "easy": 8,
+        "hard": 5,
+        "medium": 7
+      },
+      "language": {
+        "go": 5,
+        "javascript": 1,
+        "python": 6,
+        "rust": 1,
+        "typescript": 7
+      }
+    },
+    "task_count": 20,
+    "tasks": [
+      {
+        "artifact_sha256": "e99368c8e599e7fc1687ac11dd92d6d9b9985329168e204d519f730e363d7057",
+        "category": "feature_request",
+        "difficulty": "easy",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/anko-default-function-arguments",
+        "internet_policy": "allowed",
+        "language": "go",
+        "published_pass_rate": 0.7115384615384616,
+        "repository": "https://github.com/mattn/anko",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "2593bad195c93a7f3015959c136d090cd1b054b804a6b9131017247d188f60d9",
+        "task_id": "anko-default-function-arguments",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "eb7a3d6f669d2035b18e7caffc8d1c92c5c6fd86fb9845dd838504bbced6b38d",
+        "category": "feature_request",
+        "difficulty": "hard",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/bandit-structured-nosec-directives",
+        "internet_policy": "allowed",
+        "language": "python",
+        "published_pass_rate": 0.07335907335907337,
+        "repository": "https://github.com/PyCQA/bandit.git",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "9ea6ffffab7ec29573ea284a6ebddafcdf4485ca49fa8d8970ced629ec103ff2",
+        "task_id": "bandit-structured-nosec-directives",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "5cb8b7f3c5e920d8a3839eac5951223526dc2d5b3ba4fcff8b1b0bb73d22a9b5",
+        "category": "feature_request",
+        "difficulty": "medium",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/clack-async-autocomplete-options",
+        "internet_policy": "allowed",
+        "language": "typescript",
+        "published_pass_rate": 0.3992248062015504,
+        "repository": "https://github.com/bombshell-dev/clack",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "941372b5ee7711a4352afb94e7fa8df66d48698aa12e21f26aeb0d390f65a928",
+        "task_id": "clack-async-autocomplete-options",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "6291cdc99a21eb0cf772e98bdde21cd88d07d186814ee7fa379f99b9f7c5c31b",
+        "category": "feature_request",
+        "difficulty": "medium",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/claude-code-by-agents-recursive-delegation",
+        "internet_policy": "allowed",
+        "language": "typescript",
+        "published_pass_rate": 0.5444015444015444,
+        "repository": "https://github.com/baryhuang/claude-code-by-agents",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "a0e1d3acc38840edbea60b4348f6904dea47537bc37dcdfddaca845e0eae4011",
+        "task_id": "claude-code-by-agents-recursive-delegation",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "ea50ea0bf6bf750cd56c9663e188d677edb562c71dc585dcb6a8095822c93687",
+        "category": "feature_request",
+        "difficulty": "medium",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/happy-dom-deterministic-intersectionobserver",
+        "internet_policy": "allowed",
+        "language": "typescript",
+        "published_pass_rate": 0.3333333333333333,
+        "repository": "https://github.com/capricorn86/happy-dom",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "1d723cdfda4db50711c596a9d06bbfae061bb03ae3e86fb7b609a4d4b64d50a6",
+        "task_id": "happy-dom-deterministic-intersectionobserver",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "5d1499ab0b27daafc310ab4a23866d61b2731aa0c7a3ffea6ecd693ac63abc5f",
+        "category": "feature_request",
+        "difficulty": "hard",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/ink-grid-box-layout",
+        "internet_policy": "allowed",
+        "language": "typescript",
+        "published_pass_rate": 0.28294573643410853,
+        "repository": "https://github.com/vadimdemedes/ink",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "59cf98a7d49c1995ec7b08032763ad5d4dbf1d3d22ae74154ba9cf248a37c843",
+        "task_id": "ink-grid-box-layout",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "3f1750a3c0408cbe6e6eb6ffda9a067b1b37761c51c1af95bc50e363eb016ff2",
+        "category": "feature_request",
+        "difficulty": "hard",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/koota-pair-relation-tracking",
+        "internet_policy": "allowed",
+        "language": "typescript",
+        "published_pass_rate": 0.25,
+        "repository": "https://github.com/pmndrs/koota",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "3c3b700d93df4d9f23c66fa4752a377fcaab25d732d3d0cf93a5d20234adce39",
+        "task_id": "koota-pair-relation-tracking",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "dfd9fe394fe8f00fc7466cecce0d4f039b312afd7b2b1e43fabee92b9d5ffd3b",
+        "category": "feature_request",
+        "difficulty": "medium",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/langchain-request-coalescing",
+        "internet_policy": "allowed",
+        "language": "python",
+        "published_pass_rate": 0.3992248062015504,
+        "repository": "https://github.com/langchain-ai/langchain",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "2e562acbe44bbcb98d3bef75d16759c83be16f798b77612a0150ca9d4e982b7d",
+        "task_id": "langchain-request-coalescing",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "ca591eeeb75a5306bfc4ed2e7e6ab392d93c993c7a90958d213491121e1c8ead",
+        "category": "feature_request",
+        "difficulty": "easy",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/numba-stencil-boundary-modes",
+        "internet_policy": "allowed",
+        "language": "python",
+        "published_pass_rate": 0.686046511627907,
+        "repository": "https://github.com/numba/numba",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "ad05e1359f7fef24fabb2963ecaf5f589a27198ba97995a92a456227e3aa73d3",
+        "task_id": "numba-stencil-boundary-modes",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "5ffe854a4225a8a5b7cdd806c497a0500eca9a0cd1bee940d26b03caea6973b7",
+        "category": "feature_request",
+        "difficulty": "easy",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/obsidian-linter-scoped-ignore-markers",
+        "internet_policy": "allowed",
+        "language": "typescript",
+        "published_pass_rate": 0.7076923076923077,
+        "repository": "https://github.com/platers/obsidian-linter",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "32cdcdb2b41b75bc82b4c7f1f6e8a5f3860644f6312597b13ec73df9b1cf11ae",
+        "task_id": "obsidian-linter-scoped-ignore-markers",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "a0ffff637b54c8d172b988e7875b9e78e0fb41431eca7b7b8864b7a5b1278e43",
+        "category": "enhancement",
+        "difficulty": "hard",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/oxvg-structural-selector-preservation",
+        "internet_policy": "allowed",
+        "language": "rust",
+        "published_pass_rate": 0.19455252918287938,
+        "repository": "https://github.com/noahbald/oxvg",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "a5eaa0557ee0bd8dac3a17c6348588225bfbfb15037d2451d97e883ae08bdbd3",
+        "task_id": "oxvg-structural-selector-preservation",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "60ceb52ff33c3e5d78909917d048cc792c6a8f4d8c29c363b85dfd56ba68be4d",
+        "category": "feature_request",
+        "difficulty": "easy",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/psd-tools-blend-range-api",
+        "internet_policy": "allowed",
+        "language": "python",
+        "published_pass_rate": 0.823076923076923,
+        "repository": "https://github.com/psd-tools/psd-tools",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "778a920ff66cf31e9c33829b74b8a9ecaa6adfa8e832131fb26d8a901c02cb6f",
+        "task_id": "psd-tools-blend-range-api",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "8d8d89e217490aab2415e141e61564fe7b41dff28cbb8dc59e7f0a4734c4daeb",
+        "category": "feature_request",
+        "difficulty": "medium",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/pwntools-tube-multiplexing",
+        "internet_policy": "allowed",
+        "language": "python",
+        "published_pass_rate": 0.4048582995951417,
+        "repository": "https://github.com/Gallopsled/pwntools",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "1fb381ccc90f17d8e5479f9f9554ef62df06123a77406329fb2561355107835f",
+        "task_id": "pwntools-tube-multiplexing",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "094bff49447345e312b90876036a2c5d873474417a89baed34cdf2ac29c84355",
+        "category": "feature_request",
+        "difficulty": "easy",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/query-persist-restored-query-state",
+        "internet_policy": "allowed",
+        "language": "typescript",
+        "published_pass_rate": 0.7230769230769231,
+        "repository": "https://github.com/TanStack/query",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "4635001f0acad7b3689923e5e13ae7ef8264ffa624ac2f1e92c71cd6726fa845",
+        "task_id": "query-persist-restored-query-state",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "6892464f5a019db9a70d766a3186c60936f36189b3886b8b32da93a13d4746bb",
+        "category": "feature_request",
+        "difficulty": "medium",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/scriggo-method-declarations",
+        "internet_policy": "allowed",
+        "language": "go",
+        "published_pass_rate": 0.62890625,
+        "repository": "https://github.com/open2b/scriggo",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "39b0620ca2587d991b9eecce463e356176c7aa8d07bacfe064b2af3554bf8cb2",
+        "task_id": "scriggo-method-declarations",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "8ea15df51604d185e90c6821c9f324bf58884e68f8fc3f45efbde6c1f91541da",
+        "category": "feature_request",
+        "difficulty": "medium",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/tengo-destructuring-bindings",
+        "internet_policy": "allowed",
+        "language": "go",
+        "published_pass_rate": 0.6,
+        "repository": "https://github.com/d5/tengo",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "1fd9546ef46efe1531ac672a046537bd9747f8dcabb75b5d39e0dfd5437fe441",
+        "task_id": "tengo-destructuring-bindings",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "25426902b331da6b88b0449d654c26992f095f2e234c3094b800be4a2ab15f97",
+        "category": "feature_request",
+        "difficulty": "easy",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/testem-per-launcher-reports",
+        "internet_policy": "allowed",
+        "language": "javascript",
+        "published_pass_rate": 0.7181467181467182,
+        "repository": "https://github.com/testem/testem",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "7b50cd8d1b3a6a7c76a4725f3e66e6a3d79bf9dbca75594ca05c0c7add6e54aa",
+        "task_id": "testem-per-launcher-reports",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "c797d90c439169b30f8cff3d240f47a8bc0de27ab63d75cfb96a1da6f1910033",
+        "category": "feature_request",
+        "difficulty": "easy",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/textual-richlog-follow-state",
+        "internet_policy": "allowed",
+        "language": "python",
+        "published_pass_rate": 0.676923076923077,
+        "repository": "https://github.com/Textualize/textual",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "5038a6ba12354ebc4d0cd66c572bfbb0e7a0a7c04defb2e592c31c67d717e59e",
+        "task_id": "textual-richlog-follow-state",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "105759ee3bd1e251e1030de14bcad581c79afeb3f72dac16d701f8ab5f8b2587",
+        "category": "feature_request",
+        "difficulty": "hard",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/updo-policy-alerting",
+        "internet_policy": "allowed",
+        "language": "go",
+        "published_pass_rate": 0.13127413127413126,
+        "repository": "https://github.com/Owloops/updo",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "d0e5b63b769b85c56a1ca0e4dfe99ff4c500ea7e60818acdcb2bff333791e41b",
+        "task_id": "updo-policy-alerting",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      },
+      {
+        "artifact_sha256": "9edb768177592440b86f0f7bd13e18f613f3443df744372f44ce66f20e2c539a",
+        "category": "feature_request",
+        "difficulty": "easy",
+        "expected_runtime_seconds": 5400,
+        "harbor_task": "datacurve/ytt-jsonpath-query-api",
+        "internet_policy": "allowed",
+        "language": "go",
+        "published_pass_rate": 0.80078125,
+        "repository": "https://github.com/carvel-dev/ytt",
+        "resources": {
+          "cpus": 2,
+          "gpus": 0,
+          "memory_mb": 8192,
+          "storage_mb": 20480
+        },
+        "selection_rank": "50d7106b0c23052aaa299ef1caa76a8c716ec96d579c69a42e365eba8e9ba1f2",
+        "task_id": "ytt-jsonpath-query-api",
+        "verifier_contract": "binary_behavioral",
+        "verifier_isolated": true
+      }
+    ]
+  },
+  "planned_muse_cost": {
+    "cache_write_tokens_assumed": 0,
+    "calibration_only": "Cost uses aggregate token rates from the earlier six-task campaigns; those tasks and traces are not inputs to these trials.",
+    "caveat": "All 120 comparison trials run fresh. Prior six-task runs are calibration evidence only; harder panel tasks and replacement trials can exceed the six-task mean.",
+    "completed_reusable_trials": {
+      "pi_code_tool": 0,
+      "skein_ptc": 0
+    },
+    "full_120_trial_point_estimate_usd": 8.206254659999999,
+    "pi_code_tool_basis": "actual corrected six-task Muse token usage",
+    "pricing_usd_per_million_tokens": {
+      "cache_read_input": 0.002,
+      "output": 0.2,
+      "uncached_input": 0.1
+    },
+    "recommendation": "Use three paired rollouts. If results remain close, add diverse tasks before increasing rollouts per task.",
+    "recommended_budget_usd": {
+      "high": 12,
+      "low": 11
+    },
+    "remaining_point_estimate_usd": 8.206254659999999,
+    "remaining_trials": {
+      "pi_code_tool": 60,
+      "skein_ptc": 60,
+      "total": 120
+    },
+    "skein_ptc_basis": "six-task Luna PTC token usage repriced at Muse rates; performance under Muse is unobserved",
+    "trial_count_options": {
+      "five_rollouts_per_task_per_arm": {
+        "point_estimate_usd": 13.677091099999998,
+        "trials": 200
+      },
+      "one_rollout_per_task_per_arm": {
+        "point_estimate_usd": 2.7354182199999997,
+        "trials": 40
+      },
+      "three_rollouts_per_task_per_arm_recommended": {
+        "point_estimate_usd": 8.206254659999999,
+        "trials": 120
+      }
+    }
+  },
+  "protocol": {
+    "arm_configuration": {
+      "pi_code_tool": {
+        "agent_import_path": "scripts.pi_code_tool_harbor:PiCodeToolPierAgent",
+        "extension_repository": "https://github.com/josephkern/pi-code-tool",
+        "extension_revision": "84de8e7a941b80614856be86d260e45e76367290",
+        "pi_revision": "d7296c063b7971a7298769cfff1a167a9a16f8ed",
+        "workspace": "same clean detached worktree as skein_ptc"
+      },
+      "skein_ptc": {
+        "agent_import_path": "harness.adapters.pier:SkeinPierAgent",
+        "config": "harness/core/config/profiles/notebook-ptc-jsonl.yaml",
+        "workspace": "same clean detached worktree as pi_code_tool"
+      }
+    },
+    "arms": [
+      "pi_code_tool",
+      "skein_ptc"
+    ],
+    "attempts_per_runner_invocation": 1,
+    "concurrency": 3,
+    "failure_policy": "Retain every trial. Classify provider, harness, environment/verifier, and model failures; transient provider failures are rerun and excluded only with the replacement linked.",
+    "harbor_retries": 0,
+    "isolation": {
+      "memory": "Disable prior-run recall and cross-trial memory.",
+      "results": "Use new arm-specific result roots; never resume or append to six-task roots.",
+      "session": "Start a fresh agent session for every trial; do not import transcripts, variables, summaries, or tool state.",
+      "task_selection": "The 20 task IDs are disjoint from the earlier six-task E13 screen.",
+      "workspace": "Use a fresh task workspace/container for every trial."
+    },
+    "max_task_input_tokens": 1000000000,
+    "model": "meta/muse-spark-1.3-contributor",
+    "official_verifier": "DeepSWE binary_behavioral isolated verifier",
+    "pairing": "Use identical task artifacts and rollout indices across arms; analyze task-clustered paired differences.",
+    "provider": "openrouter",
+    "reasoning": "xhigh",
+    "rollouts_per_task_per_arm": 3,
+    "timeout_seconds": 7200
+  },
+  "schema_version": "skein-code-mode-experiment-v1",
+  "source": {
+    "dataset": "datacurve/deep-swe-1-1",
+    "manifest_path": "tests/eval/manifests/evaluation-confirm-v1.json",
+    "manifest_sha256": "f30a3bb6245a360820be5684ed98d001cea460169168633c18487ef28d48fad4"
+  },
+  "status": "planned_fresh_20_task_xhigh_comparison"
+}

@@ -1,0 +1,43 @@
+{
+  "experiment_id": "e13-ptc-isolation-8-v1",
+  "purpose": "Separate Pi's agent loop from the code execution substrate after the 20-task E13 comparison.",
+  "panel": {
+    "source": "diagnostic subset of e13-code-mode-20-v1",
+    "tasks": [
+      "obsidian-linter-scoped-ignore-markers",
+      "koota-pair-relation-tracking",
+      "scriggo-method-declarations",
+      "tengo-destructuring-bindings",
+      "textual-richlog-follow-state",
+      "ink-grid-box-layout",
+      "query-persist-restored-query-state",
+      "testem-per-launcher-reports"
+    ]
+  },
+  "arms": {
+    "pi-code": "scripts.pi_code_tool_harbor:PiCodeToolPierAgent",
+    "pi-skein": "scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent",
+    "skein": "harness.adapters.pier:SkeinPierAgent"
+  },
+  "protocol": {
+    "model": "meta/muse-spark-1.3-contributor",
+    "provider": "openrouter",
+    "reasoning": "xhigh",
+    "max_output_tokens": 32768,
+    "attempts_per_task_per_arm": 3,
+    "trials_per_arm": 24,
+    "total_trials": 72,
+    "total_concurrency": 6,
+    "concurrency_per_arm": 2,
+    "timeout_seconds": 7200,
+    "retries": 0,
+    "fresh_sessions": true
+  },
+  "estimated_cost_usd": {
+    "low": 9,
+    "high": 12,
+    "basis": "Observed E13 Muse costs for the two existing arms; Pi + Skein PTC estimated from the Pi host-loop arm."
+  },
+  "runner": "scripts/run_e13_ptc_isolation.sh",
+  "status": "ready"
+}

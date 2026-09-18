@@ -1,0 +1,38 @@
+{
+  "additional_task_ids": [
+    "anko-default-function-arguments",
+    "obsidian-linter-scoped-ignore-markers",
+    "happy-dom-deterministic-intersectionobserver",
+    "pwntools-tube-multiplexing",
+    "tengo-destructuring-bindings",
+    "koota-pair-relation-tracking"
+  ],
+  "cohort_sha256": "fc3239176c379842f92218624749a76e25405b10e7afbfe3a55d1731843c99af",
+  "core_task_ids": [
+    "arcane-drift-detection-baselines",
+    "cliffy-config-file-parsing",
+    "dasel-html-document-format",
+    "katex-multicolumn-array-spans",
+    "pest-character-class-coalescing",
+    "returns-validated-error-accumulation"
+  ],
+  "name": "e13-deep-swe-1-1-v1",
+  "schema_version": "skein-deep-swe-cohort-v1",
+  "selection_rule": "Core six are the E13 comparison tasks; expansion adds the lowest seeded-rank untested tasks by difficulty (2 easy, 3 medium, 1 hard).",
+  "source_dataset": "datacurve/deep-swe-1-1",
+  "source_manifest_sha256": "f30a3bb6245a360820be5684ed98d001cea460169168633c18487ef28d48fad4",
+  "task_artifact_sha256": {
+    "anko-default-function-arguments": "e99368c8e599e7fc1687ac11dd92d6d9b9985329168e204d519f730e363d7057",
+    "arcane-drift-detection-baselines": "6b6c66c21be08226b4f6b91f43dc2c353a1ef783d613d3c3254eb48fc2b2d905",
+    "cliffy-config-file-parsing": "3db686ba7c0e904ddb4750b14eba840593c882f6016d9ad6e38dcedfa5167546",
+    "dasel-html-document-format": "ed40e92c29778c2488fa271593417cf4daa7488352472a990b0340ff8fb49541",
+    "happy-dom-deterministic-intersectionobserver": "ea50ea0bf6bf750cd56c9663e188d677edb562c71dc585dcb6a8095822c93687",
+    "katex-multicolumn-array-spans": "27da72e69f984905e100e9d374dfe5b59bb66bfebf46c8f7350bb18f2b135eea",
+    "koota-pair-relation-tracking": "3f1750a3c0408cbe6e6eb6ffda9a067b1b37761c51c1af95bc50e363eb016ff2",
+    "obsidian-linter-scoped-ignore-markers": "5ffe854a4225a8a5b7cdd806c497a0500eca9a0cd1bee940d26b03caea6973b7",
+    "pest-character-class-coalescing": "2db976b6eeb361bd715b74de2d1ad66d09d310ea99c0a3c118d812bdafdce9f8",
+    "pwntools-tube-multiplexing": "8d8d89e217490aab2415e141e61564fe7b41dff28cbb8dc59e7f0a4734c4daeb",
+    "returns-validated-error-accumulation": "c3b8a00551c152d9c2cca35ae1a1ff84f18b57bbdb3e0247c2da20a1dd0b7dfc",
+    "tengo-destructuring-bindings": "8ea15df51604d185e90c6821c9f324bf58884e68f8fc3f45efbde6c1f91541da"
+  }
+}

@@ -39,6 +39,27 @@ Use `--benchmark`, `--task-id`, or `--limit` to narrow a run. Each trial retains
 its Pier job, Skein events, traces, verification output, and metrics. Reusing the
 jobs directory resumes incomplete Pier jobs and skips completed task keys.
 
+Trackio is installed by default. Log one live dashboard run per campaign:
+
+```sh
+uv sync
+scripts/run_e13_muse_20.sh pi
+scripts/run_e13_muse_20.sh ptc
+scripts/show_e13_trackio.sh
+```
+
+Add `--trackio-space-id USER/SPACE` to sync to a Hugging Face Space. Trackio logs
+campaign progress, pass rate, cost, tokens, and latency; `runs.jsonl` remains the
+task-level source of truth. Incomplete trials, timeouts, nonzero exits, and runner
+exceptions also create Trackio error alerts. Set `TRACKIO_WEBHOOK_URL` to forward
+those alerts to Slack or Discord.
+
+To resume after an interruption, rerun the exact command with the same `--jobs-dir`.
+The wrapper skips completed task keys, recovers results already written to disk, and
+calls `pier job resume` for unfinished Pier jobs. Pier 0.3.1 resumes at the job/trial
+boundary; the Skein Pier adapter does not currently resume a model midway through an
+interrupted trial, so that one active task may restart while completed tasks do not.
+
 ## Modes
 
 The profile passed to `--config` selects the model interface and memory policy:
