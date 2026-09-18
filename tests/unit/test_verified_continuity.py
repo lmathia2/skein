@@ -14,6 +14,127 @@ from harness.adapters.providers.openrouter_responses import OpenRouterResponsesL
 from harness.execution.sandbox import SandboxRequest, SandboxResult
 
 
+@pytest.mark.asyncio
+async def test_root_review_control_survives_small_section_target_in_provider_request(tmp_path, monkeypatch):
+    from harness.adapters.providers.openrouter_responses import build_openrouter_request_body
+    from harness.evidence.state import rebuild_ledger
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = DevelopmentContinuation(tmp_path / "trial", "missing", "findings")
+    trial.command_image = os.getenv("SKEIN_EVAL_DOCKER_IMAGE")
+    trial.fixture["goal"] += " Preserve complete source coverage and the original requested behavior." * 20
+    calls, reviews, prefixes, navigation_packets, read_counts = 0, [], [], [], []
+
+    async def solve(self, request, stream=False):
+        nonlocal calls
+        calls += 1
+        body = build_openrouter_request_body(request, model=self.model, reasoning_effort="max")
+        prefixes.append(body.get("instructions"))
+        for item in body["input"]:
+            for content in item.get("content", []):
+                text = content.get("text", "")
+                if text.startswith("## TASK\n"):
+                    task, _ = json.JSONDecoder().raw_decode(text.removeprefix("## TASK\n"))
+                    if task["phase"] == "review":
+                        ledger = rebuild_ledger(trial.events.read(trial.task_id))
+                        assert task["next_action"] == ledger.next_action
+                        assert "Do not repeat broad exploration." in task["next_action"]
+                        assert task["goal"] == trial.fixture["goal"]
+                        # This development fixture predates the root request and
+                        # seeds its ledger separately; preserve that exact input.
+                        assert task["verification_requirements"] == ledger.verification_requirements
+                        assert task["permitted_paths"] == ledger.permitted_paths
+                        reviews.append(task)
+                        assert "## EVIDENCE NAVIGATION\n" in text
+                        navigation = text.split("## EVIDENCE NAVIGATION\n", 1)[1].split("\n\n## ", 1)[0]
+                        required, advisory = navigation.split("\nAdvisory memory (not execution authority):\n")
+                        metadata = json.loads(required.removeprefix("Required continuation metadata:\n"))
+                        assert metadata["navigation"]["parameters"]["phase"] == "review"
+                        entries = json.loads(advisory)["entries"]
+                        retained = next(e["value"] for e in entries if e["kind"] == "live_bindings"
+                                        and e["value"].get("access_expression") == "reads[0]")
+                        assert retained["read_reference"]["path"] == "config/route_00.toml"
+                        assert retained["read_reference"]["artifact_uri"].startswith("artifact://sha256/")
+                        navigation_packets.append(navigation)
+                        read_counts.append(sum(bool(e.payload.get("read_evidence")) for e in trial.events.read(trial.task_id)))
+        if calls == 1:
+            code = ("import json, tomllib\nreads = agent.parallel([{'operation':'fs.read','arguments':{'path':'config/route_00.toml'}}])\n"
+                    "source = tomllib.loads(reads[0]['data']['text'])['service']\n"
+                    "agent.fs.write('answer.json', json.dumps({'port': source['active_port'], 'protocol': source['protocol']}))")
+            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
+        elif calls == 3:
+            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="review-reuse", args={
+                "code": "print(agent.state.describe('reads', selector=(0,), preview=True))"}))
+        else:
+            part = types.Part(text=json.dumps({"status": "verify", "message": "Verify the source-backed answer."}))
+        yield LlmResponse(content=types.Content(role="model", parts=[part]),
+                          usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
+                          custom_metadata={"provider_cost_usd": .001})
+
+    monkeypatch.setattr(OpenRouterResponsesLlm, "generate_content_async", solve)
+    result = await run_verified_case(trial)
+    assert result["terminal"] == "verified_completion", result
+    assert result["first_verification_passed"] and not result["unresolved_execution"]
+    assert result["measurement"]["answer_evidence"]["all_answers_source_available"]
+    assert reviews and all(prefix == prefixes[0] for prefix in prefixes)
+    assert len(navigation_packets) >= 2 and len(set(navigation_packets)) == 1
+    assert len(set(read_counts)) == 1  # Scripted reuse exercise, not a live-model efficiency claim.
+
+
+@pytest.mark.asyncio
+async def test_real_required_packet_overflow_stops_before_provider_dispatch(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = DevelopmentContinuation(tmp_path / "trial", "missing", "findings")
+    trial.fixture["goal"] = "Required task constraint. " * 350
+
+    async def unexpected_provider(*args, **kwargs):
+        raise AssertionError("an incomplete task must not reach the provider")
+        yield
+
+    monkeypatch.setattr(OpenRouterResponsesLlm, "generate_content_async", unexpected_provider)
+    result = await run_verified_case(trial)
+    assert result["terminal"] == "context_control_budget_exceeded", result
+    assert not result["accepted"] and not result["verification_reports"]
+    assert result["model_calls"] == result["wire_attempts"] == result["provider_cost_usd"] == 0
+    assert "measurement_error" not in result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arm", ("no_recall", "findings"))
+@pytest.mark.parametrize("budget", (True, False, "context"))
+async def test_pre_cut_callback_failure_retains_terminal_and_measurements(tmp_path, monkeypatch, arm, budget):
+    from evals.learned_continuity import LearnedContinuation
+    from harness.core.context.compiler import ContextBudgetExceeded
+    from harness.evidence.telemetry.adk_plugin import HarnessMetricsPlugin, TaskInputBudgetExceeded
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = LearnedContinuation(tmp_path / "trial", "qualification_routes_2", arm)
+
+    async def fail_before_dispatch(self, **kwargs):
+        # ADK wraps plugin exceptions in RuntimeError, as in the v18 live exit.
+        if budget == "context":
+            raise ContextBudgetExceeded(3000, 2000)
+        if budget:
+            raise TaskInputBudgetExceeded("bounded fixture reservation")
+        raise RuntimeError("unrelated callback failure")
+
+    async def unexpected_provider(*args, **kwargs):
+        raise AssertionError("provider must not be called after callback rejection")
+        yield  # Keep the provider's async-generator interface.
+
+    monkeypatch.setattr(HarnessMetricsPlugin, "before_model_callback", fail_before_dispatch)
+    monkeypatch.setattr(OpenRouterResponsesLlm, "generate_content_async", unexpected_provider)
+    result = await run_verified_case(trial)
+    assert result["terminal"] == ("context_control_budget_exceeded" if budget == "context" else
+                                  "task_input_budget_exhausted" if budget else "harness_or_fixture_error")
+    assert not result["accepted"] and not result["checkpoint_exercised"]
+    assert result["published_checkpoint_sequences"] == []
+    assert "measurement_error" not in result
+    assert result["measurement"]["checkpoint_intervals"] == []
+    assert all(result[key] == 0 for key in (
+        "model_calls", "provider_cost_usd", "unaccounted_model_calls", "cost_missing_calls", "wire_attempts"))
+
+
 def test_host_oracle_hides_expected_values_and_delegates_nonexact_commands(tmp_path):
     class Commands:
         workspace = tmp_path
@@ -41,6 +162,47 @@ def test_host_oracle_hides_expected_values_and_delegates_nonexact_commands(tmp_p
     modified = SandboxRequest(ORACLE_COMMAND + "; echo not-the-oracle")
     assert oracle.execute(modified).status == "blocked"
     assert commands.calls == [modified]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rejection", ("malformed", "unauthorized", "invalid_page"))
+async def test_rejected_artifact_load_can_recover_and_complete_from_supported_evidence(tmp_path, monkeypatch, rejection):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = DevelopmentContinuation(tmp_path / "trial", "missing", "findings")
+    trial.command_image = os.getenv("SKEIN_EVAL_DOCKER_IMAGE")
+    calls = 0
+
+    async def solve(self, request, stream=False):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            bad = {
+                "malformed": "agent.artifacts.load('artifact://sha256/abc...')",
+                "unauthorized": "agent.artifacts.load('artifact://sha256/' + '0' * 64)",
+                "invalid_page": "agent.artifacts.load(r['read_reference']['artifact_uri'], offset=-1)",
+            }[rejection]
+            code = (
+                "import tomllib\nr = agent.fs.read('config/route_00.toml')\n"
+                f"rejected = {bad}\nassert rejected['status'] != 'ok'\n"
+                "items = agent.artifacts.list()['data']['artifacts']\n"
+                "uri = next(item['uri'] for item in items if item['uri'] == r['read_reference']['artifact_uri'])\n"
+                "loaded = agent.artifacts.load(uri)\nassert loaded['status'] == 'ok'\n"
+                "source = tomllib.loads(json.loads(loaded['data']['text'])['data']['text'])['service']\n"
+                "assert agent.fs.write('answer.json', json.dumps({'port': source['active_port'], 'protocol': source['protocol']}))['status'] == 'ok'\n"
+            )
+            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
+        else:
+            part = types.Part(text=json.dumps({"status": "verify", "message": "Verify the recovered source-backed answer."}))
+        yield LlmResponse(content=types.Content(role="model", parts=[part]),
+                          usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
+                          custom_metadata={"provider_cost_usd": .001})
+
+    monkeypatch.setattr(OpenRouterResponsesLlm, "generate_content_async", solve)
+    result = await run_verified_case(trial)
+    assert result["terminal"] == "verified_completion", result
+    assert result["first_verification_passed"] and not result["unresolved_execution"]
+    assert result["measurement"]["answer_evidence"]["all_answers_source_available"]
+    assert not result.get("measurement_error")
 
 
 @pytest.mark.asyncio

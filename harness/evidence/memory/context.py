@@ -360,6 +360,10 @@ def compute_context(
         )
 
     tasks = tuple(sorted(set(request.source_tasks or (request.task_id,))))
+    if request.program == "working_set":
+        # Prior findings need the consumer's separately watermarked observations.
+        # This adds evidence inputs, not unrelated consumer findings to selection.
+        tasks = tuple(sorted(set((*tasks, request.task_id))))
     if len(tasks) > 16 or not set(tasks) <= set(authorized_tasks):
         return result({"reason": "source scope is not authorized"}, "denied")
     if resolve_program(request.program, request.version, reuse=reuse) is None:

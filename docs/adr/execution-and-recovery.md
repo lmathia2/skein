@@ -23,6 +23,12 @@ Code-level requirements and test mappings are in the
    workspace observations. Missing optional memory is not an unknown effect, and a
    memory summary cannot reconcile an uncertain operation.
 
+Task-input budget exits retain their own terminal category through ADK exception
+wrappers. Classification follows typed causes, not exception-message matching;
+unrelated callback failures stay runtime/harness failures. This does not raise the
+budget, dispatch a rejected request, or clear any execution uncertainty. Evaluation
+must also preserve diagnostics when a budget stop occurs before any context cut.
+
 ## Execution loop
 
 ```text
@@ -149,6 +155,14 @@ note construction. Missing effect metadata retains the conservative fallback; ca
 append/publication errors and identity mismatches remain unknown. An idempotent retry
 can republish the original committed note without duplicating it, but a callback failure
 does not relabel that earlier write as a pre-execution rejection.
+
+Artifact operations use the same distinction. Invalid load/page arguments and denied
+task references are explicit no-effect results; invalid publish metadata is rejected
+before content publication. Verified content denied by the redaction policy is never
+exposed. Recovery guidance points to exact task-authorized artifact listings, never
+hash guessing or wider scope. Resolver integrity failures and publication exceptions
+retain conservative unknown-effect handling, including a failure after content or its
+publication event was written. No successful later load clears an older unknown effect.
 
 The [continuity implementation](../design/ptc-memory-continuity-plan.md) now carries
 receipt-confirmed touched paths separately from the task-ledger modified-file list,
@@ -284,6 +298,12 @@ semantic dataflow or relevance for arbitrary production answers.
 Steering is durably queued and delivered at configured safe points before model/tool
 work or at a work-batch boundary. Cancellation propagates through owned execution
 boundaries. Started work must finish with an explicit terminal or unknown state.
+Queue acknowledgement means delivery was consumed, not that its instruction expired
+or its requested action succeeded. Later work/review packets retain the task's ordered
+delivered instructions as required control. Review uses completed evidence for old
+prerequisites while following the current request; it does not infer a state transition
+or rewrite acceptance criteria by parsing user prose. Original scope and independent
+checks remain authoritative. See `delivered_steering@1` in the context ADR.
 One server process owns a state root; current SQLite/process-local locks do not claim
 distributed coordination.
 

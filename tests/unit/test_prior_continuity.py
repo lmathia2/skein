@@ -8,23 +8,53 @@ from google.genai import types
 from evals.prior_continuity import COST_FIELDS, run_owned_prior
 from evals.qualification_continuity import qualification_fixture
 from evals.verified_continuity import campaign
-from harness.adapters.providers.openrouter_responses import OpenRouterResponsesLlm
+from harness.adapters.providers.openrouter_responses import (
+    OpenRouterResponsesLlm,
+    build_openrouter_request_body,
+)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case,fault", [("qualification_prior_1", None), ("qualification_prior_2", None),
                                        ("qualification_prior_1", "producer_failed"), ("qualification_prior_1", "guess"),
+                                       ("qualification_prior_1", "identity_only"),
                                        ("qualification_prior_2", "stale")])
 @pytest.mark.parametrize("arm", ["no_recall", "findings"])
 async def test_owned_prior_tasks_use_completed_applicable_evidence_with_full_cost_accounting(tmp_path, monkeypatch, case, arm, fault):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
     fixture = qualification_fixture(case)
     calls = {}
+    applicability = []
+    reviews = []
 
     async def model(self, request, stream=False):
         producer = not calls or id(self) == next(iter(calls))
         index = calls.get(id(self), 0)
         calls[id(self)] = index + 1
+        body = build_openrouter_request_body(request, model=self.model, reasoning_effort="max")
+        for item in body["input"]:
+            for content in item.get("content", []):
+                text = content.get("text", "")
+                if not text.startswith("## TASK\n"):
+                    continue
+                task, _ = json.JSONDecoder().raw_decode(text.removeprefix("## TASK\n"))
+                if task["phase"] != "review":
+                    continue
+                episode = fixture["producer"] if producer else fixture
+                assert task["goal"] == episode["goal"]
+                assert task["acceptance_criteria"][0] == episode["goal"]
+                assert "## USER STEERING\n" in text
+                history = json.loads(text.split("## USER STEERING\n", 1)[1].split("\n", 1)[1])
+                assert history["program"] == "delivered_steering@1"
+                assert history["messages"][-1]["content"] == episode["followup"]
+                assert history["omitted_count"] == 0
+                assert "Audit completed prerequisite actions from their execution evidence" in task["next_action"]
+                reviews.append((producer, history["content_hash"]))
+        if not producer:
+            for content in request.contents:
+                for part in content.parts or ():
+                    if part.function_response and part.function_response.response.get("prior_applicability"):
+                        applicability.append(part.function_response.response["prior_applicability"])
         code = None
         if index == 0:
             paths = sorted(fixture["producer"]["files"]) if producer else ["shipment.toml"]
@@ -60,7 +90,7 @@ async def test_owned_prior_tasks_use_completed_applicable_evidence_with_full_cos
                 code += "shipment = json.loads(stored['shipment.toml'])\n"
                 if arm == "findings":
                     code += (
-                        "prior = agent.shell.run('memory query --program working_set --tasks fixture-prior')\n"
+                        "prior = agent.shell.run('memory query --program working_set --tasks fixture-prior --focus ' + shipment['policy'] + ',pricing.py')\n"
                         "assert prior['status'] == 'ok', prior\n"
                         "entries = {e['finding']['related_paths'][0]: e for e in prior['data']['data']['findings']}\n"
                         "for path in [shipment['policy'], 'pricing.py']:\n"
@@ -83,9 +113,17 @@ async def test_owned_prior_tasks_use_completed_applicable_evidence_with_full_cos
                     "answer = {'charge_cents': min(policy['base_cents'] + shipment['units'] * policy['unit_cents'], policy['cap_cents']), 'zone': policy['name']}\n")
             if not producer and fault == "guess":
                 code = f"import json\nanswer = {fixture['expected']!r}\n"
-            code += "assert agent.fs.write('answer.json', json.dumps(answer))['status'] == 'ok'\n"
+            if not producer and fault == "identity_only":
+                code = ("import tomllib\nshipment = tomllib.loads(agent.fs.read('shipment.toml')['data']['text'])\n"
+                        "identities = [agent.fs.read(p, limit=1) for p in [shipment['policy'], 'pricing.py']]\n"
+                        "assert all(r['status'] == 'ok' for r in identities)\n")
+            else:
+                code += "assert agent.fs.write('answer.json', json.dumps(answer))['status'] == 'ok'\n"
+        elif index == 3 and not producer and fault == "identity_only":
+            code = f"import json\nagent.fs.write('answer.json', json.dumps({fixture['expected']!r}))\n"
         blocked = (fault == "producer_failed" and producer) or (fault == "guess" and not producer and index > 4)
         blocked |= fault == "stale" and arm == "findings" and not producer and index > 4
+        blocked |= fault == "identity_only" and not producer and index > 5
         part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code}))
                 if code else types.Part(text=json.dumps({"status": "blocked" if blocked else "verify", "message": "Report completed evidence."})))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
@@ -101,14 +139,19 @@ async def test_owned_prior_tasks_use_completed_applicable_evidence_with_full_cos
         assert result["model_calls"] == sum(calls.values())
         assert result["provider_cost_usd"] == result["episodes"]["producer"]["provider_cost_usd"] > 0
         return
-    if fault == "guess" or (fault == "stale" and arm == "findings"):
+    if fault in {"guess", "identity_only"} or (fault == "stale" and arm == "findings"):
         assert result["producer_qualified"] and not result["accepted"], result
         consumer = result["episodes"]["consumer"]
         assert consumer["first_verification_passed"] is False
         assert not consumer["measurement"]["answer_contracts"]["all_latest_supported"]
         assert result["model_calls"] == sum(calls.values())
+        if fault == "identity_only" and arm == "findings":
+            assert applicability  # Automatic metadata reached the model before its unsupported answer.
+            assert any(e["consumer_versions"]["status"] == "matching_observations"
+                       for update in applicability for e in update["entries"])
         return
     assert result["producer_qualified"] and result["terminal"] == "verified_completion", result
+    assert {producer for producer, _ in reviews} == {True, False}
     assert result["model_calls"] == sum(calls.values()) and len(calls) == 2
     first, second = result["episodes"]["producer"], result["episodes"]["consumer"]
     assert first["first_verification_passed"] and second["first_verification_passed"]
@@ -116,6 +159,13 @@ async def test_owned_prior_tasks_use_completed_applicable_evidence_with_full_cos
     assert first["measurement"]["answer_contracts"]["all_submissions_supported"]
     assert second["measurement"]["answer_contracts"]["all_submissions_supported"]
     assert second["measurement"]["initial_capture"]["respected"]
+    if arm == "findings":
+        assert applicability, "completed consumer version observations must reach the next provider request"
+        assert any(e["consumer_versions"]["status"] == "matching_observations"
+                   for update in applicability for e in update["entries"])
+        assert all("finding" not in e and "text" not in e for update in applicability for e in update["entries"])
+    else:
+        assert not applicability
     for field in COST_FIELDS:
         assert result[field] == first.get(field, 0) + second.get(field, 0)
     assert (root / "producer" / "completed-answer.json").is_file()

@@ -23,6 +23,8 @@ class EventKind(StrEnum):
     ARTIFACT_PUBLISHED = "artifact.published"
     STEERING_RECEIVED = "steering.received"
     COMPACTION_CREATED = "compaction.created"
+    EVIDENCE_NAVIGATION_CREATED = "context.evidence_navigation_created"
+    PRIOR_APPLICABILITY_CREATED = "context.prior_applicability_created"
     CHECKPOINT_CREATED = "checkpoint.created"
     VERIFICATION_COMPLETED = "verification.completed"
     REVIEW_COMPLETED = "review.completed"

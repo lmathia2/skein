@@ -110,6 +110,13 @@ declarations remain byte-stable for provider caching; volatile task state stays 
 the dynamic suffix. Context is compiled deterministically so the same inputs and
 watermark produce the same bytes.
 
+Work packets reserve complete active control before optional history. Required task
+instructions, selected skills, continuation metadata and steering may use available
+space beyond their preferred section allocation, but never exceed the total packet
+ceiling. Optional task fields remain whole JSON values with named omissions; other
+optional evidence can be excerpted. An impossible required-context allocation stops
+dispatch with a distinct context-budget outcome rather than partial instructions.
+
 This is the central economy of the design. The trace may grow for the life of a task;
 the prompt does not. Large bodies remain in artifacts or runtime values, while the
 model receives the smallest representation that supports its next judgment.

@@ -16,11 +16,12 @@ from google.genai import types
 
 from harness.core.config.models import ContextConfig
 from harness.core.context import estimate_tokens
-from harness.core.context.compiler import estimate_model_tokens
+from harness.core.context.compiler import ContextBudgetExceeded, estimate_model_tokens
 from harness.core.models import TaskLedger
 from harness.core.orchestration import build_work_packet
 from harness.evidence.ledger import LedgerStore
 from harness.evidence.ledger.models import canonical_json
+from harness.evidence.memory.models import ViewResult
 from harness.evidence.state import EventKind, EventStore, rebuild_ledger
 from harness.evidence.state.recovery import unresolved_execution
 from harness.execution.safety import SecretRedactor
@@ -104,9 +105,15 @@ def _evidence_manifest(events: list[Any], modified_paths: list[str], focus: tupl
             result = event.payload.get("result", {})
             if isinstance(result, dict) and len(validations) < 4:
                 validations.append({
+                    "harness_event_id": event.event_id,
                     "command_sha256": event.payload.get("command_sha256"),
                     "exit_code": result.get("exit_code"),
                     "status": result.get("status"),
+                    **{key: event.payload[key] for key in ("operation_id", "receipt_id", "workspace_after")
+                       if event.payload.get(key) is not None},
+                    **({"command": event.payload.get("command") or result["command"]}
+                       if event.payload.get("command") or result.get("command") else {}),
+                    **({"artifact_uri": result["artifact_uri"]} if result.get("artifact_uri") else {}),
                 })
     reads.sort(key=lambda item: item.get("path") not in focus)
     return {
@@ -176,10 +183,53 @@ def _project_advisory(advisory: dict[str, Any]) -> dict[str, Any]:
     return result if len(canonical_json(result).encode()) < len(canonical_json(advisory).encode()) else advisory
 
 
+def continuation_details(
+    task: TaskLedger, events: list[Any], details: dict[str, Any], *, representation: str,
+) -> dict[str, Any]:
+    """Join historical evidence with the separately observed current kernel state."""
+    details = dict(details)
+    if representation != "findings":
+        details.pop("working_set", None)
+    details["history_boundary"] = events[-1].sequence
+    finding_paths = tuple(dict.fromkeys([
+        *(path for item in details.get("working_set", {}).get("data", {}).get("findings", [])
+          for path in item.get("finding", {}).get("related_paths", [])),
+        *task.files_read[-12:], *task.files_modified[-12:],
+    ]))
+    details["evidence_manifest"] = _evidence_manifest(events, task.files_modified, finding_paths)
+    if representation == "metadata":
+        manifest = details["evidence_manifest"]
+        manifest["omitted_reads"] += max(0, len(manifest["reads_newest_first"]) - 8)
+        manifest["reads_newest_first"] = manifest["reads_newest_first"][:8]
+    committed = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED]
+    if committed:
+        observations = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED or
+                        (event.kind == EventKind.REPL_CELL_FAILED and event.payload.get("exception", {}).get("state_preserved")
+                         and event.payload.get("exception", {}).get("stage") not in {"parse", "source_validation"})]
+        last = observations[-1]
+        kernel = details.get("kernel", {})
+        unknown_failure = next((event for event in reversed(events)
+                                if event.kind in {EventKind.REPL_CELL_FAILED, EventKind.REPL_CELL_TIMEOUT}
+                                and event.payload.get("effect") == "unknown"), None)
+        details["notebook"] = {
+            "last_committed_kernel_epoch": committed[-1].payload.get("kernel_epoch"),
+            "observation_kernel_epoch": last.payload.get("kernel_epoch"),
+            "observation_cell_id": last.payload.get("cell_id"),
+            "state": last.payload.get("state", {}),
+            "availability": "effect_reconciliation_required"
+            if unknown_failure and unknown_failure.sequence > last.sequence
+            else "live" if kernel.get("live") and kernel.get("kernel_epoch") ==
+            last.payload.get("kernel_epoch") else "restart_pending_safe_restore",
+        }
+        if representation == "metadata":
+            details["notebook"]["state"] = {}
+    return details
+
+
 def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
     """Preserve control metadata and whole advisory entries, never JSON fragments."""
     critical = {key: details[key] for key in (
-        "history_boundary", "kernel", "unresolved_effects", "retrieval", "note_stale"
+        "history_boundary", "kernel", "unresolved_effects", "retrieval", "note_stale", "navigation"
     ) if key in details}
     notebook = details.get("notebook", {})
     if notebook:
@@ -192,7 +242,11 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
     candidates: list[tuple[str, Any]] = []
     manifest = details.get("evidence_manifest", {})
     for item in working.get("data", {}).get("findings", []):
-        if item.get("freshness") in {"changed_since_capture", "revalidation_required"}:
+        consumer_status = item.get("consumer_versions", {}).get("status")
+        invalidated = consumer_status in {"changed_since_capture", "revalidation_required"} or (
+            item.get("freshness") in {"changed_since_capture", "revalidation_required"}
+            and not (consumer_status == "matching_observations" and item.get("provenance") == "available"))
+        if invalidated:
             # A historical conclusion must not look usable merely because its
             # invalidation was factored into a distant provenance table.
             dependencies = item.get("source_dependencies", [])
@@ -219,20 +273,35 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
                 "reason": "Unstructured note text may repeat invalidated conclusions; recover historical context with memory note read."}))
         else:
             candidates.append(("note_excerpt", details["note_excerpt"]))
+    duplicate_aliases = 0
     if notebook.get("availability") == "live":
-        candidates.extend(("live_bindings", item) for item in notebook.get("state", {}).get("manifest", [])
-                          if item.get("description") or item.get("read_reference"))
+        bindings = [item for item in notebook.get("state", {}).get("manifest", [])
+                    if item.get("description") or item.get("read_reference")]
+        if details.get("navigation"):
+            focus = details["navigation"]["parameters"]["focus_paths"]
+            bindings.sort(key=lambda item: (item.get("read_reference", {}).get("path") not in focus,
+                                           not bool(item.get("description")),
+                                           len(item.get("access_expression", item.get("name", "")))))
+        seen_references: set[str] = set()
+        for item in bindings:
+            reference = canonical_json(item["read_reference"]) if item.get("read_reference") else ""
+            if details.get("navigation") and reference and reference in seen_references:
+                duplicate_aliases += 1
+                continue
+            seen_references.add(reference)
+            candidates.append(("live_bindings", item))
     for key in ("touched_paths", "modified_paths", "validations_newest_first", "reads_newest_first"):
         candidates.extend((key, item) for item in manifest.get(key, []))
     advisory: dict[str, Any] = {"entries": [], "omitted_count": len(candidates),
                                "upstream_omitted_count": working.get("data", {}).get("omitted_count", 0)
-                               + manifest.get("omitted_reads", 0)}
+                               + manifest.get("omitted_reads", 0) + duplicate_aliases}
 
     def serialized(value: dict[str, Any]) -> str:
         return required + "\nAdvisory memory (not execution authority):\n" + canonical_json(_project_advisory(value))
 
-    if estimate_tokens(serialized(advisory)) > max_tokens:
-        raise ValueError("required handoff exceeds compaction budget; context retained")
+    required_tokens = estimate_tokens(serialized(advisory))
+    if required_tokens > max_tokens:
+        raise ContextBudgetExceeded(required_tokens, max_tokens)
     for kind, value in candidates:
         proposed = {**advisory, "entries": [*advisory["entries"], {"kind": kind, "value": value}],
                     "omitted_count": advisory["omitted_count"] - 1}
@@ -275,6 +344,67 @@ def select_context_cut(
     return selected
 
 
+def prior_applicability_update(
+    details: dict[str, Any], *, task_id: str, paths: tuple[str, ...],
+    known: dict[str, str], max_bytes: int,
+) -> tuple[dict[str, Any] | None, dict[str, str]]:
+    """Bounded identity updates, never another exposure of prior learned content."""
+    view = details.get("working_set", {})
+    if view.get("status") not in {"ok", "partial"}:
+        return None, {}
+    if view.get("data", {}).get("findings"):
+        validated = ViewResult.model_validate(view)
+        if validated.task_id != task_id or validated.program != "working_set":
+            raise ValueError("prior applicability source view identity mismatch")
+    candidates = []
+    for item in view.get("data", {}).get("findings", []):
+        if item.get("source_task_id") == task_id or not any(
+            dependency.get("path") in paths for dependency in item.get("source_dependencies", [])
+        ):
+            continue
+        finding = item.get("finding", {})
+        if item.get("consumer_versions", {}).get("task_id") != task_id:
+            raise ValueError("prior applicability consumer identity mismatch")
+        value = {"source_task_id": item["source_task_id"], "note_event_id": item["note_event_id"],
+                 "finding_id": finding["id"], "revision": item["revision"],
+                 "finding_status": finding.get("status"), "provenance": item.get("provenance"),
+                 "consumer_versions": {key: item["consumer_versions"][key] for key in ("task_id", "status", "sources")}}
+        identity = canonical_json([value["source_task_id"], value["note_event_id"], value["finding_id"]])
+        versions = value["consumer_versions"]
+        state = {**value, "consumer_versions": {**versions, "sources": [
+            {key: val for key, val in source.items() if key != "observation_sequence"}
+            for source in versions.get("sources", [])]},
+            "unresolved_effect_count": details.get("unresolved_effects", {}).get("count", 0)}
+        signature = hashlib.sha256(canonical_json(state).encode()).hexdigest()
+        if known.get(identity) != signature:
+            candidates.append((identity, signature, value))
+    if not candidates:
+        return None, {}
+    content: dict[str, Any] = {
+        "program": "prior_applicability@1", "content_hash": "0" * 64,
+        "source_view": {key: view[key] for key in (
+            "program", "version", "program_hash", "execution_hash", "content_hash", "source_manifest"
+        ) if key in view},
+        "scope": "Identity metadata only, not content or verification. Reuse already retrieved applicable findings "
+                 "in place; recover missing content. Foreign citations stay source-scoped; unresolved effects and "
+                 "independent checks still govern completion.",
+        "unresolved_effect_count": details.get("unresolved_effects", {}).get("count", 0),
+        "entries": [], "omitted_count": len(candidates),
+    }
+    states: dict[str, str] = {}
+    for identity, signature, value in candidates:
+        proposed = {**content, "entries": [*content["entries"], value],
+                    "omitted_count": content["omitted_count"] - 1}
+        if len(canonical_json(proposed).encode()) <= max_bytes:
+            content = proposed
+            states[identity] = signature
+    if not states:
+        return None, {}
+    content["content_hash"] = hashlib.sha256(canonical_json({key: value for key, value in content.items()
+                                                           if key != "content_hash"}).encode()).hexdigest()
+    return content, states
+
+
 class ContextWindowPlugin(BasePlugin):
     """Keep ADK history durable; publish a cut before changing a model request.
 
@@ -291,6 +421,8 @@ class ContextWindowPlugin(BasePlugin):
         handoff: Callable[[TaskLedger], dict[str, Any]],
         known_secrets: tuple[str, ...] = (),
         require_notes: bool = False,
+        refresh_prior: bool = False,
+        max_tool_result_bytes: int = 16000,
     ) -> None:
         super().__init__(name="context_windows")
         self.events = events
@@ -299,8 +431,117 @@ class ContextWindowPlugin(BasePlugin):
         self.handoff = handoff
         self.redactor = SecretRedactor(known_secrets=known_secrets)
         self.require_notes = require_notes
+        self.refresh_prior = refresh_prior
+        self.max_tool_result_bytes = max_tool_result_bytes
         self._captured_history: dict[tuple[str, str], tuple[str, ...]] = {}
         self._captured_objects: dict[tuple[str, str], tuple[types.Content, ...]] = {}
+
+    async def after_tool_callback(
+        self, *, tool: Any, tool_args: dict[str, Any], tool_context: Any, result: dict[str, Any],
+    ) -> None:
+        """Append identity-only prior updates to a completed PTC response before capture.
+
+        Mutate this new response and return None so ADK still runs metrics/artifact
+        observers. Existing response history, execution hashes and effects stay intact.
+        """
+        del tool_args
+        if (not self.refresh_prior or self.config.continuity_representation != "findings"
+                or getattr(tool, "name", "") != "execute_code" or result.get("status") != "ok"):
+            return
+        task_id = str(tool_context.state.get("task_id", ""))
+        attempt = str(result.get("attempt_id", ""))
+        if not task_id or not attempt:
+            return
+        events = self.events.read(task_id)
+        terminal = next((event for event in reversed(events) if event.kind == EventKind.REPL_CELL_COMPLETED
+                         and event.payload.get("attempt_id") == attempt), None)
+        if terminal is None:
+            return
+        key = f"prior-applicability:{attempt}"
+        base = {key: value for key, value in result.items() if key != "prior_applicability"}
+        input_hash = hashlib.sha256(canonical_json(base).encode()).hexdigest()
+        previous = next((event for event in events if event.idempotency_key == key), None)
+        if previous is not None:
+            content = previous.payload.get("content", {})
+            digest = hashlib.sha256(canonical_json({key: value for key, value in content.items()
+                                                  if key != "content_hash"}).encode()).hexdigest()
+            if (previous.kind != EventKind.PRIOR_APPLICABILITY_CREATED or
+                    previous.payload.get("input_hash") != input_hash or content.get("content_hash") != digest):
+                raise ValueError("prior applicability exposure identity mismatch")
+            result["prior_applicability"] = content
+            return
+        paths = tuple(sorted({event.payload["read_evidence"]["path"] for event in events
+                              if event.kind == EventKind.CAPABILITY_COMPLETED
+                              and event.payload.get("attempt_id") == attempt
+                              and event.payload.get("operation") == "fs.read" and event.payload.get("status") == "ok"
+                              and event.sequence < terminal.sequence and isinstance(event.payload.get("read_evidence"), dict)}))
+        available = min(2048, self.max_tool_result_bytes - len(canonical_json(base).encode())
+                        - len(b',"prior_applicability":'))
+        if not paths or available < 512:
+            return
+        known = {identity: signature for event in events if event.kind == EventKind.PRIOR_APPLICABILITY_CREATED
+                 for identity, signature in event.payload.get("states", {}).items()}
+        details = self.redactor.redact(self.handoff(rebuild_ledger(events)))
+        content, states = prior_applicability_update(details, task_id=task_id, paths=paths, known=known, max_bytes=available)
+        if content is None:
+            return
+        self.events.append(task_id, EventKind.PRIOR_APPLICABILITY_CREATED, {
+            "attempt_id": attempt, "input_hash": input_hash, "paths": list(paths), "max_bytes": available,
+            "inputs": details, "content": content, "states": states,
+            "source_cell_event_id": terminal.event_id,
+            "program_hash": hashlib.sha256((inspect.getsource(prior_applicability_update) +
+                                            inspect.getsource(type(self).after_tool_callback)).encode()).hexdigest(),
+        }, idempotency_key=key)
+        result["prior_applicability"] = content
+
+    def work_batch_handoff(self, task: TaskLedger, invocation: str) -> str:
+        """Publish one historical snapshot in the host's next appended work packet.
+
+        The first batch already has the initial hint. Inner tool calls never invoke
+        this path. Re-entry returns the recorded bytes, not a refreshed old prefix.
+        """
+        if task.iteration == 0:
+            return ""
+        key = f"evidence-navigation:{invocation}:{task.iteration + 1}"
+        parameters = {"task_id": task.task_id, "invocation_id": invocation,
+                      "work_batch_id": str(task.iteration + 1), "phase": task.phase.value,
+                      "representation": self.config.continuity_representation,
+                      "focus_paths": list(dict.fromkeys([*task.files_read[-12:], *task.files_modified[-12:]])),
+                      "max_tokens": self.config.compaction_tokens,
+                      "task_hash": hashlib.sha256(canonical_json(task.model_dump(mode="json")).encode()).hexdigest()}
+        events = self.events.read(task.task_id)
+        previous = next((event for event in events if event.idempotency_key == key), None)
+        if previous is not None:
+            payload = previous.payload
+            content = payload.get("content")
+            if (previous.kind != EventKind.EVIDENCE_NAVIGATION_CREATED or payload.get("parameters") != parameters
+                    or not isinstance(content, str) or hashlib.sha256(content.encode()).hexdigest() != payload.get("content_hash")):
+                raise ValueError("work-batch navigation identity or captured content mismatch")
+            return content
+        # The memory query may publish its own receipt. Include that completed
+        # observation in the snapshot watermark, without making it a new authority.
+        supplied = self.handoff(task)
+        events = self.events.read(task.task_id)
+        details = continuation_details(task, events, supplied, representation=self.config.continuity_representation)
+        program_hash = hashlib.sha256((inspect.getsource(type(self).work_batch_handoff) +
+                                      inspect.getsource(continuation_details) + inspect.getsource(render_handoff) +
+                                      inspect.getsource(_project_advisory) + inspect.getsource(_evidence_manifest) +
+                                      inspect.getsource(unresolved_execution)).encode()).hexdigest()
+        details["navigation"] = {
+            "program": "work_batch_navigation@1", "program_hash": program_hash,
+            "parameters": parameters, "source_watermark": events[-1].sequence,
+            "source_clock": "task_harness_event_sequence",
+            "scope": "Historical snapshot at this host work-batch boundary, not a live heap or freshness guarantee. "
+                     "Use relevant completed bindings or addressed artifacts before fetching unchanged captured ranges again. "
+                     "Acquire missing or changed ranges; reconcile unknown effects. Independent verification still governs completion.",
+        }
+        details = self.redactor.redact(details)
+        content = render_handoff(details, max_tokens=self.config.compaction_tokens)
+        self.events.append(task.task_id, EventKind.EVIDENCE_NAVIGATION_CREATED, {
+            **details["navigation"], "inputs": details, "content": content,
+            "content_hash": hashlib.sha256(content.encode()).hexdigest(),
+        }, idempotency_key=key)
+        return content
 
     def _capture(self, task_id: str, invocation: str, raw: list[types.Content]) -> None:
         key = (task_id, invocation)
@@ -396,7 +637,7 @@ class ContextWindowPlugin(BasePlugin):
         self._capture(task_id, invocation, raw)
         events = self.events.read(task_id)
         task = rebuild_ledger(events)
-        # A new workflow work packet is a new selection root, even in one invocation.
+        # Later work packets append within the same root; only a cut replaces it.
         anchor = hashlib.sha256(_serialized(raw[:1]).encode()).hexdigest()
         epochs = [event for event in events if event.kind == EventKind.COMPACTION_CREATED
                   and event.payload.get("invocation_id") == invocation
@@ -407,9 +648,8 @@ class ContextWindowPlugin(BasePlugin):
             _serialized(raw[:cut]).encode()
         ).hexdigest()):
             raise ValueError("context epoch does not match retained ADK history")
-        details = dict(self.handoff(task))
-        if self.config.continuity_representation != "findings":
-            details.pop("working_set", None)
+        details = continuation_details(task, events, self.handoff(task),
+                                       representation=self.config.continuity_representation)
         note_available = not self.require_notes or (
             details.get("note", {}).get("status") == "ok"
             and int(details.get("note", {}).get("version", 0)) > 0
@@ -427,46 +667,13 @@ class ContextWindowPlugin(BasePlugin):
             details["note"] = previous["note"]
             details["note_excerpt"] = previous.get("note_excerpt", "")
             details["note_stale"] = True
-        details["history_boundary"] = events[-1].sequence
-        finding_paths = tuple(path for item in details.get("working_set", {}).get("data", {}).get("findings", [])
-                              for path in item.get("finding", {}).get("related_paths", []))
-        details["evidence_manifest"] = _evidence_manifest(events, task.files_modified, finding_paths)
-        if self.config.continuity_representation == "metadata":
-            manifest = details["evidence_manifest"]
-            manifest["omitted_reads"] += max(0, len(manifest["reads_newest_first"]) - 8)
-            manifest["reads_newest_first"] = manifest["reads_newest_first"][:8]
         committed = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED]
-        failures = [event for event in events if event.kind in {
-            EventKind.REPL_CELL_FAILED, EventKind.REPL_CELL_TIMEOUT,
-        }]
-        if committed:
-            observations = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED or
-                            (event.kind == EventKind.REPL_CELL_FAILED and event.payload.get("exception", {}).get("state_preserved")
-                             and event.payload.get("exception", {}).get("stage") not in {"parse", "source_validation"})]
-            last = observations[-1]
-            kernel = details.get("kernel", {})
-            unknown_failure = next((event for event in reversed(failures)
-                                    if event.payload.get("effect") == "unknown"), None)
-            details["notebook"] = {
-                "last_committed_kernel_epoch": committed[-1].payload.get("kernel_epoch"),
-                "observation_kernel_epoch": last.payload.get("kernel_epoch"),
-                "observation_cell_id": last.payload.get("cell_id"),
-                "state": last.payload.get("state", {}),
-                "availability": "effect_reconciliation_required"
-                if unknown_failure and unknown_failure.sequence > last.sequence
-                else "live" if kernel.get("live") and kernel.get("kernel_epoch") ==
-                last.payload.get("kernel_epoch") else "restart_pending_safe_restore",
-            }
-            if self.config.continuity_representation == "metadata":
-                details["notebook"]["state"] = {}
         handoff = render_handoff(self.redactor.redact(details), max_tokens=self.config.compaction_tokens)
         active_handoff = str(previous.get("summary") or handoff)
         # Newest intent first; full text remains in canonical history. Never
         # head/tail-splice old instructions around the newest correction.
         steering = [str(event.payload.get("content", "")) for event in reversed(events)
                     if event.kind == EventKind.STEERING_RECEIVED]
-        if steering and estimate_tokens(steering[0]) > self.config.steering_tokens:
-            raise ValueError("newest steering exceeds the control budget; context retained")
         control = build_work_packet(
             task,
             selected_skills=str(callback_context.state.get("skill_context_text", "")),
@@ -624,8 +831,9 @@ class ContextWindowPlugin(BasePlugin):
                  "note_stale": bool(details.get("note_stale")),
                  "checkpoint_requested": bool(callback_context.state.get(checkpoint_key)),
                  "history_watermark": events[-1].sequence,
-                 "handoff_program": "continuation@6",
+                 "handoff_program": "continuation@8",
                  "handoff_program_hash": hashlib.sha256((inspect.getsource(render_handoff) +
+                                                          inspect.getsource(continuation_details) +
                                                           inspect.getsource(_project_advisory) +
                                                           inspect.getsource(_evidence_manifest) +
                                                           inspect.getsource(unresolved_execution) +

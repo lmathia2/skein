@@ -218,8 +218,49 @@ Implementation ownership, dependencies, and acceptance gates are in the
           workflow, with unchanged and changed-policy variants, actual producer
           verification, owned snapshots and all preparation costs. Ten scripted
           workflow checks pass; three repeat/admission/accounting-stop checks pass.
-        - [ ] Dispatch and analyze the clean frozen six-family, three-repetition
-          panel: 72 trials / 84 episodes, including twelve fresh producer episodes.
+        - [x] Dispatch and analyze the clean frozen six-family, three-repetition
+          panel: 40/72 trials ran before its stop gate; 32 remain unstarted. This
+          failed qualification, not completion of all planned model episodes.
+        - [x] Classify wrapped task-input budget exits separately in runtime/evals
+          and measure zero-cut trials without losing diagnostic evidence.
+        - [x] Correct artifact admission effect semantics; preserve integrity and
+          unknown-effect fences through actual recovery/completion and fault tests.
+        - [ ] Improve review/prior evidence reuse and qualify on fresh cases without
+          expanding defaults or paid benchmarks prematurely. Keep consumer version
+          observations separate from producer provenance and advisory finding truth.
+          - [x] Add separately watermarked consumer-version observations to prior
+            working sets and handoffs; preserve source selection, bounds and advisory
+            scope. No new completion authority or implicit foreign-note citations.
+          - [x] Measure the representation in a bounded live diagnostic: all eight
+            episodes verified, but reread/cost gates failed; no promotion.
+          - [x] Preserve complete review/task control fields in provider packets;
+            reserve required sections before optional context and report distinct
+            required-context overflow instead of head/tail-spliced instructions.
+          - [ ] Address review-stage evidence navigation, post-observation prior
+            applicability exposure and remaining scoped-citation usability.
+            - [x] Expose attested reads inside retained plain containers through
+              exact, bounded state selectors and existing completed-cell messages.
+            - [x] Refresh evidence navigation in host-appended work-batch packets;
+              preserve immutable snapshots, replay, bounds and worker/effect fences.
+            - [x] Expose bounded identity-only prior applicability after completed
+              PTC reads, with source clocks, replay and unchanged completion gates.
+            - [x] Give prior findings exact source-note recovery and a reuse-in-place
+              contract; retain current-note scope and no-effect foreign-citation rejection.
+            - [x] Analyze the prior-navigation diagnostic: three of six executed
+              episodes verified, two consumers unstarted, no valid paired efficiency
+              conclusion. Confirm retained-binding reuse and missing review steering.
+            - [x] Preserve delivered steering across host review/work boundaries;
+              validate complete packet/replay/budget and negative completion contracts.
+              Full regression: 1037 passed/two skipped; 50 cached-Docker checks and
+              15 final serialized-provider checks pass. Live effects remain unproven.
+            - [x] Run the unchanged two-case steering diagnostic: 8/8 first-verified,
+              unchanged prior-source refetch 18 to three identity lines, but findings
+              costs 58.1% more. Preserve the failed cost gate and reused-case scope.
+            - [ ] Reduce measured consumer note/prompt overhead without dropping
+              completed evidence, freshness checks or required control; check finding
+              dependency granularity and actual provider-cache behavior separately.
+            - [ ] Qualify model reuse rather than equating a retained worker or a
+              scripted recovery check with reliable live memory.
 
 ## Project identity
 

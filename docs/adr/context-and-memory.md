@@ -3,7 +3,7 @@
 > Status: deterministic programs implemented; active retrieval and long-context
 > treatments remain opt-in with live quality gates pending
 >
-> Updated: 2026-09-12
+> Updated: 2026-09-13
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -57,7 +57,8 @@ a claim about the latest note. The hash identifies the stored payload, including
 internal request identity, not source freshness or the truth of a finding.
 `memory note read` still returns the full latest note; enabled `event.read` retrieves
 the exact committed event, with normal byte paging for large records. No new tool or
-memory program is introduced. Note-schema contract version 2 documents the output.
+memory program is introduced. Note-schema contract version 4 documents the output
+and source-scoped prior reuse.
 
 Canonical commit and full-note publication remain ordered before a successful
 acknowledgement. Publication failure remains unknown and retries repair the same sink
@@ -73,7 +74,7 @@ instruction, tool declarations, and tool configuration. Before every model call 
 compares those canonical bytes with the first call and fails closed if they changed.
 Task, session, progress, time, and steering remain in the dynamic request.
 
-The workflow budgets its work packet in this fixed order:
+The workflow renders its work packet in this fixed order:
 
 ```text
 TASK
@@ -81,13 +82,80 @@ CONVERSATION
 SELECTED SKILLS
 REPOSITORY MANIFEST
 COMPACTED HISTORY
+EVIDENCE NAVIGATION
 RECENT EVENTS
 USER STEERING
 ```
 
-Skills and project instructions enter only after trust checks. Every section has a
-configured token/byte limit. Oversized tool bodies stay in artifacts and context
-contains a bounded excerpt/reference.
+Skills and project instructions enter only after trust checks. `work_packet@3`
+reserves complete task control, supplied selected skills, the already-bounded
+continuation handoff and supplied steering before allocating optional conversation,
+repository metadata and recent-event excerpts. Required task control includes the
+full goal/criteria, constraints, declared path/verification scope and next_action.
+It remains valid, deterministically serialized JSON. Optional task fields are
+admitted whole under the preferred task-section allocation; omissions are named.
+Required sections may borrow unused allocation within the existing total packet
+limit. The section targets are not permission to cut through instructions or JSON.
+If required sections alone exceed that total, `ContextBudgetExceeded` stops dispatch;
+runtime and evals report `context_control_budget_exceeded` even through ADK wrappers.
+No automatic limit increase, scope weakening or model decision authorizes dispatch.
+This replaces the old head/tail truncation of the full task and packet, which removed
+the review action from six inspected v18 provider requests. It does not itself refresh
+phase-boundary evidence navigation or establish fewer rereads. Oversized tool bodies
+continue to stay in artifacts with bounded excerpts/references.
+
+Delivered steering remains required control after its queue acknowledgement.
+`delivered_steering@1` derives complete, ordered messages from the task's existing
+`steering.received` events at each host work-batch boundary. The projection records
+its source-code hash, task/event identities, task-harness watermark, content hash
+and zero omissions. It shares the whole-packet budget: if all required control
+cannot fit, dispatch stops with the existing typed overflow, never silent loss of
+an older constraint. Recent-event excerpts exclude its duplicate. No new store,
+model tool, queue acknowledgement rule or per-inner-call refresh is introduced.
+The appended packet and its existing request capture preserve the snapshot.
+
+Delivery is not execution or semantic supersession. Newer instructions govern
+conflicts; other original requirements remain. Review audits completed prerequisites
+from execution evidence instead of reenacting a preparation/acknowledgement just
+because the original goal still mentions it. Neither message prose nor delivery
+receipts can establish successful execution, clear unknown effects, change declared
+scope or bypass independent verification. This addresses the diagnostic's loss of
+the current delayed question from all 29 observed review-packet occurrences; that
+observation does not prove absence from the entire historical provider request.
+
+The host now appends `work_batch_navigation@1` in the next task packet after a
+completed work batch, including review transitions. The initial batch retains its
+existing hint. This snapshot shares the continuation renderer and existing
+compaction-token allocation; the packet reserves it whole before optional history.
+It is not another compaction, a new model tool, or a mutable prefix refresh on each
+inner tool call. The enabled context plugin supplies the callback; off/shadow
+profiles without windows do not gain an active context path.
+
+`context.evidence_navigation_created` records the redacted inputs, selected text,
+program/source hash, task/invocation/work-batch identity, phase, representation,
+focus, budget, task hash, task-harness-event watermark and content hash before
+dispatch. Re-entry validates identity and returns recorded bytes; corrupt identity
+or content and failed publication stop the request. The appended packet also enters
+the existing canonical request capture. Recent-event excerpts exclude the navigation
+record to avoid echoing its body. An explicit later cut may cover the packet normally.
+
+`continuation@8` shares worker-state/evidence assembly with boundary snapshots.
+Kernel availability is an observation at the recorded boundary, not a promise about
+later heap state or source freshness. Partial captures keep their exact ranges and
+versions. Live binding hints are withheld after worker loss or a later unknown cell
+effect; unresolved-effect metadata and independent verification retain authority.
+The boundary selection favors task-focused, annotated bindings and collapses only
+identical read references, with omissions counted. Completed checks carry readable
+commands and available operation, receipt, workspace and artifact references; their
+historical status does not authorize completion. Required handoff overflow uses the
+existing typed `context_control_budget_exceeded` outcome.
+
+Scripted provider-request tests verify nested read recovery at review without another
+source read and stable appended navigation across subsequent calls. Deterministic
+tests cover replay, bounds, redaction, partial capture and worker/failure negatives.
+This is implementation evidence, not live-model reread or cost qualification. Prior
+applicability after inner-batch reads and scoped citation usability remain separate
+follow-ups before the next frozen live diagnostic.
 
 With context windows off, the direct-tool worker receives the current work packet and
 PTC profiles retain normal ADK history. With trace-backed windows on,
@@ -639,6 +707,56 @@ write/edit with no changed paths and one valid content hash must not invalidate
 unrelated findings. An empty changed-path list alone does not establish this; failed
 or unknown effects and missing identity remain conservative. This is an advisory
 source-observation rule, not reconciliation of an earlier unknown operation.
+
+### Prior finding applicability
+
+Prior findings retain producer provenance separately from consumer applicability.
+`working_set` includes the authorized consumer as a separately watermarked observation
+source even for a producer-only selection; it does not add consumer notes to that
+selection. `consumer_versions` reports last recorded version observations, with absent
+observations explicit and no invented hash. A matching hash can justify reusing the
+captured version, not missing ranges, finding truth, continuous freshness, or execution
+reconciliation. Time filters and scan/output budgets apply to both task streams.
+Changing consumer observations changes the view identity even if the producer is fixed.
+`continuation@7` keeps this distinction in the handoff and withholds invalidated or
+unavailable findings; explicit focus selects relevant prior entries without widening
+the result budget. This is an implemented representation contract, not live reliability
+qualification or admission of foreign event IDs into current notes.
+
+Prior `working_set` entries now declare `reuse.strategy=reference_in_place`, a
+current-note scope limited to new current-task learning, and an exact quoted
+`source_note_command` selecting the original task and immutable note event. A
+current note does not need to duplicate already durable prior findings. Foreign
+citations remain rejected before mutation; the typed no-effect rejection now
+returns the same reuse-in-place recovery contract. This does not import provenance,
+admit foreign IDs, or turn a retrieved prior finding into current source truth.
+
+For authorized active findings profiles, completed PTC cells with successful managed
+reads can add `prior_applicability@1` metadata to their newly produced tool response.
+The factory focuses the existing working-set query on recently completed read paths.
+The update validates the complete source-view hash and consumer identity, then
+selects only relevant prior finding IDs, revisions, provenance and current recorded
+version statuses. It contains no learned finding text or recovered source body.
+The original execution result/hash/effect is unchanged; later ADK metrics and artifact
+observers still run. Existing history is not rewritten, and this does not force a cut.
+
+`context.prior_applicability_created` records the original response hash, completed
+source cell, read paths, redacted source-view inputs, selected metadata, program hash,
+egress budget and deduplication signatures before exposure. Same-attempt replay
+validates identity/content and reuses recorded bytes. Repeated identical statuses
+do not re-emit merely because observation sequence numbers advanced. Different
+source revisions, hashes/statuses or unresolved-effect counts can emit a new update.
+Each update is at most 2048 bytes within the existing whole PTC response ceiling;
+entries are admitted whole, omissions are counted, and no optional update displaces
+an execution result. Failed/pending cells, inactive/no-prior profiles and insufficient
+egress room do not acquire this exposure. Direct-tool profiles retain explicit
+working-set retrieval rather than this PTC cell-completion hook.
+
+Identity metadata is not evidence acquisition. A new scripted negative observes
+matching versions and receives automatic metadata before submitting an answer, but
+has not retrieved the required prior content: independent verification still rejects
+it. Existing completed-retrieval, source/range, ownership and answer-time gates remain
+unchanged. Live efficiency and diverse held-out reliability remain unqualified.
 
 ## Rejected alternatives
 

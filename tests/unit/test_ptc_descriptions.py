@@ -1,3 +1,5 @@
+import json
+
 from harness.ptc.repl.worker import _execute_cell, _StateProxy, _value_fingerprint
 
 
@@ -42,6 +44,50 @@ def test_nested_selectors_and_deletion_are_safe():
     assert state.annotate("sources", "missing", selector=("main",))["status"] == "unavailable"
 
 
+def test_catalog_discovers_attested_container_values_without_annotations_or_reads():
+    first, second = source_result(), source_result()
+    second["read_reference"] = {**second["read_reference"], "path": "src/other.py", "sha256": "c" * 64}
+    namespace = {"reads": [first, {"other": second}], "copied": json.loads(json.dumps(first))}
+    state = _StateProxy(namespace, {"reads": {"cell_id": "completed-cell", "replay": "never"}})
+    state.register_read(first)
+    state.register_read(second)
+    catalog = state.list()
+    assert catalog == state.list()
+    entries = [row for row in catalog if row.get("read_reference")]
+    assert [row["access_expression"] for row in entries] == ["reads[0]", "reads[1]['other']"]
+    assert [row["read_reference"] for row in entries] == [first["read_reference"], second["read_reference"]]
+    assert all(row["cell_id"] == "completed-cell" and row["binding_type"] == "list" for row in entries)
+    assert all("preview" not in row and row["freshness"] == "historical_snapshot" for row in entries)
+    assert all(row.get("name") != "copied" for row in entries)
+
+    first["data"]["text"] = "changed\n"
+    current = state.list()
+    assert [row["access_expression"] for row in current if row.get("read_reference")] == ["reads[1]['other']"]
+    from app.agent.ptc import _state_updates
+    assert _state_updates(catalog, current, 2048) == [
+        {"name": "reads", "selector": [0], "availability": "association_invalidated"}]
+    namespace["reads"].clear()
+    assert not any(row.get("read_reference") for row in state.list())
+    # A new epoch cannot reconstruct live attestations from self-described values.
+    assert not any(row.get("read_reference") for row in _StateProxy({"reads": [second]}, {}).list())
+
+
+def test_automatic_source_navigation_is_bounded_and_deduplicates_aliases():
+    read = source_result()
+    cycle = []
+    cycle.append(cycle)
+    state = _StateProxy({"reads": [read] * 100, "cycle": cycle}, {})
+    state.register_read(read)
+    refs = [row for row in state.list() if row.get("read_reference")]
+    assert len(refs) == 1 and refs[0]["access_expression"] == "reads[0]"
+    # Width/depth/long-key omissions are navigable by an explicit supported selector.
+    state = _StateProxy({"wide": [None] * 64 + [read], "long": {"x" * 129: read}}, {})
+    state.register_read(read)
+    assert not any(row.get("read_reference") for row in state.list())
+    assert state.describe("wide", (64,))["read_reference"] == read["read_reference"]
+    assert state.describe("long", ("x" * 129,))["read_reference"] == read["read_reference"]
+
+
 def test_selector_recipes_quote_plain_keys_and_reject_unbounded_representation():
     key = "quote'\\\nkey"
     state = _StateProxy({"values": {key: [42], "x" * 4097: 43}}, {})
@@ -61,13 +107,14 @@ def test_catalog_does_not_execute_object_hooks_or_accept_unbounded_values():
             raise AssertionError("must not index")
     cyclic = []
     cyclic.append(cyclic)
-    namespace = {"opaque": Opaque(), "big": "x" * 65537, "cycle": cyclic, "surrogate": "\ud800"}
+    namespace = {"opaque": Opaque(), "nested": {"wrapped": [Opaque()]},
+                 "big": "x" * 65537, "cycle": cyclic, "surrogate": "\ud800"}
     state = _StateProxy(namespace, {})
     for name in namespace:
         assert state.annotate(name, "purpose")["status"] == "unavailable"
     assert "preview" not in state.describe("opaque", preview=True)
     assert state.annotate("opaque", "purpose", selector=("x",))["status"] == "unavailable"
-    assert len(state.list()) == 4
+    assert len(state.list()) == 5
     assert _value_fingerprint(float("nan")) is None
 
 

@@ -653,17 +653,22 @@ def build_notebook_session(
             self, uri: str, offset: int = 0, limit: int = active_ptc_config.max_output_bytes
         ) -> dict[str, Any]:
             def invoke() -> dict[str, Any]:
+                # Only explicit admission rejects are known no-effect outcomes.
+                # Resolver/integrity and publication exceptions remain fail-closed.
+                invalid = None
+                if not isinstance(uri, str) or not re.fullmatch(r"artifact://sha256/[0-9a-f]{64}", uri):
+                    invalid = "invalid content-addressed artifact URI; copy an exact URI from agent.artifacts.list()"
+                elif type(offset) is not int or offset < 0:
+                    invalid = "artifact offset must be a non-negative integer"
+                elif type(limit) is not int or not 1 <= limit <= active_ptc_config.max_output_bytes:
+                    invalid = f"artifact limit must be between 1 and {active_ptc_config.max_output_bytes}"
+                if invalid:
+                    return {"status": "error", "effect": "none", "error_code": "invalid_arguments",
+                            "model_text": f"ValueError: {invalid}. No artifact was loaded."}
                 if uri not in task_artifact_uris(self.task_id):
-                    raise PermissionError("artifact is not referenced by this task")
-                if not isinstance(offset, int) or offset < 0:
-                    raise ValueError("artifact offset must be a non-negative integer")
-                if not isinstance(limit, int) or not 1 <= limit <= active_ptc_config.max_output_bytes:
-                    raise ValueError(
-                        f"artifact limit must be between 1 and {active_ptc_config.max_output_bytes}"
-                    )
-                digest = uri.removeprefix("artifact://sha256/")
-                if not re.fullmatch(r"[0-9a-f]{64}", digest):
-                    raise ValueError("invalid content-addressed artifact URI")
+                    return {"status": "blocked", "effect": "none", "error_code": "artifact_not_authorized",
+                            "model_text": "PermissionError: artifact is not referenced by this task. "
+                            "Use agent.artifacts.list() and copy an exact authorized URI; no artifact was loaded."}
                 content = _ArtifactResolver(
                     workspace=settings.workspace, state_root=settings.state_root,
                 )._read_content(uri, max_source_bytes=16_000_000)
@@ -671,7 +676,8 @@ def build_notebook_session(
                 # boundary nor base64 may bypass model-visible secret redaction.
                 decoded = content.decode("utf-8", errors="surrogateescape")
                 if redactor.redact_text(decoded) != decoded:
-                    raise PermissionError("artifact requires redaction; exact recovery is unavailable")
+                    return {"status": "blocked", "effect": "none", "error_code": "artifact_requires_redaction",
+                            "model_text": "PermissionError: artifact requires redaction; exact recovery is unavailable"}
                 selected = content[offset : offset + limit]
                 try:
                     representation = {"encoding": "utf-8", "text": selected.decode("utf-8")}
@@ -730,9 +736,11 @@ def build_notebook_session(
             def invoke() -> dict[str, Any]:
                 normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(name)).strip("._-")
                 if not normalized or len(normalized) > 128:
-                    raise ValueError("artifact name must normalize to 1-128 safe characters")
+                    return {"status": "error", "effect": "none", "error_code": "invalid_arguments",
+                            "model_text": "ValueError: artifact name must normalize to 1-128 safe characters; nothing published"}
                 if description is not None and len(str(description)) > 500:
-                    raise ValueError("artifact description must be at most 500 characters")
+                    return {"status": "error", "effect": "none", "error_code": "invalid_arguments",
+                            "model_text": "ValueError: artifact description must be at most 500 characters; nothing published"}
                 safe_value = redactor.redact(value)
                 if isinstance(safe_value, bytes):
                     content, media_type = safe_value, "application/octet-stream"

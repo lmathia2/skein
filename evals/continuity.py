@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import time
+from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -321,7 +322,7 @@ class Continuation:
                 "cut_sequence": cut, "until_sequence": end,
                 "reads": audit_reads([e for e in events if e.sequence < end], cut_sequence=cut),
                 "exposure": audit_emissions(snapshots, [r for r in self.records if r["sequence"] < end], cut_sequence=cut),
-            } for cut, end in zip(cuts, [*cuts[1:], events[-1].sequence + 1], strict=True)]
+            } for cut, end in pairwise([*cuts, events[-1].sequence + 1] if events else [])]
         return measured
 
 

@@ -3,6 +3,27 @@ from pydantic import BaseModel
 CHARS_PER_TOKEN_ESTIMATE = 4
 
 
+class ContextBudgetExceeded(RuntimeError):
+    """Required context cannot fit; no partially instructed request may dispatch."""
+
+    def __init__(self, required_tokens: int, budget_tokens: int) -> None:
+        self.required_tokens = required_tokens
+        self.budget_tokens = budget_tokens
+        super().__init__(f"Required context needs {required_tokens} estimated tokens; packet budget is {budget_tokens}")
+
+
+def exception_chain_contains(error: BaseException, kind: type[BaseException]) -> bool:
+    """Recognize typed terminal outcomes through wrappers without matching prose."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        if isinstance(current, kind):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
+    return False
+
+
 def estimate_tokens(text: str) -> int:
     if not text:
         return 0

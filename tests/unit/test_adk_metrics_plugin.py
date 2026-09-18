@@ -14,9 +14,27 @@ from google.adk.sessions.state import State
 from harness.evidence.telemetry.adk_plugin import (
     HarnessMetricsPlugin,
     ModelPricing,
+    TaskInputBudgetExceeded,
     estimate_cost,
+    is_task_input_budget_error,
     usage_counts,
 )
+
+
+def test_budget_cause_detection_is_typed_and_cycle_safe():
+    budget = TaskInputBudgetExceeded("limit")
+    wrapper = RuntimeError("callback failed")
+    wrapper.__cause__ = budget
+    assert is_task_input_budget_error(budget)
+    assert is_task_input_budget_error(wrapper)
+    context = RuntimeError("implicit wrapper")
+    context.__context__ = wrapper
+    assert is_task_input_budget_error(context)
+    context.__suppress_context__ = True
+    assert not is_task_input_budget_error(context)
+    assert not is_task_input_budget_error(RuntimeError("Task input-token budget exhausted"))
+    wrapper.__cause__ = wrapper
+    assert not is_task_input_budget_error(wrapper)
 
 
 @dataclass

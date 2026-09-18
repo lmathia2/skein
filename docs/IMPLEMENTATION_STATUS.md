@@ -470,3 +470,200 @@ families are implemented; the frozen live qualification and real-coding gates re
 Pre-dispatch checks: full regression 977 passed, two skipped; final focused prior/
 dispatch suite 13 passed locally and in cached Docker after tightening decisive
 ranges. Lint/compile pass; typing has zero errors and the existing export warning.
+
+The v18 qualification campaign stopped under its frozen gate after 40 trials
+(44 model episodes); 32 queued trials were never started. There were 33 verified
+completions, four workflow blocks, two call-limit exits and one pre-cut budget exit
+misclassified as a harness error. Total recorded provider cost was $1.12553090,
+including actual prior producers. All 19 positive pairs cost 1.0% more with findings;
+among the 14 both-verified pairs, findings used 8.0% fewer calls but cost 6.5% more.
+These success-conditioned figures do not qualify reliability or savings. Artifact
+admission misclassification, review rereads and prior-recall usability remain next.
+See `.artifacts/qualification-v18-live-six-families-r3/analysis.md`; defaults stay held.
+
+v19 corrects the diagnostic boundary without changing any historical result: the
+runtime and evaluator recognize typed task-input exhaustion through ADK exception
+causes, and zero-cut measurement yields an empty interval list. Unrelated callback
+failures remain harness errors; real measurement/accounting failures still stop
+queued dispatch. The original six-family fixtures and budgets remain unchanged.
+The 121-check focused regression completes with 120 passing and the explicit Docker
+check skipped; lint/compile pass and changed-file typing reports zero errors.
+
+PTC artifact admission now returns explicit no-effect outcomes for malformed URI/page
+arguments, unauthorized task references, redaction-denied loads, and invalid publication
+metadata. Guidance points to exact authorized artifact listings. Resolver corruption
+and interrupted publication retain unknown-effect fencing; a later successful load
+does not reconcile an unrelated failed shell. Actual workflow regressions now complete
+after safe rejection and recovery, and fault tests retain corruption/publication blocks.
+This addresses two v18 control blocks; no live quality gain is claimed for the fix.
+Full unit/integration regression: 991 passed, two skipped. All six cached-Docker
+recovery and unknown-shell completion checks pass. Lint/compile pass and typing has
+zero errors with the existing runtime export warning only.
+
+Prior working sets now include the consumer's separately watermarked observations
+without selecting unrelated consumer notes. Each prior finding retains producer
+provenance and gains a bounded `consumer_versions` record: unobserved, changed,
+requiring revalidation, matching recorded versions, or lacking source dependencies.
+Matching identity is neither continuous filesystem freshness nor finding truth.
+`continuation@7` can show an available historical finding after matching consumer
+observations even when the producer's later state was uncertain; changed/unknown
+consumer versions and unavailable provenance remain withheld. Execution uncertainty
+and independent completion checks are unchanged. Existing focus selection keeps
+relevant prior findings within the same output budget; no response-limit increase.
+Focused tests include time boundaries, bounded scans, source selection, both-task
+manifests, stale/missing evidence and actual producer/consumer workflows. Live effect
+on rereads/cost, review-stage reuse and foreign-citation usability remain unqualified.
+Full unit/integration regression: 996 passed, two skipped. All 13 cached-Docker
+producer/consumer checks pass. Lint/compile pass and typing has zero errors with
+the existing runtime export warning. A final guidance-only clarification makes
+version reads explicitly conditional on permission from the current task; all 105
+focused checks pass after that clarification.
+
+The frozen consumer-version prior diagnostic at revision `f182027` completed all
+four trials/eight episodes, each passing first independent verification with
+supported submissions and no unresolved effects/accounting failures. It does not
+pass efficiency: findings cost $0.10790794 versus control $0.07820191 (38.0% more),
+45 versus 42 calls, and both refetched 19 prior same-version source lines. Neither
+findings consumer refreshed working_set after current version observations, so no
+outgoing request exposed matching_observations. Five foreign-note citation attempts
+were safely rejected across the two findings consumers. See
+`.artifacts/consumer-version-prior-live-v1/analysis.md`; these reused cases are
+diagnostic, not new held-out qualification. No paid run remains active.
+
+Read-only inspection also found the host's review action absent from all six
+provider review packets in two v18 reread-heavy cases: generic head/tail truncation
+cuts through sorted task JSON and removes next_action. The old advisory handoff
+remains elsewhere, not a refreshed review navigation packet. Preserve complete
+control instructions and bounded completed-evidence navigation before attributing
+these rereads solely to model instruction-following. See
+`.artifacts/review-continuity-diagnosis.md`. Defaults and broader runs remain held.
+
+`work_packet@2` now preserves complete task-control JSON and reserves supplied
+skills, continuation metadata and steering before optional history. Preferred
+section allocations still bound optional detail; required control can borrow space
+within the unchanged total packet budget. Optional task fields are admitted whole
+with named omissions. Oversized required context stops before provider dispatch as
+`context_control_budget_exceeded`, separate from task-input exhaustion and harness
+failures; the runtime recognizes ADK wrappers and the eval stops queued work under
+this gate. No new tool, context-window increase, review bypass or completion authority.
+Deterministic tests cover complete goal/criteria/scope/next_action, bounds, identical
+serialization, unmodified input ledger, typed overflow and real zero-dispatch
+overflow. The actual root workflow preserves the complete review action in compiled
+OpenRouter requests and retains its stable prefix. All 14 cached-Docker review/prior
+workflow checks pass. Full regression: 1006 passed, two skipped. After the final
+steering-budget alignment and zero-dispatch test, the focused suite passes 88 checks
+with one explicit Docker skip. Lint/compile pass; typing has zero errors and the
+existing runtime export warning. Offline replay of the two v18 review ledgers retains
+the exact goal, criteria and next_action at 1131/1293 packet tokens, within the unchanged
+20k total rather than the old 600-token task target. Reread effects and phase-boundary
+navigation remain unqualified. Eval manifest is now v20; no live run is active.
+
+PTC now automatically discovers registered read values retained in plain containers,
+including unannotated parallel-read lists. Existing completed-cell manifests and
+state-update messages expose exact selectors/access recipes, source hashes, captured
+ranges and artifact references. This is bounded navigation of the original broker
+attestations, not inferred lineage or semantic summaries. Duplicate nested aliases
+are collapsed; deep copies, mutation, deletion and a new worker epoch cannot acquire
+or preserve a false association. Default catalog output contains no source preview.
+The real PTC test exposes `reads[0]` immediately and recovers the original citation
+with exactly one source read. Full regression: 1012 passed, two skipped; the broader
+PTC/context/qualification subset passes 167 with one explicit Docker skip. Lint and
+compile pass; typing has zero errors with the existing runtime export warning.
+Explicit phase/work-batch refresh and prior applicability/citation usability remain
+outstanding; no new live evaluation or default change.
+
+The subsequent `work_batch_navigation@1` implementation now appends a bounded
+completed-evidence snapshot in actual host work packets after work-batch/review
+transitions. The canonical navigation event records redacted replay inputs, selected
+text, content/program hashes, explicit source clock/watermark and task/batch identity
+before dispatch. It reuses continuation assembly (`continuation@8`), preserves old
+prefix bytes between calls, and does not introduce a cut, new tool or second store.
+Task-focused binding selection collapses identical read-reference aliases; readable
+check commands and available receipt/artifact/workspace references improve recovery.
+Historical source ranges, kernel epochs, invalidated findings and unresolved effects
+retain their scope. Required metadata overflow uses the existing typed context-budget
+terminal; publication/identity failures remain closed.
+
+The actual compiled-provider regression recovers `reads[0]` at review without a new
+source read and keeps its snapshot unchanged on the next model call. All 35 scripted
+cached-Docker workflow checks pass, and the final focused context/packet/factory suite
+passes 91 checks. These are deterministic integration results, not a live-model
+reread/cost improvement. Prior applicability after inner-batch observations and
+scoped citation usability remain outstanding. Eval manifest is v21; no new paid run
+or default promotion.
+
+Full regression completed: 1020 passed, two skipped, at
+`.artifacts/work-batch-navigation-regression`. Cached-Docker scripted checks are at
+`.artifacts/work-batch-navigation-docker-regression`. Lint/compile pass; typing has
+zero errors and the existing runtime export warning. All test processes are terminal.
+
+Prior reuse now has two additional implemented paths. Working-set entries carry a
+`reference_in_place` contract and an exact source-task/note-event recovery command;
+note-schema version 4 and no-effect foreign-citation rejection make the same scope
+explicit. Already durable prior findings need not be duplicated into current notes.
+Current-note evidence admission is unchanged.
+
+Active authorized-prior findings profiles can also append `prior_applicability@1`
+identity metadata after completed PTC read cells. It validates the source-view hash
+and consumer identity, focuses the existing query on completed read paths, preserves
+both source clocks and never exposes learned content in this update. A canonical
+event records inputs, selection, hashes, response identity and budget before exposure;
+same-attempt replay is immutable and unchanged version observations do not re-emit.
+Updates fit within 2048 bytes and the original whole-response ceiling without
+displacing execution output or bypassing later ADK observers. No-prior/inactive
+profiles, failed or pending cells and full outputs do not acquire the update.
+
+The scripted provider integration now observes matching applicability without another
+model-issued query; changed-policy and unchanged-pricing statuses fit together after
+removing repeated per-entry guidance. A new negative receives matching identity
+metadata before answering but lacks required retrieved content; independent
+verification still rejects it. All 50 isolated cached-Docker prior/verification
+checks pass at `.artifacts/prior-applicability-docker-checks`; focused memory/context
+checks pass. Full regression passes 1033 tests with two skips at
+`.artifacts/prior-applicability-regression`. Lint/compile pass; typing has zero
+errors and the existing runtime export warning. Live behavior, reread/cost benefits
+and diverse held-out qualification remain unproven. The next bounded reused-case
+diagnostic is frozen in the continuity plan; no default promotion.
+
+That diagnostic closed at `5f2f6cf`, with three of six executed episodes independently
+verified and two consumers not started. Three episodes hit call/input caps; all six
+answer files were value-correct, which does not qualify unverified completion.
+Total cost was $0.20349057 over 95 calls. No complete two-arm consumer comparison
+exists. A findings consumer demonstrably reused retained `pages[...]` values during
+review without source rereads, but later repeated its preparation marker and stopped
+at budget. Its one automatic applicability update is mechanism evidence, not savings.
+Detailed results remain at `.artifacts/prior-reuse-navigation-live-v1/analysis.md`.
+
+The next correction retains ordered delivered steering after queue acknowledgement
+in host work packets (`work_packet@3`, `delivered_steering@1`). Current questions no
+longer depend on optional recent-event excerpts while the original goal remains
+required. Review audits old prerequisites from completed receipts rather than
+reenacting them. All original criteria, fixture questions, source/range/time checks,
+budgets and independent verification remain unchanged; no evaluation-only exception
+or implicit criterion rewrite is added. Source/task identity errors fail closed;
+oversized required control uses the existing typed packet overflow. Live effect
+remains unproven until the next separately frozen diagnostic completes.
+
+Verification: 1037 passed/two skipped in `.artifacts/steering-continuity-regression`,
+50 cached-Docker checks in `.artifacts/steering-continuity-docker-mounted-checks`,
+and 15 final serialized-provider checks in `.artifacts/steering-continuity-wire-checks`.
+The first Docker attempt failed because Colima could not mount the default macOS
+pytest temporary directory; its log is preserved separately. The successful run uses
+a fresh workspace-local directory and the same cached image. Ruff/compile pass;
+typing has zero errors and the pre-existing runtime export warning.
+
+The steering diagnostic at `4609f62` now closes 8/8 episodes on first independent
+verification, with every answer submission source-supported and no missing accounting.
+All 11 review-packet occurrences retain the delivered question; no preparation
+marker repeats after review and no source reads occur during review. Findings
+consumers refetch three unchanged prior-source lines (all identity candidates)
+versus control's 18, while correctly acquiring the changed policy in the second case.
+This is successful mechanism evidence on two reused cases, not held-out reliability.
+
+Efficiency still fails: findings uses 42 calls/$0.12438927 versus control's
+37/$0.07868618, including producers (+58.1% cost). Consumers account for the overhead:
+23 calls/$0.08707714 versus 17/$0.03264860, with note lifecycle work and higher
+uncached input. Total diagnostic cost is $0.20307545. Full results and limitations:
+`.artifacts/steering-continuity-live-v1/analysis.md`. No trial remains running.
+Measure bookkeeping, prompt/cache overhead and finding dependency granularity
+before another frozen diagnostic; diverse held-out and DeepSWE gates remain open.

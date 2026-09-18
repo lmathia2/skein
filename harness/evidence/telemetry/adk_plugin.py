@@ -16,7 +16,7 @@ from typing import Any
 
 from google.adk.plugins.base_plugin import BasePlugin
 
-from harness.core.context.compiler import estimate_model_tokens
+from harness.core.context.compiler import estimate_model_tokens, exception_chain_contains
 
 from .metrics import MetricsStore, ModelUsageSample, TaskOutcomeSample, ToolUsageSample
 
@@ -25,6 +25,11 @@ LOGGER = logging.getLogger(__name__)
 
 class TaskInputBudgetExceeded(RuntimeError):
     """No model request was dispatched because its input reservation would exceed budget."""
+
+
+def is_task_input_budget_error(error: BaseException) -> bool:
+    """Recognize the typed budget stop through ADK wrappers, never error prose."""
+    return exception_chain_contains(error, TaskInputBudgetExceeded)
 
 
 @dataclass(frozen=True, slots=True)

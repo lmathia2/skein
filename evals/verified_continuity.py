@@ -48,8 +48,10 @@ from harness.adapters.providers.openrouter_responses import (
     build_openrouter_request_body,
 )
 from harness.core.config import parse_harness_composition
+from harness.core.context.compiler import ContextBudgetExceeded, exception_chain_contains
 from harness.core.models import TaskRequest
 from harness.evidence.state import EventKind
+from harness.evidence.telemetry.adk_plugin import is_task_input_budget_error
 from harness.execution.environment.local import LocalWorkspaceEnvironment
 from harness.execution.environment.runtime import ExecutionRuntime, LocalRepositoryRuntime
 from harness.execution.sandbox.docker import DockerSandbox
@@ -260,7 +262,7 @@ async def run_verified_case(trial: Continuation) -> dict[str, Any]:
                 if response and response.name == "execute_code":
                     trial.record("ptc_output", str((response.response or {}).get("model_text", "")))
     except Exception as exc:
-        result["terminal"] = str(exc) if isinstance(exc, EvaluationLimit) else (
+        result["terminal"] = "context_control_budget_exceeded" if exception_chain_contains(exc, ContextBudgetExceeded) else "task_input_budget_exhausted" if is_task_input_budget_error(exc) else str(exc) if isinstance(exc, EvaluationLimit) else (
             "provider_error" if isinstance(exc, (httpx.HTTPError, ProviderResponseError)) or "OpenRouter" in str(exc)
             else "harness_or_fixture_error")
         result["error"] = trial.redactor.redact_text(f"{type(exc).__name__}: {exc}")[:2000]
@@ -387,7 +389,7 @@ async def campaign(output: Path, cases: list[str], arms: list[str], concurrency:
                     progress = root / "progress.json"
                     result = json.loads(progress.read_text()) if progress.exists() else {"family": case, "arm": arm}
                     result.update(accepted=False, passed=False, terminal="harness_or_fixture_error", error=type(exc).__name__)
-                if (result["terminal"] in {"harness_or_fixture_error", "provider_error", "false_acceptance", "wall_time_limit", "producer_not_qualified"}
+                if (result["terminal"] in {"harness_or_fixture_error", "provider_error", "false_acceptance", "wall_time_limit", "producer_not_qualified", "context_control_budget_exceeded"}
                         or "measurement_error" in result or any(result.get(key, 0) for key in
                             ("unaccounted_model_calls", "usage_missing_calls", "cost_missing_calls", "extra_wire_attempts"))):
                     failed.set()
@@ -449,7 +451,7 @@ def main() -> None:
                 | {case: repeated_fixture(case) for case in REPEATED_CASES}
                 | {case: validation_fixture(case) for case in VALIDATION_CASES}
                 | {case: qualification_fixture(case) for case in QUALIFICATION_CASES})
-    manifest = {"version": "verified-continuity-v18", "model": MODEL, "reasoning": "max",
+    manifest = {"version": "verified-continuity-v21", "model": MODEL, "reasoning": "max",
         "cases": args.cases, "arms": args.arms, "concurrency": args.concurrency, "repetitions": args.repetitions,
         "max_model_calls": max(fixtures[c].get("max_model_calls", MAX_CALLS) + fixtures[c].get("producer", {}).get("max_model_calls", 0) for c in args.cases),
         "input_budget": max(fixtures[c].get("input_budget", INPUT_BUDGET) + fixtures[c].get("producer", {}).get("input_budget", 0) for c in args.cases), "max_output_tokens": 8192,

@@ -95,9 +95,14 @@ async def test_prior_availability_requires_actual_completed_retrieval_and_curren
         assert audit_answer_evidence(pending, required=[need], prior=prior)["last_answer"] != "available"
     assert audit_answer_evidence(events, required=[need], prior=prior) == report
     if route == "working_set":
-        assert (await consumer.cell(f"agent.fs.edit('answer.json', '{{}}', '{{}}')\nagent.shell.run({command!r})\nagent.fs.write('answer.json', '{{}}')"))["status"] == "ok"
+        assert (await consumer.cell(
+            f"agent.fs.edit('answer.json', '{{}}', '{{}}')\nfresh = agent.shell.run({command!r})\n"
+            "assert fresh['data']['data']['findings'][0]['consumer_versions']['status'] == 'matching_observations'\n"
+            "agent.fs.write('answer.json', '{}')"))["status"] == "ok"
         repeated = consumer.ledger.read(consumer.task_id)
-        assert len([e for e in repeated if e.kind == "memory.retrieval"]) == 1  # Content-addressed receipt is reused.
+        # The producer is unchanged, but the later consumer observation changes
+        # the view's applicability and independently watermarked input snapshot.
+        assert len([e for e in repeated if e.kind == "memory.retrieval"]) == 2
         assert audit_answer_evidence(repeated, required=[need], prior=prior)["last_answer"] == "available"
 
 

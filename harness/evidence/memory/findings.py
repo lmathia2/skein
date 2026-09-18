@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from typing import Any
 
 from harness.evidence.ledger.models import canonical_json
@@ -70,7 +71,8 @@ def source_freshness(dependency: dict[str, Any], observations: tuple[dict, dict,
 
 
 def select_findings(rows: list[dict[str, Any]], request: ViewRequest) -> tuple[dict[str, Any], str, tuple[str, ...]]:
-    latest = {row["task_id"]: row for row in rows if row["kind"] == "memory.note"}
+    selected_tasks = set(request.source_tasks or (request.task_id,))
+    latest = {row["task_id"]: row for row in rows if row["kind"] == "memory.note" and row["task_id"] in selected_tasks}
     available = {row["event_id"] for row in rows}
     for row in rows:
         payload = row["payload"]
@@ -87,12 +89,35 @@ def select_findings(rows: list[dict[str, Any]], request: ViewRequest) -> tuple[d
             dependencies = [source_freshness(item, observations, task) for item in entry.get("source_dependencies", [])]
             freshness = next((state for state in ("revalidation_required", "changed_since_capture")
                               if any(item["status"] == state for item in dependencies)), "historical_snapshot")
+            current = {}
+            if task != request.task_id:
+                checked = [source_freshness(item, observations, request.task_id)
+                           for item in entry.get("source_dependencies", [])]
+                states = {"unobserved" if item["observation_sequence"] == 0 else item["status"] for item in checked}
+                status = next((state for state in ("revalidation_required", "changed_since_capture", "unobserved")
+                               if state in states), "matching_observations" if checked else "no_source_dependencies")
+                current = {"consumer_versions": {
+                    "task_id": request.task_id, "status": status,
+                    "scope": "recorded_version_identity_not_finding_truth",
+                    "sources": [{"path": item["path"],
+                                 "observed_sha256": item["observed_sha256"],
+                                 "observation_sequence": item["observation_sequence"],
+                                 "status": item["status"]}
+                                for item in checked if item["observation_sequence"]],
+                }, "reuse": {
+                    "strategy": "reference_in_place", "local_note_scope": "new_current_task_learning",
+                    "source_note_command": "memory event --tasks " + shlex.quote(task) +
+                                           " --event-id " + shlex.quote(note["event_id"]),
+                }}
             candidates.append({
                 "finding": finding.model_dump(mode="json"), "revision": entry["revision"],
                 "source_dependencies": dependencies,
                 "source_task_id": task, "note_event_id": note["event_id"],
                 "authority": "advisory", "freshness": freshness,
-                "applicability": "current_task_advisory" if task == request.task_id else "prior_run_requires_current_validation",
+                "applicability": "current_task_advisory" if task == request.task_id else
+                "prior_run_version_observed" if current["consumer_versions"]["status"] == "matching_observations" else
+                "prior_run_requires_current_validation",
+                **current,
                 "provenance": "unsupported" if not finding.evidence_refs else
                 "available" if set(finding.evidence_refs) <= available else "unavailable",
             })

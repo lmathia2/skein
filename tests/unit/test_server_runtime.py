@@ -222,17 +222,26 @@ def _session_request(operation: str, thread: str, key: str = "followup-one", **k
 
 
 @pytest.mark.asyncio
-async def test_input_budget_exhaustion_has_its_own_terminal_category(tmp_path):
+@pytest.mark.parametrize("wrapped", (False, True))
+@pytest.mark.parametrize("context_budget", (False, True))
+async def test_input_budget_exhaustion_has_its_own_terminal_category(tmp_path, wrapped, context_budget):
+    from harness.core.context.compiler import ContextBudgetExceeded
     from harness.evidence.telemetry.adk_plugin import TaskInputBudgetExceeded
 
     coordinator, factory = _coordinator(tmp_path)
     record, _ = await coordinator.start(_start(), user_id="user")
     execution = factory.executions[record.run_id]
     await execution.entered.wait()
-    execution.fail(TaskInputBudgetExceeded("bounded test budget"))
+    error = ContextBudgetExceeded(3000, 2000) if context_budget else TaskInputBudgetExceeded("bounded test budget")
+    if wrapped:
+        wrapper = RuntimeError("ADK callback failed")
+        wrapper.__cause__ = error
+        error = wrapper
+    execution.fail(error)
     await coordinator.wait(record.run_id)
     events = coordinator.store.replay(record.run_id)
-    assert any(event.event.code == "task_input_budget_exhausted" for event in events)
+    category = "context_control_budget_exceeded" if context_budget else "task_input_budget_exhausted"
+    assert any(event.event.code == category for event in events)
 
 
 @pytest.mark.asyncio

@@ -14,15 +14,19 @@ from harness.adapters.adk.context import (
     _evidence_manifest,
     _project_advisory,
     _serialized,
+    prior_applicability_update,
     render_handoff,
     select_context_cut,
 )
 from harness.core.config.models import ContextConfig
 from harness.core.context import estimate_tokens
+from harness.core.context.compiler import ContextBudgetExceeded
 from harness.core.models import TaskLedger, TaskRequest
+from harness.core.orchestration import build_work_packet
 from harness.evidence.ledger import JsonlLedgerStore
 from harness.evidence.ledger.models import canonical_json
-from harness.evidence.state import EventKind, JsonlEventStore
+from harness.evidence.memory.models import ViewResult
+from harness.evidence.state import EventKind, JsonlEventStore, rebuild_ledger
 
 
 def text(value):
@@ -59,8 +63,10 @@ def test_evidence_manifest_is_bounded_deduplicated_and_newest_first(tmp_path):
                 "offset": 1, "returned_lines": 20,
             }
         })
-    events.append("task", "execution.validation_observed", {
+    check = events.append("task", "execution.validation_observed", {
         "command_sha256": "a" * 64,
+        "command": "pytest tests/test_parser.py", "operation_id": "check-1",
+        "workspace_after": "workspace-fingerprint",
         "result": {"status": "ok", "exit_code": 0},
     })
 
@@ -70,7 +76,10 @@ def test_evidence_manifest_is_bounded_deduplicated_and_newest_first(tmp_path):
     assert len(manifest["reads_newest_first"]) == 10
     assert manifest["reads_newest_first"][0]["path"] == "src/9.py"
     assert manifest["validations_newest_first"] == [{
+        "harness_event_id": check.event_id,
         "command_sha256": "a" * 64, "exit_code": 0, "status": "ok",
+        "command": "pytest tests/test_parser.py", "operation_id": "check-1",
+        "workspace_after": "workspace-fingerprint",
     }]
 
 
@@ -82,6 +91,25 @@ def test_read_index_collapses_only_same_version_containment(tmp_path):
         }})
     reads = _evidence_manifest(events.read("task"), [])["reads_newest_first"]
     assert [(r["offset"], r["returned_lines"], r["sha256"][0]) for r in reads] == [(1, 40, "b"), (30, 20, "a"), (1, 40, "a")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("over_total", (False, True))
+async def test_steering_uses_whole_packet_reserve_or_explicitly_stops(tmp_path, over_total):
+    plugin, context, events, _ = setup(tmp_path)
+    steering = "Keep this newest constraint intact. " * (300 if over_total else 40)
+    assert estimate_tokens(steering) > plugin.config.steering_tokens
+    events.append("task", EventKind.STEERING_RECEIVED, {"content": steering})
+    request = LlmRequest(contents=[text("old " * 3000)])
+    original = _serialized(request.contents)
+    if over_total:
+        with pytest.raises(ContextBudgetExceeded):
+            await plugin.before_model_callback(callback_context=context, llm_request=request)
+        assert _serialized(request.contents) == original
+        assert not any(e.kind == EventKind.COMPACTION_CREATED for e in events.read("task"))
+    else:
+        await plugin.before_model_callback(callback_context=context, llm_request=request)
+        assert any(steering.strip() in (part.text or "") for content in request.contents for part in content.parts or [])
 
 
 @pytest.mark.asyncio
@@ -613,6 +641,29 @@ def test_invalidated_conclusion_is_withheld_but_scoped_recovery_survives(freshne
     assert details == original and render_handoff(details, max_tokens=1000) == rendered
 
 
+@pytest.mark.parametrize("consumer_status,provenance,shown", [
+    ("matching_observations", "available", True), ("matching_observations", "unavailable", False),
+    ("changed_since_capture", "available", False), ("revalidation_required", "available", False),
+])
+def test_prior_handoff_separates_consumer_version_observation_from_producer_state(consumer_status, provenance, shown):
+    finding = {"finding": {"id": "policy", "kind": "observation", "text": "Historical learned policy", "evidence_refs": ["source"]},
+               "source_task_id": "producer", "authority": "advisory", "freshness": "revalidation_required", "provenance": provenance,
+               "applicability": "prior_run_version_observed" if shown else "prior_run_requires_current_validation",
+               "consumer_versions": {"task_id": "consumer", "status": consumer_status,
+                                     "scope": "last recorded version identity only", "sources": []}}
+    details = {"working_set": {"data": {"findings": [finding]}}, "unresolved_effects": {"count": 1}}
+    original = deepcopy(details)
+    rendered = render_handoff(details, max_tokens=1000)
+    advisory = json.loads(rendered.split("Advisory memory (not execution authority):\n")[1])
+    item = advisory["entries"][0]
+    assert item["kind"] == ("findings" if shown else "invalidated_findings")
+    assert ("text" in item["value"]["finding"]) is shown
+    assert item["value"]["authority"] == "advisory"
+    assert item["value"]["consumer_versions"]["task_id"] == "consumer"
+    assert details == original and render_handoff(details, max_tokens=1000) == rendered
+    assert '"unresolved_effects": {"count": 1}' in rendered
+
+
 def test_prompt_projection_does_not_factor_tiny_or_unique_values():
     for values in [[{"authority": "advisory"}] * 2, [{"source_task_id": "only", "revision": 1}]]:
         advisory = {"entries": [{"kind": "findings", "value": value} for value in values]}
@@ -628,3 +679,249 @@ def test_optional_action_guidance_cannot_displace_required_metadata():
     advisory = json.loads(rendered.split("Advisory memory (not execution authority):\n")[1])
     assert advisory["entries"] == [] and advisory["omitted_count"] == 1
     assert "recorded_actions" not in advisory
+
+
+@pytest.mark.asyncio
+async def test_work_batch_navigation_appends_once_and_replays_captured_bytes(tmp_path, monkeypatch):
+    plugin, context, events, canonical = setup(tmp_path)
+    plugin.config = plugin.config.model_copy(update={"window_management": False, "compaction_tokens": 2000,
+                                                    "work_packet_tokens": 6000})
+    task = rebuild_ledger(events.read("task"))
+    assert plugin.work_batch_handoff(task, "invocation") == ""
+    raw = [text(build_work_packet(task))]
+    first = LlmRequest(contents=deepcopy(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=first)
+    evidence = {"path": "src/a.py", "sha256": "a" * 64, "offset": 7, "returned_lines": 3,
+                "artifact_uri": "artifact://sha256/" + "b" * 64}
+    read = events.append("task", EventKind.READ_OBSERVED, {
+        "read_evidence": {k: v for k, v in evidence.items() if k != "artifact_uri"},
+        "result_artifact_uri": evidence["artifact_uri"],
+    })
+    events.append("task", EventKind.REPL_CELL_COMPLETED, {
+        "cell_id": "completed", "kernel_epoch": "epoch1", "state": {"manifest": [
+            {"access_expression": "reads[0]", "read_reference": evidence},
+        ]},
+    })
+    plugin.handoff = lambda _: {"kernel": {"live": True, "kernel_epoch": "epoch1"},
+                               "unresolved_effects": {"count": 0}}
+    task.iteration = 1
+    snapshot = plugin.work_batch_handoff(task, "invocation")
+    published = [e for e in events.read("task") if e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED]
+    assert len(published) == 1
+    payload = published[0].payload
+    assert payload["source_watermark"] >= read.sequence
+    assert payload["parameters"]["work_batch_id"] == "2"
+    assert render_handoff(payload["inputs"], max_tokens=2000) == snapshot
+    assert '"access_expression":"reads[0]"' in snapshot
+    assert '"offset":7,"path":"src/a.py","returned_lines":3' in snapshot
+    assert estimate_tokens(snapshot) <= 2000
+    raw += [types.Content(role="model", parts=[types.Part.from_text(text="batch complete")]),
+            text(build_work_packet(task, evidence_navigation=snapshot))]
+    second = LlmRequest(contents=deepcopy(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=second)
+    assert _serialized(second.contents[:len(first.contents)]) == _serialized(first.contents)
+    assert snapshot in second.contents[-1].parts[0].text
+    events.append("task", EventKind.READ_OBSERVED, {"read_evidence": {
+        "path": "src/a.py", "sha256": "c" * 64, "offset": 10, "returned_lines": 1}})
+    raw += [types.Content(role="model", parts=[types.Part.from_function_call(name="execute_code", args={})]),
+            types.Content(role="user", parts=[types.Part.from_function_response(name="execute_code", response={"status": "ok"})])]
+    third = LlmRequest(contents=deepcopy(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=third)
+    assert _serialized(third.contents[:len(second.contents)]) == _serialized(second.contents)
+    assert len([e for e in events.read("task") if e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED]) == 1
+    assert not any(e.kind == EventKind.COMPACTION_CREATED for e in events.read("task"))
+    restarted = ContextWindowPlugin(events=events, ledger=canonical, config=plugin.config,
+                                     handoff=lambda _: pytest.fail("replay must not query or refresh"))
+    assert restarted.work_batch_handoff(task, "invocation") == snapshot
+    with pytest.raises(ValueError, match="identity"):
+        restarted.work_batch_handoff(task.model_copy(update={"next_action": "different task intent"}), "invocation")
+    corrupted = events.read("task")
+    next(e for e in corrupted if e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED).payload["content"] += "corrupt"
+    monkeypatch.setattr(events, "read", lambda _: corrupted)
+    with pytest.raises(ValueError, match="mismatch"):
+        restarted.work_batch_handoff(task, "invocation")
+
+
+@pytest.mark.parametrize("worker", ("lost", "unknown", "live"))
+def test_boundary_snapshot_preserves_partial_historical_sources_and_worker_fences(tmp_path, worker):
+    plugin, _, events, _ = setup(tmp_path)
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 2000})
+    task = rebuild_ledger(events.read("task")).model_copy(update={"iteration": 1})
+    evidence = {"path": "policy.toml", "sha256": "a" * 64, "offset": 4, "returned_lines": 1}
+    events.append("task", EventKind.READ_OBSERVED, {"read_evidence": evidence})
+    events.append("task", EventKind.REPL_CELL_COMPLETED, {
+        "cell_id": "old", "kernel_epoch": "old", "state": {"manifest": [
+            {"access_expression": "reads[0]", "read_reference": evidence},
+        ]},
+    })
+    if worker == "unknown":
+        events.append("task", EventKind.REPL_CELL_TIMEOUT, {"effect": "unknown"})
+    plugin.handoff = lambda _: {"kernel": {"live": worker != "lost", "kernel_epoch": "old"},
+                               "unresolved_effects": {"count": int(worker == "unknown")}}
+    snapshot = plugin.work_batch_handoff(task, "invocation")
+    required, advisory = snapshot.split("\nAdvisory memory (not execution authority):\n")
+    metadata = json.loads(required.removeprefix("Required continuation metadata:\n"))
+    assert metadata["notebook"]["availability"] == {
+        "lost": "restart_pending_safe_restore", "unknown": "effect_reconciliation_required", "live": "live"}[worker]
+    assert metadata["unresolved_effects"]["count"] == int(worker == "unknown")
+    entries = json.loads(advisory)["entries"]
+    assert any(e["kind"] == "live_bindings" for e in entries) is (worker == "live")
+    assert next(e["value"] for e in entries if e["kind"] == "reads_newest_first") == evidence
+
+
+def test_navigation_overflow_and_publication_failure_never_return_a_snapshot(tmp_path, monkeypatch):
+    plugin, _, events, _ = setup(tmp_path)
+    task = rebuild_ledger(events.read("task")).model_copy(update={"iteration": 1})
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 10})
+    with pytest.raises(ContextBudgetExceeded):
+        plugin.work_batch_handoff(task, "invocation")
+    assert not any(e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED for e in events.read("task"))
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 2000})
+    def fail(*args, **kwargs):
+        raise OSError("publication failed")
+    monkeypatch.setattr(events, "append", fail)
+    with pytest.raises(OSError, match="publication"):
+        plugin.work_batch_handoff(task, "invocation")
+
+
+def test_boundary_prefers_focused_bindings_and_collapses_only_identical_read_references():
+    reference = {"path": "focus.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 3,
+                 "artifact_uri": "artifact://sha256/" + "b" * 64}
+    bindings = [{"name": "irrelevant", "read_reference": {**reference, "path": "other.py"}}]
+    bindings += [{"name": f"alias_{i}", "read_reference": reference} for i in range(40)]
+    bindings += [{"name": "annotated", "description": "Source needed for this review", "read_reference": reference},
+                 {"name": "different_range", "read_reference": {**reference, "offset": 4}},
+                 {"name": "different_version", "read_reference": {**reference, "sha256": "c" * 64}}]
+    details = {"navigation": {"parameters": {"focus_paths": ["focus.py"]}},
+               "notebook": {"availability": "live", "state": {"manifest": bindings}}}
+    original = deepcopy(details)
+    rendered = render_handoff(details, max_tokens=2000)
+    advisory = json.loads(rendered.split("Advisory memory (not execution authority):\n")[1])
+    names = [e["value"]["name"] for e in advisory["entries"]]
+    assert names == ["annotated", "different_range", "different_version", "irrelevant"]
+    assert advisory["upstream_omitted_count"] == 40
+    assert details == original and render_handoff(details, max_tokens=2000) == rendered
+
+
+def test_boundary_redacts_recorded_inputs_and_rendered_snapshot(tmp_path):
+    from harness.execution.safety import SecretRedactor
+    plugin, _, events, _ = setup(tmp_path)
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 2000})
+    secret = "private-token-not-for-context"
+    plugin.redactor = SecretRedactor(known_secrets=(secret,))
+    plugin.handoff = lambda _: {"note_excerpt": secret}
+    task = rebuild_ledger(events.read("task")).model_copy(update={"iteration": 1})
+    result = plugin.work_batch_handoff(task, "invocation")
+    assert secret not in result
+    event = events.read("task")[-1]
+    assert secret not in canonical_json(event.payload)
+    assert render_handoff(event.payload["inputs"], max_tokens=2000) == result
+
+
+def _prior_details(status="matching_observations", sequence=10, unknown=0):
+    view = ViewResult(task_id="task", program="working_set", version=1, watermark=sequence, view_id="view",
+                      evidence_event_ids=("note",), program_hash="a" * 64, execution_hash="b" * 64,
+                      source_manifest={"task": {"watermark": sequence, "hash": "c" * 64},
+                                       "producer": {"watermark": 3, "hash": "d" * 64}},
+                      data={"findings": [{
+                          "source_task_id": "producer", "note_event_id": "note", "revision": 1,
+                          "finding": {"id": "policy", "status": "active", "text": "NEVER_AUTO_EXPOSE_LEARNED_TEXT"},
+                          "provenance": "available", "source_dependencies": [{"path": "policy.toml"}],
+                          "consumer_versions": {"task_id": "task", "status": status, "sources": [
+                              {"path": "policy.toml", "observed_sha256": "e" * 64, "status": status,
+                               "observation_sequence": sequence}]},
+                          "reuse": {"strategy": "reference_in_place"},
+                      }]})
+    return {"working_set": view.model_dump(mode="json"), "unresolved_effects": {"count": unknown}}
+
+
+@pytest.mark.parametrize("status", ("matching_observations", "changed_since_capture", "revalidation_required", "unobserved"))
+def test_prior_update_is_bounded_identity_only_and_suppresses_unchanged_observations(status):
+    details = _prior_details(status)
+    original = deepcopy(details)
+    result, states = prior_applicability_update(details, task_id="task", paths=("policy.toml",), known={}, max_bytes=2048)
+    assert result and len(canonical_json(result).encode()) <= 2048
+    assert result["entries"][0]["consumer_versions"]["status"] == status
+    assert "NEVER_AUTO_EXPOSE_LEARNED_TEXT" not in canonical_json(result)
+    assert result["source_view"]["source_manifest"] == details["working_set"]["source_manifest"]
+    assert details == original
+    assert prior_applicability_update(_prior_details(status, sequence=11), task_id="task", paths=("policy.toml",),
+                                      known=states, max_bytes=2048) == (None, {})
+    changed, _ = prior_applicability_update(_prior_details(status, sequence=12, unknown=1), task_id="task",
+                                           paths=("policy.toml",), known=states, max_bytes=2048)
+    assert changed and changed["unresolved_effect_count"] == 1
+    for paths, maximum in ((("irrelevant.py",), 2048), (("policy.toml",), 128)):
+        assert prior_applicability_update(details, task_id="task", paths=paths, known={}, max_bytes=maximum) == (None, {})
+    corrupt = deepcopy(details)
+    corrupt["working_set"]["data"]["findings"][0]["consumer_versions"]["status"] = "forged"
+    with pytest.raises(ValueError, match="content_hash"):
+        prior_applicability_update(corrupt, task_id="task", paths=("policy.toml",), known={}, max_bytes=2048)
+    with pytest.raises(ValueError, match="identity"):
+        prior_applicability_update(details, task_id="other", paths=("policy.toml",), known={}, max_bytes=2048)
+
+
+@pytest.mark.asyncio
+async def test_completed_ptc_read_emits_prior_metadata_once_without_changing_execution_result(tmp_path, monkeypatch):
+    plugin, context, events, _ = setup(tmp_path)
+    plugin.refresh_prior = True
+    plugin.config = plugin.config.model_copy(update={"continuity_representation": "findings"})
+    plugin.handoff = lambda _: _prior_details()
+    tool = SimpleNamespace(name="execute_code")
+    result = {"status": "ok", "attempt_id": "cell-1", "model_text": "évidence complete", "result_hash": "execution-hash"}
+    base = deepcopy(result)
+    kwargs = dict(tool=tool, tool_args={}, tool_context=context, result=result)
+    assert await plugin.after_tool_callback(**kwargs) is None  # A supplied success is not a completed cell receipt.
+    assert result == base
+    events.append("task", EventKind.CAPABILITY_COMPLETED, {
+        "attempt_id": "cell-1", "operation": "fs.read", "status": "ok", "read_evidence": {
+            "path": "policy.toml", "sha256": "e" * 64, "offset": 1, "returned_lines": 1}})
+    assert await plugin.after_tool_callback(**kwargs) is None
+    assert result == base  # Not before the submitted cell has completed.
+    terminal = events.append("task", EventKind.REPL_CELL_COMPLETED, {"attempt_id": "cell-1"})
+    assert await plugin.after_tool_callback(**kwargs) is None  # Do not short-circuit later ADK observers.
+    content = result["prior_applicability"]
+    assert {k: v for k, v in result.items() if k != "prior_applicability"} == base
+    assert len(canonical_json(result).encode()) <= plugin.max_tool_result_bytes
+    published = events.read("task")[-1]
+    assert published.kind == EventKind.PRIOR_APPLICABILITY_CREATED
+    assert published.payload["source_cell_event_id"] == terminal.event_id
+    assert prior_applicability_update(published.payload["inputs"], task_id="task", paths=tuple(published.payload["paths"]),
+                                      known={}, max_bytes=published.payload["max_bytes"])[0] == content
+    plugin.handoff = lambda _: pytest.fail("replay must not recompute")
+    again = deepcopy(base)
+    assert await plugin.after_tool_callback(**{**kwargs, "result": again}) is None
+    assert again == result and events.read("task")[-1] == published
+    with pytest.raises(ValueError, match="identity"):
+        await plugin.after_tool_callback(**{**kwargs, "result": {**base, "model_text": "changed"}})
+    corrupt = events.read("task")
+    corrupt[-1].payload["content"]["entries"] = []
+    monkeypatch.setattr(events, "read", lambda _: corrupt)
+    with pytest.raises(ValueError, match="identity"):
+        await plugin.after_tool_callback(**{**kwargs, "result": deepcopy(base)})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ("failed_cell", "disabled", "metadata", "full_output", "publication_failure"))
+async def test_prior_updates_do_not_override_failure_profile_or_egress_contracts(tmp_path, monkeypatch, case):
+    plugin, context, events, _ = setup(tmp_path)
+    plugin.refresh_prior = case != "disabled"
+    plugin.config = plugin.config.model_copy(update={"continuity_representation": "metadata" if case == "metadata" else "findings"})
+    plugin.max_tool_result_bytes = 1024 if case == "full_output" else 16000
+    plugin.handoff = lambda _: _prior_details()
+    events.append("task", EventKind.CAPABILITY_COMPLETED, {"attempt_id": "cell", "operation": "fs.read", "status": "ok",
+                                                          "read_evidence": {"path": "policy.toml"}})
+    events.append("task", EventKind.REPL_CELL_FAILED if case == "failed_cell" else EventKind.REPL_CELL_COMPLETED,
+                  {"attempt_id": "cell"})
+    result = {"status": "ok", "attempt_id": "cell", "model_text": "é" * (500 if case == "full_output" else 1)}
+    original = deepcopy(result)
+    kwargs = dict(tool=SimpleNamespace(name="execute_code"), tool_args={}, tool_context=context, result=result)
+    if case == "publication_failure":
+        def fail(*args, **kwargs):
+            raise OSError("publication failed")
+        monkeypatch.setattr(events, "append", fail)
+        with pytest.raises(OSError, match="publication"):
+            await plugin.after_tool_callback(**kwargs)
+    else:
+        assert await plugin.after_tool_callback(**kwargs) is None
+    assert result == original
+    assert not any(e.kind == EventKind.PRIOR_APPLICABILITY_CREATED for e in events.read("task"))

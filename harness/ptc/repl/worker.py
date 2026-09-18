@@ -21,6 +21,7 @@ import queue
 import threading
 import time
 import traceback
+from collections import deque
 from collections.abc import Callable, Mapping
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
@@ -314,6 +315,7 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
                  "complete": "bool (end of artifact, not whole coverage if offset > 0)",
                  "next_offset": "next byte offset or null"},
         "recovery": "Combine exact page bytes before UTF-8/JSON parsing. A completed fs.read artifact is a saved result envelope: check its status, then data.text and source metadata. Historical only.",
+        "rejection": "Invalid arguments or denied access return error/blocked with effect=none. Recover exact authorized URIs via agent.artifacts.list(); never guess hashes. Corruption or unknown effects still require fail-closed handling.",
     },
     "artifacts.list": {"data": {"artifacts": "list of task-authorized uri entries; published entries also carry name/description"}},
     "mcp.call": {"status": "capability-defined result mapping"},
@@ -539,8 +541,47 @@ class _StateProxy:
 
         names = sorted(name for name in self._namespace
                        if not name.startswith("__") and name not in _RESERVED_NAMES)
-        keys = sorted(set((name, ()) for name in names) | set(self._annotations),
-                      key=lambda key: (key not in self._annotations, key[0], json.dumps(key[1])))
+        reads: set[tuple[str, tuple[str | int, ...]]] = set()
+        pending: deque[tuple[str, tuple[str | int, ...], Any]] = deque(
+            (name, (), self._namespace[name]) for name in names[:128])
+        seen: set[int] = set()
+        # ponytail: scan 128 roots/512 values, 64 children and eight levels;
+        # use targeted state.describe or rebind nearer values beyond discovery.
+        for _ in range(512):
+            if not pending:
+                break
+            name, selector, value = pending.popleft()
+            if id(value) in seen:
+                continue
+            if id(value) in self._sources:
+                try:
+                    item = self.describe(name, selector)
+                except KeyError:
+                    continue
+                if item.get("read_reference"):
+                    reads.add((name, selector))
+                    seen.add(id(value))
+                    continue  # Do not repeat the same capture's data/text children.
+            if len(selector) >= 8:
+                continue
+            if type(value) is dict:
+                if len(value) > 1024 or any(type(key) is not str and type(key) is not int for key in value):
+                    continue
+                children = islice(value.items(), 64)
+            elif type(value) is list or type(value) is tuple:
+                children = enumerate(value[:64])
+            else:
+                continue
+            seen.add(id(value))
+            for key, child in children:
+                if len(pending) >= 512:
+                    break
+                if ((type(key) is str and len(key.encode(errors="replace")) > 128)
+                        or (type(key) is int and key.bit_length() > 256)):
+                    continue
+                pending.append((name, (*selector, key), child))
+        keys = sorted(set((name, ()) for name in names) | set(self._annotations) | reads,
+                      key=lambda key: (key not in self._annotations, key not in reads, key[0], json.dumps(key[1])))
         result = []
         for name, selector in keys[:64]:
             try:

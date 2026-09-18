@@ -544,6 +544,50 @@ class SkeinHarnessFactory:
         plugin_owns_handoff = canonical_ledger is not None and (
             config.memory.context_programs.mode == "active" or config.context.window_management
         )
+        context_plugin: ContextWindowPlugin | None = None
+        if plugin_owns_handoff:
+            assert canonical_ledger is not None
+            receipt_store = ToolReceiptStore(settings.state_root / "managed-tools.db")
+
+            def context_handoff(task: TaskLedger) -> dict[str, Any]:
+                task_id = task.task_id
+                task_events = event_store.read(task_id)
+                observed_paths = [event.payload["read_evidence"]["path"] for event in task_events
+                                  if event.kind in {"capability.completed", "read.observed"}
+                                  and event.payload.get("operation") == "fs.read"
+                                  and event.payload.get("status") == "ok"
+                                  and isinstance(event.payload.get("read_evidence"), dict)]
+                focus = tuple(dict.fromkeys(filter(None, (
+                    task.current_step_id, *(row.criterion_id for row in task.criterion_rows),
+                    *observed_paths[-12:], *task.files_modified,
+                ))))[:64]
+                details: dict[str, Any] = memory_service(task_id).handoff(focus=focus)
+                if config.memory.context_programs.mode != "active":
+                    details = {"memory": "not model-accessible"}
+                    if worker.kernel_status is not None:
+                        details["retrieval"] = (
+                            "Memory commands are disabled; do not call memory query/history/note. "
+                            "PTC artifacts remain available: agent.artifacts.load(artifact_uri), "
+                            "agent.artifacts.list(); agent.help('artifacts.load', details=True) gives "
+                            "exact byte paging and saved-result decoding. Recovered evidence is historical, "
+                            "not proof of current source freshness."
+                        )
+                unresolved = unresolved_execution(task_events, receipt_store.for_task(task_id))
+                details["unresolved_effects"] = {
+                    "count": len(unresolved),
+                    "operations": unresolved[:16],
+                }
+                if worker.kernel_status is not None:
+                    details["kernel"] = worker.kernel_status()
+                return details
+
+            context_plugin = ContextWindowPlugin(
+                events=event_store, ledger=canonical_ledger, config=config.context,
+                handoff=context_handoff, known_secrets=tuple(known_secrets),
+                require_notes=config.memory.working_notes,
+                refresh_prior=bool(prior_tasks) and config.memory.context_programs.mode == "active",
+                max_tool_result_bytes=config.notebook_ptc.max_output_bytes,
+            )
         deps = SkeinWorkflowDependencies(
             settings=settings,
             event_store=event_store,
@@ -585,6 +629,7 @@ class SkeinHarnessFactory:
             steering_enabled=config.steering.enabled,
             steering_at_work_batch_boundary=("work_batch_boundary" in config.steering.safe_points),
             plugin_owns_handoff=plugin_owns_handoff,
+            work_batch_handoff=context_plugin.work_batch_handoff if context_plugin is not None else None,
             approvals=approvals,
         )
         root_agent = build_root_agent(deps)
@@ -614,42 +659,8 @@ class SkeinHarnessFactory:
                 ),
             ]
         )
-        if plugin_owns_handoff:
-            assert canonical_ledger is not None
-            receipt_store = ToolReceiptStore(settings.state_root / "managed-tools.db")
-
-            def context_handoff(task: TaskLedger) -> dict[str, Any]:
-                task_id = task.task_id
-                focus = tuple(dict.fromkeys(filter(None, (
-                    task.current_step_id, *(row.criterion_id for row in task.criterion_rows),
-                    *task.files_modified,
-                ))))[:64]
-                details: dict[str, Any] = memory_service(task_id).handoff(focus=focus)
-                if config.memory.context_programs.mode != "active":
-                    details = {"memory": "not model-accessible"}
-                    if worker.kernel_status is not None:
-                        details["retrieval"] = (
-                            "Memory commands are disabled; do not call memory query/history/note. "
-                            "PTC artifacts remain available: agent.artifacts.load(artifact_uri), "
-                            "agent.artifacts.list(); agent.help('artifacts.load', details=True) gives "
-                            "exact byte paging and saved-result decoding. Recovered evidence is historical, "
-                            "not proof of current source freshness."
-                        )
-                unresolved = unresolved_execution(event_store.read(task_id), receipt_store.for_task(task_id))
-                details["unresolved_effects"] = {
-                    "count": len(unresolved),
-                    "operations": unresolved[:16],
-                }
-                if worker.kernel_status is not None:
-                    details["kernel"] = worker.kernel_status()
-                return details
-
-            plugins.insert(plugins.index(metrics_plugin), ContextWindowPlugin(
-                events=event_store, ledger=canonical_ledger, config=config.context,
-                handoff=context_handoff,
-                known_secrets=tuple(known_secrets),
-                require_notes=config.memory.working_notes,
-            ))
+        if context_plugin is not None:
+            plugins.insert(plugins.index(metrics_plugin), context_plugin)
         elif canonical_ledger is not None and config.memory.context_programs.mode == "shadow":
             plugins.insert(plugins.index(metrics_plugin), MemoryShadowPlugin(
                 probe=lambda task_id: memory_service(task_id).shadow()

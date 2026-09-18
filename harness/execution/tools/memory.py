@@ -33,6 +33,10 @@ _NOTE_LOCK = threading.RLock()
 class _NoteRejected(ValueError):
     """Invalid note input rejected before any canonical mutation."""
 
+    def __init__(self, message: str, *, recovery: dict[str, str] | None = None) -> None:
+        super().__init__(message)
+        self.recovery = recovery
+
 
 def _public_note(event: Any) -> dict[str, Any]:
     return {"status": "ok", "event_id": event.event_id,
@@ -51,7 +55,13 @@ def _merge_findings(
     known = set(entries) | {item.id for item in updates}
     for finding in updates:
         if not set(finding.evidence_refs) <= available.keys():
-            raise _NoteRejected("finding cites unavailable public task evidence")
+            raise _NoteRejected("finding cites unavailable public task evidence", recovery={
+                "strategy": "reference_in_place", "local_note_scope": "current_task_public_evidence_only",
+                "guidance": "Prior findings remain durable in their source task; use their source_note_command "
+                            "or the authorized working_set query when recovery is needed. Do not checkpoint a "
+                            "duplicate or turn foreign IDs into local citations. Save new current-task learning "
+                            "with current-task evidence; unsupported conclusions remain hypotheses.",
+            })
         if not set((*finding.supersedes, *finding.conflicts_with)) <= known:
             raise _NoteRejected("finding links an unknown finding ID")
         dependencies = {}
@@ -147,7 +157,7 @@ class ContextProgramService:
         if self.mode != "active" or not self.working_notes:
             return {"status": "denied", "reason": "working notes disabled", "effect": "none"}
         contract = {
-            "version": 3, "input_schema": WorkingNoteInput.model_json_schema(),
+            "version": 4, "input_schema": WorkingNoteInput.model_json_schema(),
             "command": "memory note write --text TEXT --expected-version N --operation-id ID [--evidence IDS] [--entries JSON]",
             "encoding": "Quote TEXT and JSON with shlex.quote. --evidence is comma-separated public event IDs; --entries is a JSON array, not the whole input object.",
             "budget_bytes": min(self.max_result_bytes // 2, 8000),
@@ -163,6 +173,7 @@ class ContextProgramService:
                 "Writes merge by ID; revise the same finding under its existing ID, not a parallel *_current entry. New IDs represent distinct findings; omitted entries remain. At most 64 merged entries; update IDs must be unique.",
                 "Finding text must be nonblank and at most 2000 UTF-8 bytes. Each link list must be unique; links must be nonempty and at most 4096 UTF-8 bytes each.",
                 "An observation requires evidence_refs. Evidence must be exposed public task evidence: event IDs or read_reference artifact URIs; --evidence accepts event IDs only.",
+                "Prior findings are reused in place, not copied into this note. Their working_set reuse.source_note_command recovers the exact authorized source note. Checkpoint only new current-task learning; foreign IDs are not local evidence.",
                 "supersedes/conflicts_with must name existing or same-update finding IDs, never self. Supersession chains need separate revisions; superseded findings cannot be disputed.",
                 "The byte budget covers the complete canonical note after merging, redaction, and attached source dependencies, not just input text. Oversize rejection retains the last checkpoint.",
                 "Reuse an operation ID only for the identical retry. Version conflicts require rereading the note; changed content requires a new operation ID.",
@@ -250,6 +261,15 @@ class ContextProgramService:
             sources = tuple(dict.fromkeys((self.task_id, *self.runtime.authorized_tasks)))[:16]
             if len(sources) > 1:
                 hints.append("authorized source tasks: " + ",".join(sources) + "; use --tasks TASK with retrieval; prior findings are not current workspace evidence")
+                if self.programs is None or self.programs.get("working_set") == 1:
+                    hints.append("For prior reuse, query working_set with --tasks TASK --focus PATH1,PATH2. "
+                                 "consumer_versions distinguishes last completed current-task version observations from producer provenance. "
+                                 "When permitted by the current task, a bounded fs.read (one line) establishes a full-file hash, not missing content. "
+                                 "After matching identity, reuse captured ranges/findings; acquire missing or changed ranges. "
+                                 "Matching observations do not verify a finding or reconcile unknown effects. "
+                                 "Prior findings are already durable: reuse them in place; source_note_command "
+                                 "recovers their exact source note. Checkpoint new local learning, not duplicate "
+                                 "prior findings or foreign citations.")
             details = {"memory": self.mode, "note": {key: value for key, value in note.items()
                                                     if key in {"status", "version", "event_id"}},
                        "note_excerpt": str(note.get("text", "")), "retrieval": "; ".join(hints)}
@@ -353,7 +373,8 @@ class ContextProgramService:
             return self._query(options, program)
         except (ValueError, KeyError, IndexError, OSError, TimeoutError, OverflowError) as exc:
             return {"status": "unavailable", "reason": self.redactor.redact_text(str(exc))[:512],
-                    "effect": "none" if not dispatched or isinstance(exc, _NoteRejected) else "unknown"}
+                    "effect": "none" if not dispatched or isinstance(exc, _NoteRejected) else "unknown",
+                    **({"recovery": exc.recovery} if isinstance(exc, _NoteRejected) and exc.recovery else {})}
 
     def shadow(self) -> dict[str, Any]:
         """Fixed read-only probe; caller must not insert its output in model input."""

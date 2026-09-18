@@ -30,6 +30,7 @@ from harness.core.config import (
     parse_harness_composition,
 )
 from harness.evidence.state import EventKind, JsonlEventStore
+from harness.evidence.state.recovery import unresolved_execution
 from harness.execution.safety.redaction import SecretRedactor
 from harness.execution.tools.adk_adapter import AdkCodingTools, create_adk_tools
 
@@ -1112,13 +1113,36 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
         denied = await worker.execute_code(
             "agent.artifacts.load('artifact://sha256/' + ('0' * 64))"
         )
+        from harness.ptc.notebook import put_artifact
+
+        foreign = put_artifact(state_root / "artifacts" / "sha256", b"unreferenced foreign payload")
+        denied_existing = await worker.execute_code(f"agent.artifacts.load({foreign!r})")
+        assert "unreferenced foreign payload" not in json.dumps(denied_existing)
+        assert denied_existing["effect"] == "none"
         denied_name = await worker.execute_code("agent.artifacts.publish('x', '../../')")
+        invalid = await worker.execute_code(
+            "for args in [{'uri': 'artifact://sha256/abc...'}, {'uri': {}},\n"
+            "             {'uri': uri, 'offset': -1}, {'uri': uri, 'offset': True},\n"
+            "             {'uri': uri, 'limit': 0}, {'uri': uri, 'limit': True}]:\n"
+            "    r = agent.artifacts.load(**args)\n"
+            "    assert r['status'] == 'error' and r['effect'] == 'none', r\n"
+            "assert agent.artifacts.publish('x', 'valid', 'x' * 501)['effect'] == 'none'\n"
+        )
+        assert invalid["status"] == "ok", invalid
+        assert not unresolved_execution(events.read("task"))
+        recovered = await worker.execute_code(
+            "items = agent.artifacts.list()['data']['artifacts']\n"
+            "exact_uri = next(item['uri'] for item in items if item['uri'] == uri)\n"
+            "assert agent.artifacts.load(exact_uri)['status'] == 'ok'\n"
+        )
+        assert recovered["status"] == "ok", recovered
         read_event = next(event for event in events.read("task")
                           if event.kind == EventKind.CAPABILITY_COMPLETED and
                           event.payload.get("operation") == "fs.read")
         uri = read_event.payload["result_artifact_uri"]
         (state_root / "artifacts" / "sha256" / uri.rsplit("/", 1)[-1]).write_bytes(b"corrupt")
         corrupt = await worker.execute_code(f"agent.artifacts.load({uri!r})")
+        assert {"capability", "cell"} <= {r["kind"] for r in unresolved_execution(events.read("task"))}
     finally:
         assert worker.close is not None
         worker.close()
@@ -1136,6 +1160,37 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
     assert len(publish_events) == 2
     assert publish_events[0].payload["artifact_uri"] == publish_events[1].payload["artifact_uri"]
     assert publish_events[0].payload["host_visible"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("published", (False, True))
+async def test_artifact_publication_failure_retains_unknown_effect(tmp_path, monkeypatch, published):
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(tmp_path / "state" / "events")
+    append = events.append
+
+    def interrupted(task_id, kind, payload, **kwargs):
+        if kind == EventKind.ARTIFACT_PUBLISHED:
+            if published:
+                append(task_id, kind, payload, **kwargs)
+            raise OSError("fixture publication interrupted")
+        return append(task_id, kind, payload, **kwargs)
+
+    monkeypatch.setattr(events, "append", interrupted)
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
+        cast(BaseLlm, "test-model"), ptc_config=config.notebook_ptc, event_store=events,
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        result = await worker.execute_code("agent.artifacts.publish({'value': 42}, 'Fixture')")
+        assert result["effect"] == "unknown", result
+        assert {"capability", "cell"} <= {r["kind"] for r in unresolved_execution(events.read("task"))}
+        assert sum(e.kind == EventKind.ARTIFACT_PUBLISHED for e in events.read("task")) == int(published)
+    finally:
+        worker.close()
 
 
 @pytest.mark.asyncio
@@ -1184,12 +1239,14 @@ async def test_artifact_byte_pages_roundtrip_unicode_and_binary_without_redactio
         )
         assert "artifact requires redaction" in denied["model_text"]
         assert "private-fixture-token" not in json.dumps(denied)
+        assert denied["effect"] == "observed"  # Publication succeeded; denied loading added no effect.
     finally:
         worker.close()
 
 
 @pytest.mark.asyncio
-async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_path: Path) -> None:
+@pytest.mark.parametrize("nested", (False, True))
+async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_path: Path, nested: bool) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     (workspace / "note.txt").write_text("historical source\n")
@@ -1206,10 +1263,16 @@ async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_
     )
     assert worker.execute_code is not None
     try:
-        await worker.execute_code(
-            "source = agent.fs.read('note.txt')\n"
-            "agent.state.annotate('source', 'Module needed for the next edit')"
-        )
+        if nested:
+            initial = await worker.execute_code(
+                "reads = agent.parallel([{'operation': 'fs.read', 'arguments': {'path': 'note.txt'}}])")
+            assert initial["status"] == "ok", initial
+            assert '"access_expression":"reads[0]"' in initial["model_text"]
+            assert "historical source" not in initial["model_text"]
+            await worker.execute_code("source = reads[0]")
+        else:
+            await worker.execute_code("source = agent.fs.read('note.txt')")
+        await worker.execute_code("agent.state.annotate('source', 'Module needed for the next edit')")
         description = await worker.execute_code("agent.state.describe('source')")
         citation = await worker.execute_code(
             "contract = agent.help('fs.read', details=True)['fs.read']['result']\n"

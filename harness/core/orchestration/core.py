@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from enum import StrEnum
 
 from harness.core.context import estimate_tokens, truncate_to_tokens
+from harness.core.context.compiler import ContextBudgetExceeded
 from harness.core.models.agent_step import AgentStep
 from harness.core.models.ledger import TaskLedger
 from harness.core.models.task import CriterionRow, TaskRequest, criterion_id
@@ -168,12 +169,17 @@ def build_work_packet(
     conversation: str = "",
     repository_manifest: str = "",
     compaction_summary: str = "",
+    evidence_navigation: str = "",
     recent_events: Iterable[str] = (),
     steering_messages: Iterable[str] = (),
     max_tokens: int = 20_000,
     section_token_limits: dict[str, int] | None = None,
 ) -> str:
-    """Build deterministic dynamic input after the cache-stable system prefix."""
+    """Reserve complete control first; section targets bound optional detail.
+
+    Required sections may exceed their preferred allocation, never the packet
+    ceiling. No JSON or active instruction is head/tail-spliced to make it fit.
+    """
 
     limits = {
         "TASK": 2_000,
@@ -185,27 +191,62 @@ def build_work_packet(
         "USER STEERING": 1_000,
     }
     limits.update(section_token_limits or {})
+    projection = ledger.compact_projection()
+    optional_fields = ("latest_validation", "files_in_focus", "files_modified",
+                       "completed_step_ids", "recent_progress", "open_questions")
+    task = {key: value for key, value in projection.items() if key not in optional_fields}
+    task.update(packet_version="work_packet@3", permitted_paths=ledger.permitted_paths,
+                forbidden_paths=ledger.forbidden_paths,
+                verification_requirements=ledger.verification_requirements,
+                verification_level=ledger.verification_level,
+                omitted_fields=list(optional_fields))
+
+    def task_text(value: dict[str, object]) -> str:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
     sections: list[tuple[str, str]] = [
-        ("TASK", json.dumps(ledger.compact_projection(), sort_keys=True, indent=2)),
+        ("TASK", task_text(task)),
         ("CONVERSATION", conversation),
         ("SELECTED SKILLS", selected_skills.strip()),
         ("REPOSITORY MANIFEST", repository_manifest.strip()),
         ("COMPACTED HISTORY", compaction_summary.strip()),
+        ("EVIDENCE NAVIGATION", evidence_navigation.strip()),
         ("RECENT EVENTS", "\n".join(recent_events).strip()),
         ("USER STEERING", "\n".join(steering_messages).strip()),
     ]
-    rendered: list[str] = []
+    required = {"TASK", "SELECTED SKILLS", "COMPACTED HISTORY", "EVIDENCE NAVIGATION", "USER STEERING"}
+    rendered = {title: f"## {title}\n{body}" for title, body in sections if body and title in required}
+
+    def packet(values: dict[str, str]) -> str:
+        return "\n\n".join(values[title] for title, _ in sections if title in values)
+
+    required_tokens = estimate_tokens(packet(rendered))
+    if required_tokens > max_tokens:
+        raise ContextBudgetExceeded(required_tokens, max_tokens)
+    for field in optional_fields:
+        candidate = {**task, field: projection[field]}
+        candidate["omitted_fields"] = [key for key in optional_fields if key not in candidate]
+        body = task_text(candidate)
+        proposed = {**rendered, "TASK": f"## TASK\n{body}"}
+        if estimate_tokens(body) <= limits["TASK"] and estimate_tokens(packet(proposed)) <= max_tokens:
+            task, rendered = candidate, proposed
     for title, body in sections:
-        if not body:
+        if not body or title in required:
             continue
-        bounded, truncated = truncate_to_tokens(body, max(limits[title], 0))
+        header = f"## {title}\n"
+        available = (max_tokens * 4 - len(packet(rendered)) - len(header) - 2) // 4
+        limit = max(0, min(limits[title], available))
+        if limit <= 0:
+            continue
+        bounded, truncated = truncate_to_tokens(body, limit)
         if truncated:
-            bounded += f"\n[{title.lower()} truncated to configured budget]"
-        rendered.append(f"## {title}\n{bounded}")
-    packet = "\n\n".join(rendered)
-    if estimate_tokens(packet) > max_tokens:
-        packet, _ = truncate_to_tokens(packet, max_tokens)
-    return packet
+            marker = f"\n[{title.lower()} truncated to configured budget]"
+            if estimate_tokens(marker) >= limit:
+                continue
+            bounded, _ = truncate_to_tokens(body, limit - estimate_tokens(marker))
+            bounded += marker
+        rendered[title] = header + bounded
+    return packet(rendered)
 
 
 def replan_ledger(ledger: TaskLedger) -> TaskLedger:

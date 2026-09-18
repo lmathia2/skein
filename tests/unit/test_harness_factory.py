@@ -203,10 +203,12 @@ async def test_handoff_owner_matches_installed_context_plugin(tmp_path, monkeypa
     try:
         plugin_present = any(isinstance(p, ContextWindowPlugin) for p in assembly.app.plugins)
         assert captured["deps"].plugin_owns_handoff == plugin_present == (mode == "active" or windows)
+        assert (captured["deps"].work_batch_handoff is not None) is plugin_present
         if plugin_present:
             names = [p.name for p in assembly.app.plugins]
             assert names.index("context_windows") < next(i for i, name in enumerate(names) if "metrics" in name)
             plugin = next(p for p in assembly.app.plugins if isinstance(p, ContextWindowPlugin))
+            assert captured["deps"].work_batch_handoff == plugin.work_batch_handoff
             handoff = plugin.handoff(SimpleNamespace(task_id="task", current_step_id=None,
                                                      criterion_rows=(), files_modified=()))
             if mode != "active":

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from harness.core.context import estimate_tokens
+from harness.core.context.compiler import ContextBudgetExceeded
 from harness.core.models.agent_step import AgentStep, CompletionClaim, CriterionProposal
 from harness.core.models.task import TaskPhase, TaskRequest, criterion_id
 from harness.core.orchestration import (
@@ -171,11 +173,12 @@ def test_work_packet_is_deterministic_and_steering_is_last() -> None:
 def test_work_packet_enforces_section_and_total_token_budgets() -> None:
     packet = build_work_packet(
         _ledger(),
-        selected_skills="instructions " * 10_000,
+        selected_skills="Required skill instruction stays whole.",
         repository_manifest="manifest " * 10_000,
-        compaction_summary="history " * 10_000,
+        compaction_summary="Required continuation stays whole.",
+        evidence_navigation="Completed evidence navigation stays whole.",
         recent_events=["event " * 10_000],
-        steering_messages=["steer " * 10_000],
+        steering_messages=["Do not change the API."],
         max_tokens=1_000,
         section_token_limits={
             "TASK": 100,
@@ -189,6 +192,48 @@ def test_work_packet_enforces_section_and_total_token_budgets() -> None:
 
     assert estimate_tokens(packet) <= 1_000
     assert "truncated to configured budget" in packet
+    assert "Required skill instruction stays whole." in packet
+    assert "Required continuation stays whole." in packet
+    assert "Completed evidence navigation stays whole." in packet
+    assert packet.endswith("Do not change the API.")
+
+
+def test_task_control_is_whole_when_optional_progress_and_section_target_do_not_fit():
+    from app.agent.workflow import _criterion_review_action
+    ledger = create_initial_ledger(TaskRequest(
+        goal="Keep this complete requirement. " * 25,
+        constraints=["No network"], permitted_paths=["answer.json"], forbidden_paths=["oracle/**"],
+        verification_requirements=["independent-check"], verification_level="behavioral"),
+        task_id="task", base_revision="abc", workspace_id="workspace", branch_id="main")
+    ledger.phase = TaskPhase.REVIEW
+    ledger.next_action = _criterion_review_action(ledger, AgentStep(status="verify"))
+    ledger.progress = ["large old progress " * 10_000]
+    original = ledger.model_dump_json()
+    packet = build_work_packet(ledger, max_tokens=2000, section_token_limits={"TASK": 600})
+    task = json.loads(packet.removeprefix("## TASK\n"))
+    assert task["packet_version"] == "work_packet@3"
+    assert task["next_action"] == ledger.next_action
+    assert task["goal"] == ledger.goal and task["acceptance_criteria"] == ledger.acceptance_criteria
+    assert task["criterion_rows"] == [r.model_dump(mode="json") for r in ledger.criterion_rows]
+    for field in ("constraints", "permitted_paths", "forbidden_paths", "verification_requirements", "verification_level"):
+        assert task[field] == getattr(ledger, field)
+    assert "recent_progress" in task["omitted_fields"] and "recent_progress" not in task
+    assert "section truncated" not in packet and estimate_tokens(packet) <= 2000
+    assert build_work_packet(ledger, max_tokens=2000, section_token_limits={"TASK": 600}) == packet
+    assert ledger.model_dump_json() == original
+
+
+@pytest.mark.parametrize("oversized", ("task", "selected_skills", "compaction_summary", "evidence_navigation", "steering_messages"))
+def test_required_packet_overflow_never_returns_partial_instructions(oversized):
+    ledger = _ledger()
+    kwargs = {}
+    if oversized == "task":
+        ledger.next_action = "required instruction " * 1000
+    else:
+        kwargs[oversized] = ["required steering " * 1000] if oversized == "steering_messages" else "required context " * 1000
+    with pytest.raises(ContextBudgetExceeded) as caught:
+        build_work_packet(ledger, max_tokens=1000, **kwargs)
+    assert caught.value.required_tokens > caught.value.budget_tokens == 1000
 
 
 def test_adk_tool_adapter_exposes_four_working_tools(

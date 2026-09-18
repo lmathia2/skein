@@ -33,7 +33,7 @@ def test_note_schema_matches_write_validation_and_is_bounded_read_only(tmp_path)
     before = service.ledger.read("task")
     response = service.execute("memory note schema")
     assert response["status"] == "ok" and response["effect"] == "none"
-    assert response["version"] == 3
+    assert response["version"] == 4
     assert response["input_schema"] == WorkingNoteInput.model_json_schema()
     assert response["budget_bytes"] == 8000
     contract = {k: v for k, v in response.items() if k not in {"status", "effect", "contract_sha256"}}
@@ -221,6 +221,85 @@ def test_working_set_relevance_whole_entry_budget_and_prior_authorization(tmp_pa
     ).status == "denied"
     service.ledger.erase_task("task")
     assert other.runtime.compute(request.model_copy(update={"task_id": "other", "source_tasks": ("task",)})).status == "unavailable"
+
+
+def test_prior_working_set_tracks_consumer_versions_without_selecting_consumer_notes(tmp_path):
+    source, event, uri = service_at(tmp_path, task="producer")
+    write(source, [{"id": "policy", "kind": "observation", "text": "Prior learned policy", "evidence_refs": [uri]}])
+    consumer = ContextProgramService(source.ledger, "consumer", authorized_tasks=("producer",), working_notes=True)
+    write(consumer, [{"id": "private_to_selection", "kind": "hypothesis", "text": "Unselected consumer note"}])
+    request = ViewRequest(task_id="consumer", program="working_set", source_tasks=("producer",))
+    initial = consumer.runtime.compute(request)
+    initial_consumer_time = source.ledger.read("consumer")[-1].recorded_at
+    assert set(initial.source_manifest) == {"producer", "consumer"}
+    assert [i["finding"]["id"] for i in initial.data["findings"]] == ["policy"]
+    item = initial.data["findings"][0]
+    assert item["consumer_versions"]["status"] == "unobserved"
+    assert item["consumer_versions"]["sources"] == []  # No invented observation from the producer's hash.
+    assert initial == consumer.runtime.compute(request)
+    producer_manifest = initial.source_manifest["producer"]
+
+    def observe(identity, digest):
+        return source.ledger.append(task_id="consumer", source="harness", source_id=identity, kind="read.observed",
+            payload={"operation": "fs.read", "status": "ok", "read_evidence": {
+                **event.payload["read_evidence"], "sha256": digest, "offset": 1, "returned_lines": 1}})
+
+    observed = observe("identity", "b" * 64)
+    matching = consumer.runtime.compute(request)
+    item = matching.data["findings"][0]
+    assert item["consumer_versions"]["status"] == "matching_observations"
+    assert item["consumer_versions"]["task_id"] == "consumer"
+    assert item["consumer_versions"]["sources"][0]["observation_sequence"] == observed.sequence
+    assert item["applicability"] == "prior_run_version_observed"
+    assert item["authority"] == "advisory"
+    assert item["source_dependencies"] == initial.data["findings"][0]["source_dependencies"]
+    assert matching.source_manifest["producer"] == producer_manifest
+    assert matching.source_manifest["consumer"] != initial.source_manifest["consumer"]
+    assert matching.content_hash != initial.content_hash
+    historical = consumer.runtime.compute(request.model_copy(update={"recorded_before": initial_consumer_time}))
+    assert historical.data["findings"][0]["consumer_versions"]["status"] == "unobserved"
+    limited = consumer.runtime.compute(request.model_copy(update={"max_scan_events": 1}))
+    assert limited.status == "partial" and "findings" not in limited.data
+    assert consumer.runtime.compute(request.model_copy(update={"watermark": 1})).data["findings"] == []
+
+    observe("changed", "c" * 64)
+    changed = consumer.runtime.compute(request).data["findings"][0]
+    assert changed["consumer_versions"]["status"] == "changed_since_capture"
+    assert changed["freshness"] == "historical_snapshot"  # Producer and consumer clocks remain distinct.
+    source.ledger.append(task_id="consumer", source="harness", source_id="unknown", kind="capability.failed",
+                        payload={"operation": "shell.run", "status": "error", "effect": "unknown", "workspace_may_have_changed": True})
+    assert consumer.runtime.compute(request).data["findings"][0]["consumer_versions"]["status"] == "revalidation_required"
+    observe("restored", "b" * 64)
+    assert consumer.runtime.compute(request).data["findings"][0]["consumer_versions"]["status"] == "matching_observations"
+    # This view never reconciles the failed command or proves the consumer learned missing lines.
+
+
+def test_prior_reuse_recovers_exact_source_note_without_admitting_foreign_citations(tmp_path):
+    source, event, uri = service_at(tmp_path, task="producer with spaces")
+    entry = {"id": "policy", "kind": "observation", "text": "Historical policy", "evidence_refs": [uri]}
+    committed = write(source, [entry])
+    consumer = ContextProgramService(source.ledger, "consumer", authorized_tasks=(source.task_id,), working_notes=True)
+    view = consumer.runtime.compute(ViewRequest(task_id="consumer", program="working_set", source_tasks=(source.task_id,)))
+    finding = view.data["findings"][0]
+    assert finding["reuse"]["strategy"] == "reference_in_place"
+    assert finding["reuse"]["local_note_scope"] == "new_current_task_learning"
+    recovered = consumer.execute(finding["reuse"]["source_note_command"])
+    assert recovered["status"] == "ok"
+    assert recovered["evidence_event_ids"] == [committed["event_id"]]
+    assert recovered["data"]["events"][0]["payload"]["entries"][0]["finding"] == source.note_read()["entries"][0]["finding"]
+    before = consumer.note_read()
+    rejected = write(consumer, [entry])
+    assert rejected["effect"] == "none" and rejected["status"] == "unavailable"
+    assert rejected["recovery"]["strategy"] == "reference_in_place"
+    assert rejected["recovery"]["local_note_scope"] == "current_task_public_evidence_only"
+    assert consumer.note_read() == before
+    # Recovered source prose and a source-note command do not widen authorization.
+    denied = ContextProgramService(source.ledger, "outsider", working_notes=True).execute(finding["reuse"]["source_note_command"])
+    assert denied["status"] == "denied" and not denied.get("evidence_event_ids")
+    local = source.ledger.append(task_id="consumer", source="harness", source_id="current-read", kind="read.observed",
+                                payload={**event.payload, "result_artifact_uri": "artifact://sha256/" + "d" * 64})
+    accepted = write(consumer, [{**entry, "evidence_refs": [local.event_id]}], operation="local")
+    assert accepted["status"] == "ok"
 
 
 def test_bounds_redaction_and_failed_update_keep_last_checkpoint(tmp_path):

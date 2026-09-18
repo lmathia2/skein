@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import time
 from collections.abc import AsyncGenerator, Callable
@@ -92,6 +93,7 @@ class SkeinWorkflowDependencies:
     steering_enabled: bool
     steering_at_work_batch_boundary: bool
     plugin_owns_handoff: bool = False
+    work_batch_handoff: Callable[[TaskLedger, str], str] | None = None
     approvals: ApprovalWaiter | None = None
     replies: PublicReplies | None = None
 
@@ -171,7 +173,51 @@ _LEDGER_DUPLICATE_EVENT_KINDS = {
     EventKind.LEDGER_PATCHED,
     EventKind.CHECKPOINT_CREATED,
     EventKind.MESSAGE_RECORDED,
+    EventKind.EVIDENCE_NAVIGATION_CREATED,
+    EventKind.PRIOR_APPLICABILITY_CREATED,
+    EventKind.STEERING_RECEIVED,
 }
+
+
+def _render_received_steering(deps: SkeinWorkflowDependencies, task_id: str) -> str:
+    """Retain delivered instructions; queue acknowledgement is not supersession."""
+    events = deps.event_store.read(task_id)
+    messages: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if event.task_id != task_id:
+            raise ValueError("steering history task identity mismatch")
+        if event.kind != EventKind.STEERING_RECEIVED:
+            continue
+        message_id, content = event.payload.get("message_id"), event.payload.get("content")
+        if not isinstance(message_id, str) or not message_id or not isinstance(content, str) or not content:
+            raise ValueError("invalid delivered steering evidence")
+        if message_id in messages:
+            if messages[message_id]["content"] != content:
+                raise ValueError("conflicting delivered steering identity")
+            continue
+        messages[message_id] = {
+            "event_id": event.event_id, "sequence": event.sequence,
+            "message_id": message_id, "content": content,
+        }
+    if not messages:
+        return ""
+    payload = {
+        "program": "delivered_steering@1",
+        "program_hash": hashlib.sha256(inspect.getsource(_render_received_steering).encode()).hexdigest(),
+        "task_id": task_id,
+        "source_clock": {"task_harness_event_sequence": max(event.sequence for event in events)},
+        "messages": sorted(messages.values(), key=lambda message: message["sequence"]),
+        "omitted_count": 0,
+    }
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    payload["content_hash"] = hashlib.sha256(body.encode()).hexdigest()
+    return (
+        "Delivered user instructions in delivery order, not a new request to execute them again. "
+        "Later instructions take precedence where they conflict; retain other requirements and constraints. "
+        "Delivery acknowledgement is not proof that an action completed. Use completed evidence to establish "
+        "which prerequisites were satisfied and continue the current requested outcome.\n"
+        + json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    )
 
 
 def _render_recent_events(deps: SkeinWorkflowDependencies, task_id: str) -> list[str]:
@@ -218,7 +264,11 @@ def _criterion_review_action(ledger: TaskLedger, step: AgentStep) -> str:
         for row in ledger.criterion_rows
     ]
     return (
-        "Perform the single criterion-gap review. Preserve the complete original requirements. "
+        "Perform the single criterion-gap review against the current requested outcome, including "
+        "the ordered USER STEERING. Preserve original requirements unless newer user instructions "
+        "explicitly supersede them. Audit completed prerequisite actions from their execution evidence; "
+        "do not re-execute a satisfied preparation or acknowledgement merely because it remains in "
+        "the original goal. Missing or unknown evidence is still a gap. "
         "Try to falsify weak or missing rows with omitted, default, boundary, and interacting "
         "inputs. For stateful or transition requirements, test both the requested transition and "
         "histories where its prerequisite was never reached. Fix confirmed defects and return "
@@ -1188,7 +1238,6 @@ async def _orchestrate_owned(
             if deps.steering_enabled and deps.steering_at_work_batch_boundary
             else []
         )
-        steering = [message.content for message in leased]
         for message in leased:
             deps.event_store.append(
                 task_id,
@@ -1204,8 +1253,10 @@ async def _orchestrate_owned(
             selected_skills=skill_runtime.text,
             repository_manifest=manifest.to_compact_text(),
             compaction_summary="" if deps.plugin_owns_handoff else compaction_summary,
+            evidence_navigation=deps.work_batch_handoff(ledger, ctx.get_invocation_context().invocation_id)
+            if deps.work_batch_handoff is not None else "",
             recent_events=_render_recent_events(deps, task_id),
-            steering_messages=steering,
+            steering_messages=[_render_received_steering(deps, task_id)],
             max_tokens=deps.work_packet_tokens,
             section_token_limits=deps.work_packet_section_tokens,
         )

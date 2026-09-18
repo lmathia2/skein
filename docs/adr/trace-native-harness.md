@@ -460,6 +460,24 @@ lineage. Preview/fingerprinting does not call arbitrary `repr`, properties, iter
 or serialization hooks. The catalog does not track every transformation or establish
 current workspace freshness; read references remain historical snapshots.
 
+Automatic catalog discovery now navigates plain-container bindings to registered
+read values, so a parallel result retained only as `reads` can expose `reads[0]`
+with its original attested source/range and exact inspection recipe. It reuses the
+same identity/fingerprint check as explicit describe; it does not infer lineage
+from copied text or self-authored receipt fields. Identical object aliases share
+one automatic nested navigation entry, while explicit selectors remain available.
+Descriptions/annotations retain first priority, then discovered read associations,
+then generic root bindings within the existing 64-entry catalog. Discovery visits
+at most 512 values from the first 128 sorted roots, with a 512-item queue, eight
+selector levels, 64 children per plain container and 128-byte automatic string
+keys. Omitted values require an explicit supported `state.describe` or rebinding
+a nearer intermediate value when the selector would exceed eight levels; this is
+not an exhaustive heap listing. No source contents are previewed by default.
+Completed-cell manifests and existing bounded state-update messages carry these
+entries; mutation/deletion/epoch loss cannot preserve an invalid live association.
+This repairs an observed representation gap, not proof of model reuse or a refreshed
+phase-boundary context packet.
+
 Focused descriptor and notebook integration tests cover these delivered seams. Stage 3
 now separately persists typed evidence-linked findings and explicit corrections in
 versioned memory notes, with a bounded `working_set@1` view; see the
