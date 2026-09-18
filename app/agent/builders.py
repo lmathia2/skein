@@ -45,6 +45,7 @@ class CodingWorkerBundle:
     write: ToolFunction
     execute_code: ToolFunction | None = None
     close: Callable[[], Awaitable[None] | None] | None = None
+    kernel_status: Callable[[], dict[str, Any]] | None = None
 
 
 def build_coding_worker(
@@ -319,6 +320,7 @@ def build_coding_worker(
         write=write,
         execute_code=ptc_session.execute_code if ptc_session is not None else None,
         close=ptc_session.close if ptc_session is not None else None,
+        kernel_status=ptc_session.kernel_status if ptc_session is not None else None,
     )
 
 

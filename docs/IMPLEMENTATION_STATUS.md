@@ -18,6 +18,16 @@ product surfaces and have been removed.
 - `app/agent` composes one ADK coding worker and owns the model/tool loop.
 - `harness/core` owns validated configuration, typed task state, bounded context,
   skill selection, and deterministic orchestration.
+- Opt-in context windows use provider-reported input plus the new-turn delta and support
+  immediate compaction or cache-friendly deferral to sufficiently large semantic
+  task-phase boundaries. The independent context-window ceiling forces a
+  safety compaction; the cumulative task-input budget stops further dispatch.
+  Compaction prefers populated working notes and freezes its handoff per epoch; note
+  absence does not turn recoverable threshold pressure into a plugin exception. Each
+  new handoff also carries a bounded deterministic index of recent read ranges,
+  content hashes, modified paths, and validation receipts.
+  PTC workspace mutations advance the implementation phase; oversized parallel
+  reads return actionable errors without discarding notebook values.
 - `harness/execution` owns all filesystem and command effects, including confinement,
   policy, approvals, redaction, bounded output, receipts, and workspace inspection.
 - `harness/evidence` owns append-only events, canonical ledgers, trace capture,
@@ -38,7 +48,8 @@ product surfaces and have been removed.
 - Conservative replay-safe recovery remains the shipped default. A bounded
   primitive/container snapshot policy is available only as an experimental opt-in.
 - `harness/verification` owns acceptance checks and the final complete/retry/blocked
-  decision. Model completion claims are never authoritative.
+  decision. Model completion claims are never authoritative, and coding-mode tasks
+  cannot complete without a changed repository path.
 - `harness/adapters` contains external boundary code only: Google ADK integration,
   supported model providers, and the Pier task-environment adapter.
 - `evals` contains frozen manifests, campaign execution, and result analysis. It is

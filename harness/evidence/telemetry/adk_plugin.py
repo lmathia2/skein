@@ -16,9 +16,15 @@ from typing import Any
 
 from google.adk.plugins.base_plugin import BasePlugin
 
+from harness.core.context.compiler import estimate_model_tokens
+
 from .metrics import MetricsStore, ModelUsageSample, TaskOutcomeSample, ToolUsageSample
 
 LOGGER = logging.getLogger(__name__)
+
+
+class TaskInputBudgetExceeded(RuntimeError):
+    """No model request was dispatched because its input reservation would exceed budget."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,9 +403,14 @@ class HarnessMetricsPlugin(BasePlugin):
             _context_value(callback_context, "task_input_token_limit", 0)
         )
         used_input = int(self.store.task_summary(task_id)["input_tokens"] or 0)
-        if input_limit and used_input >= input_limit:
-            raise RuntimeError(
-                f"Task input-token budget exhausted ({used_input} used, {input_limit} allowed)"
+        estimated_input = (
+            estimate_model_tokens(llm_request, exclude={"tools_dict"})
+            if hasattr(llm_request, "model_dump_json") else 0
+        )
+        if input_limit and used_input + estimated_input >= input_limit:
+            raise TaskInputBudgetExceeded(
+                f"Task input-token budget exhausted ({used_input} used, "
+                f"{estimated_input} estimated next input, {input_limit} allowed)"
             )
         prefix_hash = str(
             _context_value(
@@ -470,6 +481,9 @@ class HarnessMetricsPlugin(BasePlugin):
         if response_model:
             model = str(response_model)
         counts = usage_counts(llm_response)
+        state = getattr(callback_context, "state", None)
+        if state is not None:
+            state["context_provider_input_tokens"] = counts["input_tokens"]
         pricing = self.pricing.get(model, ModelPricing())
         exact_cost = reported_cost(llm_response)
         profile = metadata.get("provider_request_profile", {}) if isinstance(metadata, Mapping) else {}
@@ -511,7 +525,11 @@ class HarnessMetricsPlugin(BasePlugin):
         llm_request: Any,
         error: Exception,
     ) -> None:
-        del llm_request, error
+        del llm_request
+        response = getattr(error, "response", None)
+        if response is not None and getattr(response, "usage_metadata", None) is not None:
+            await self.after_model_callback(callback_context=callback_context, llm_response=response)
+            return None
         self._pop_start(self._invocation_id(callback_context))
         return None
 

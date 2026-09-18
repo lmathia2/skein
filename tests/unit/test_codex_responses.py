@@ -14,6 +14,24 @@ from harness.adapters.providers.codex_auth import CodexCredential
 from harness.adapters.providers.codex_responses import CodexResponsesLlm, build_codex_request_body
 
 
+def test_incomplete_response_retains_usage_without_logging_prompt():
+    from harness.adapters.providers.codex_responses import (
+        ProviderResponseError,
+        _ResponseAccumulator,
+    )
+
+    accumulator = _ResponseAccumulator()
+    with pytest.raises(ProviderResponseError) as caught:
+        accumulator.consume({"type": "response.incomplete", "response": {
+            "instructions": "private prompt", "incomplete_details": {"reason": "max_output_tokens"},
+            "usage": {"input_tokens": 100, "output_tokens": 64, "cost": 0.01},
+        }})
+    assert caught.value.reason == "max_output_tokens"
+    assert caught.value.response.usage_metadata.prompt_token_count == 100
+    assert caught.value.response.custom_metadata["provider_cost_usd"] == 0.01
+    assert "private prompt" not in str(caught.value)
+
+
 class _Credentials:
     def __init__(self) -> None:
         self.force_refresh: list[bool] = []

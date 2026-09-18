@@ -14,6 +14,7 @@ from google.genai import types
 
 from harness.core.config.models import ContextConfig
 from harness.core.context import estimate_tokens, truncate_to_tokens
+from harness.core.context.compiler import estimate_model_tokens
 from harness.core.orchestration import build_work_packet
 from harness.evidence.ledger import LedgerStore
 from harness.evidence.ledger.models import canonical_json
@@ -67,6 +68,35 @@ def _complete_cuts(contents: list[types.Content]) -> list[int]:
     return cuts
 
 
+def _evidence_manifest(events: list[Any], modified_paths: list[str]) -> dict[str, Any]:
+    """Return a small deterministic index of evidence hidden by a future cut."""
+    reads: list[dict[str, Any]] = []
+    seen_reads: set[str] = set()
+    validations: list[dict[str, Any]] = []
+    for event in reversed(events):
+        evidence = event.payload.get("read_evidence")
+        if event.kind == EventKind.CAPABILITY_COMPLETED and isinstance(evidence, dict):
+            identity = canonical_json(evidence)
+            if identity not in seen_reads and len(reads) < 8:
+                seen_reads.add(identity)
+                reads.append(evidence)
+        if event.kind in {"execution.validation_completed", "execution.validation_observed"}:
+            result = event.payload.get("result", {})
+            if isinstance(result, dict) and len(validations) < 4:
+                validations.append({
+                    "command_sha256": event.payload.get("command_sha256"),
+                    "exit_code": result.get("exit_code"),
+                    "status": result.get("status"),
+                })
+        if len(reads) >= 8 and len(validations) >= 4:
+            break
+    return {
+        "modified_paths": sorted(modified_paths)[:16],
+        "reads_newest_first": reads,
+        "validations_newest_first": validations,
+    }
+
+
 def select_context_cut(
     contents: list[types.Content],
     *,
@@ -74,6 +104,7 @@ def select_context_cut(
     header: types.Content,
     transient: list[types.Content],
     config: ContextConfig,
+    available_tokens: int | None = None,
 ) -> int:
     """Purely select a bounded complete-interaction suffix boundary."""
     cuts = _complete_cuts(contents)
@@ -86,15 +117,14 @@ def select_context_cut(
             if candidate <= prior_cut or candidate > selected:
                 continue
             tail = contents[candidate:]
-            if (
-                estimate_tokens(_serialized(tail)) <= config.recent_event_tokens
-                and estimate_tokens(_serialized([header, *tail, *transient]))
-                <= config.work_packet_tokens
-            ):
+            if estimate_tokens(_serialized(tail)) <= config.recent_event_tokens:
                 selected = candidate
                 break
     effective = [header, *contents[selected:], *transient]
-    if estimate_tokens(_serialized(effective)) > config.work_packet_tokens:
+    # The latest call/result is indivisible and may exceed the soft packet target.
+    # Never drop an unconsumed result; the remaining hard-window budget still wins.
+    hard_limit = config.max_context_tokens if available_tokens is None else available_tokens
+    if estimate_tokens(_serialized(effective)) >= hard_limit:
         raise ValueError("required control context exceeds the configured window")
     return selected
 
@@ -124,11 +154,26 @@ class ContextWindowPlugin(BasePlugin):
         self.redactor = SecretRedactor(known_secrets=known_secrets)
         self.require_notes = require_notes
         self._captured_history: dict[tuple[str, str], tuple[str, ...]] = {}
+        self._captured_objects: dict[tuple[str, str], tuple[types.Content, ...]] = {}
 
     def _capture(self, task_id: str, invocation: str, raw: list[types.Content]) -> None:
+        key = (task_id, invocation)
+        captured = self._captured_history.get(key)
+        captured_length = len(captured) if captured is not None else 0
+        objects = tuple(raw)
+        captured_objects = self._captured_objects.get(key, ())
+        incremental = captured is not None and len(raw) >= len(captured_objects) and all(
+            current is previous
+            for current, previous in zip(raw, captured_objects, strict=False)
+        )
+        captured_count = (
+            captured_length if incremental else 0
+        )
+        if captured is not None and len(raw) < captured_count:
+            raise ValueError("retained context history changed before its captured boundary")
         retrieval_calls: set[str] = set()
         records: list[tuple[str, dict[str, Any]]] = []
-        for index, content in enumerate(raw):
+        for index, content in enumerate(raw[captured_count:], start=captured_count):
             public = []
             for part in content.parts or ():
                 if part.thought or part.thought_signature:
@@ -155,9 +200,8 @@ class ContextWindowPlugin(BasePlugin):
             identity = hashlib.sha256(f"{task_id}:{invocation}:{index}:{digest}".encode()).hexdigest()
             records.append((identity, payload))
 
-        key = (task_id, invocation)
-        identities = tuple(identity for identity, _ in records)
-        captured = self._captured_history.get(key)
+        new_identities = tuple(identity for identity, _ in records)
+        identities = (*captured[:captured_count], *new_identities) if captured else new_identities
         if captured is None:
             existing = {
                 event.source_id
@@ -169,17 +213,18 @@ class ContextWindowPlugin(BasePlugin):
                 captured_count += 1
             if any(identity in existing for identity in identities[captured_count + 1:]):
                 raise ValueError("captured context history is not a contiguous prefix")
-        else:
+        elif not captured_count:
             if identities[:len(captured)] != captured:
                 raise ValueError("retained context history changed before its captured boundary")
             captured_count = len(captured)
 
-        for identity, payload in records[captured_count:]:
+        for identity, payload in records if incremental else records[captured_count:]:
             self.ledger.append(
                 task_id=task_id, source="context", source_id=identity,
                 kind="context.history", payload=payload,
             )
         self._captured_history[key] = identities
+        self._captured_objects[key] = objects
 
     async def before_model_callback(
         self, *, callback_context: Any, llm_request: LlmRequest,
@@ -217,26 +262,36 @@ class ContextWindowPlugin(BasePlugin):
         ).hexdigest()):
             raise ValueError("context epoch does not match retained ADK history")
         details = self.handoff(task_id)
-        note_available = not self.require_notes or details.get("note", {}).get("status") == "ok"
+        note_available = not self.require_notes or (
+            details.get("note", {}).get("status") == "ok"
+            and int(details.get("note", {}).get("version", 0)) > 0
+            and bool(str(details.get("note_excerpt", "")).strip())
+        )
         if not note_available and previous.get("note"):
             details["note"] = previous["note"]
             details["note_excerpt"] = previous.get("note_excerpt", "")
             details["note_stale"] = True
         details["history_boundary"] = events[-1].sequence
+        details["evidence_manifest"] = _evidence_manifest(events, task.files_modified)
         committed = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED]
         failures = [event for event in events if event.kind in {
             EventKind.REPL_CELL_FAILED, EventKind.REPL_CELL_TIMEOUT,
         }]
         if committed:
             last = committed[-1]
+            kernel = details.get("kernel", {})
+            unknown_failure = next((event for event in reversed(failures)
+                                    if event.payload.get("effect") == "unknown"), None)
             details["notebook"] = {
                 "last_committed_kernel_epoch": last.payload.get("kernel_epoch"),
                 "state": last.payload.get("state", {}),
-                "availability": "reconciliation_required" if failures and
-                failures[-1].sequence > last.sequence else "metadata_only_not_proof_of_live_heap",
+                "availability": "effect_reconciliation_required"
+                if unknown_failure and unknown_failure.sequence > last.sequence
+                else "live" if kernel.get("live") and kernel.get("kernel_epoch") ==
+                last.payload.get("kernel_epoch") else "restart_pending_safe_restore",
             }
         critical = {key: details[key] for key in (
-            "history_boundary", "unresolved_effects", "retrieval"
+            "history_boundary", "kernel", "unresolved_effects", "retrieval"
         ) if key in details}
         if "notebook" in details:
             critical["notebook"] = {key: value for key, value in details["notebook"].items()
@@ -270,13 +325,80 @@ class ContextWindowPlugin(BasePlugin):
         )
         control = self.redactor.redact_text(control)
         header = types.Content(role="user", parts=[types.Part.from_text(text=control)])
+        if previous.get("header"):
+            header = types.Content.model_validate(previous["header"])
         remaining = raw[cut:]
-        effective = [header, *remaining, *transient] if cut else [*raw, types.Content(
-            role="user", parts=[types.Part.from_text(text=handoff)]
-        ), *transient]
-        if self.config.window_management and estimate_tokens(_serialized(effective)) > self.config.work_packet_tokens:
-            if not note_available:
-                raise ValueError("working note unavailable; context transition refused")
+        root_key = f"context_root:{task_id}:{invocation}:{anchor}"
+        initial_hint = callback_context.state.get(root_key)
+        if initial_hint is None:
+            initial_hint = handoff
+            if self.require_notes:
+                initial_hint += (
+                    "\nKeep working intent in memory notes before changing phase. Use "
+                    "agent.shell.run('memory note read') and then memory note write "
+                    "--text TEXT --expected-version N --operation-id ID through the same "
+                    "capability. Record findings, the selected approach, remaining work, "
+                    "and evidence paths. Read results from the data field."
+                )
+            callback_context.state[root_key] = initial_hint
+        effective = [header, *remaining, *transient] if cut else [raw[0], types.Content(
+            role="user", parts=[types.Part.from_text(text=str(initial_hint))]
+        ), *raw[1:], *transient]
+        effective_tokens = estimate_tokens(_serialized(effective))
+        estimate_key = f"context_request_estimate:{task_id}:{invocation}:{anchor}"
+        previous_estimate = int(callback_context.state.get(estimate_key, 0) or 0)
+        previous_provider_tokens = int(
+            callback_context.state.get("context_provider_input_tokens", 0) or 0
+        )
+        phase = str(callback_context.state.get("task_phase", ""))
+        if phase in {"understand", "plan"} and any(
+            event.payload.get("effect") == "changed" for event in committed
+        ):
+            phase = "implement"
+        phase_key = "context_window_phase"
+        previous_phase = str(callback_context.state.get(phase_key, ""))
+        phase_boundary = bool(phase and previous_phase and phase != previous_phase)
+        request_overhead = estimate_model_tokens(llm_request.config) if llm_request.config else 0
+        reserved_output = (llm_request.config.max_output_tokens or 0) if llm_request.config else 0
+        estimated_request_tokens = effective_tokens + request_overhead
+        projected_provider_tokens = (
+            previous_provider_tokens + max(estimated_request_tokens - previous_estimate, 0)
+            if previous_provider_tokens and previous_estimate else estimated_request_tokens
+        )
+        compaction_threshold = int(
+            max(self.config.max_context_tokens - reserved_output, 0)
+            * self.config.compaction_threshold_ratio
+        )
+        over_soft_limit = effective_tokens > self.config.work_packet_tokens
+        over_hard_limit = projected_provider_tokens >= compaction_threshold
+        phase_boundary = phase_boundary and projected_provider_tokens >= compaction_threshold // 2
+        pending_key = f"context_compaction_pending:{task_id}:{invocation}:{anchor}"
+        should_compact = over_hard_limit or (
+            over_soft_limit
+            and (
+                self.config.compaction_timing == "immediate"
+                or not phase
+                or phase_boundary or callback_context.state.get(pending_key, False)
+            )
+        )
+        if (over_soft_limit or over_hard_limit) and not note_available:
+            if self.config.window_management and over_hard_limit:
+                note_available = True
+            else:
+                callback_context.state[pending_key] = (
+                    self.config.window_management and should_compact
+                )
+                effective.append(types.Content(role="user", parts=[types.Part.from_text(
+                    text="A working-note checkpoint is pending. Before further work, persist a nonempty "
+                    "working note with memory note write through agent.shell.run. Include your "
+                    "findings, approach, remaining work, and evidence paths."
+                )]))
+                if phase:
+                    callback_context.state[phase_key] = phase
+                callback_context.state[estimate_key] = estimate_tokens(_serialized(effective)) + request_overhead
+                llm_request.contents = effective
+                return
+        if self.config.window_management and should_compact:
             if active_handoff != handoff:
                 control = build_work_packet(
                     task,
@@ -299,6 +421,7 @@ class ContextWindowPlugin(BasePlugin):
                 header=header,
                 transient=transient,
                 config=self.config,
+                available_tokens=self.config.max_context_tokens - request_overhead - reserved_output,
             )
             effective = [header, *raw[new_cut:], *transient]
             prefix_hash = hashlib.sha256(_serialized(raw[:new_cut]).encode()).hexdigest()
@@ -309,11 +432,22 @@ class ContextWindowPlugin(BasePlugin):
                 {"context_epoch": epoch, "invocation_id": invocation,
                  "anchor": anchor, "cut": new_cut, "input_hash": prefix_hash,
                  "reconstruction": self.config.reconstruction, "summary": handoff,
+                 "header": header.model_dump(mode="json", exclude_none=True),
+                 "trigger": "hard_limit" if over_hard_limit else "phase_boundary"
+                 if self.config.compaction_timing == "phase_boundary" else "soft_limit",
+                 "phase": phase,
                  "note": details.get("note"), "note_excerpt": details.get("note_excerpt", ""),
                  "history_watermark": events[-1].sequence,
-                 "tokens_before": estimate_tokens(_serialized(raw)),
-                 "tokens_after": estimate_tokens(_serialized(effective))},
+                 "tokens_before": projected_provider_tokens,
+                 "tokens_after": estimate_tokens(_serialized(effective)) + request_overhead,
+                 "token_estimate_source": "provider_previous_plus_delta"
+                 if previous_provider_tokens and previous_estimate else "serialized_fallback",
+                 "threshold_tokens": compaction_threshold},
                 idempotency_key=f"context-epoch:{epoch}",
             )
             callback_context.state["context_epoch"] = epoch
+            callback_context.state[pending_key] = False
+        if phase:
+            callback_context.state[phase_key] = phase
+        callback_context.state[estimate_key] = estimate_tokens(_serialized(effective)) + request_overhead
         llm_request.contents = effective

@@ -113,7 +113,7 @@ def reduce_agent_step(ledger: TaskLedger, step: AgentStep) -> TaskLedger:
         data["phase"] = "blocked"
         data["status"] = "needs_input"
         blockers = list(data.get("blockers", []))
-        blockers.extend(step.questions or [step.next_action or "Coding agent is blocked"])
+        blockers.extend(step.questions or [step.message or step.next_action or "Coding agent is blocked"])
         data["blockers"] = list(dict.fromkeys(blockers))
     elif step.status in {"verify", "done"}:
         data["phase"] = "verify"

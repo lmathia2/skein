@@ -111,7 +111,7 @@ class ContextProgramService:
             if self.runtime.semantic_search is not None:
                 hint += "; memory history --query TEXT --retrieval semantic|hybrid (top-k, not exhaustive)"
             return {"memory": self.mode, "note": {key: value for key, value in note.items() if key != "text"},
-                    "note_excerpt": str(note.get("text", ""))[:512],
+                    "note_excerpt": str(note.get("text", "")),
                     "retrieval": hint}
         except (ValueError, OSError, TimeoutError, OverflowError):
             return {"memory": self.mode, "note": {"status": "unavailable"}}

@@ -23,6 +23,15 @@ DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api"
 DEFAULT_CODEX_USER_AGENT = "skein/0.1"
 
 
+class ProviderResponseError(RuntimeError):
+    """A terminal provider outcome retaining billable usage without raw prompt logs."""
+
+    def __init__(self, reason: str, response: LlmResponse) -> None:
+        super().__init__(f"Provider response terminated: {reason}")
+        self.reason = reason
+        self.response = response
+
+
 class _AsyncClientFactory(Protocol):
     def __call__(self) -> httpx.AsyncClient: ...
 
@@ -293,7 +302,12 @@ class _ResponseAccumulator:
             self.completed = True
         if event_type in {"response.failed", "response.incomplete", "error"}:
             error = event.get("error") or event.get("response") or event
-            raise RuntimeError(f"Codex response failed: {_json(error)}")
+            if isinstance(error, Mapping):
+                self._capture_response(error)
+                details = error.get("incomplete_details") or error.get("error") or error
+                reason = str(details.get("reason") or details.get("code") or event_type) if isinstance(details, Mapping) else str(event_type)
+                raise ProviderResponseError(reason, self.final_response(self.model_version or "unknown"))
+            raise RuntimeError(f"Provider response failed: {event_type}")
         return None
 
     def _capture_item(self, item: Mapping[str, Any]) -> None:

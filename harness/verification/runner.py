@@ -165,6 +165,7 @@ def build_report(
     changed_paths: list[str] | None = None,
     required_strength: VerificationStrength | Literal["auto"] = "auto",
     baseline_results: Mapping[str, CommandResult] | None = None,
+    require_changed_paths: bool = False,
 ) -> VerificationReport:
     evidence_map = criterion_evidence or {}
     row_ids = criterion_ids or {criterion: criterion for criterion in criteria}
@@ -199,6 +200,7 @@ def build_report(
     ]
     verified_references, achieved = _verified_references(evidence_results, required)
     strength_satisfied = _STRENGTH_ORDER[achieved] >= _STRENGTH_ORDER[required]
+    change_satisfied = not require_changed_paths or bool(changed)
     criteria_rows = []
     for criterion in criteria:
         row_id = row_ids[criterion]
@@ -217,7 +219,12 @@ def build_report(
             CriterionEvidence(
             criterion_id=row_id,
             criterion=criterion,
-            satisfied=required_commands_passed and strength_satisfied and bool(selected),
+            satisfied=(
+                change_satisfied
+                and required_commands_passed
+                and strength_satisfied
+                and bool(selected)
+            ),
             claimed_evidence=claimed,
             evidence=selected,
             notes=(
@@ -242,16 +249,21 @@ def build_report(
             f"completion requires {required} verification; strongest successful "
             f"check was {achieved}"
         )
+    if not change_satisfied:
+        diagnostics.append("coding completion requires at least one changed path")
     tests_passed, tests_failed = _test_counts(results)
     passed = (
         required_commands_passed
         and not scope_violations
+        and change_satisfied
         and strength_satisfied
         and all(row.satisfied for row in criteria_rows)
     )
     next_action: str | None = None
     if scope_violations:
         next_action = "Revert or justify changes outside the permitted scope"
+    elif not change_satisfied:
+        next_action = "Modify the repository before claiming coding completion"
     elif new_failures:
         failures = sorted(new_failures)
         shown = ", ".join(failures[:8])

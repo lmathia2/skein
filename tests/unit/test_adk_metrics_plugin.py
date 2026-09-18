@@ -107,6 +107,7 @@ def test_plugin_records_one_model_call(tmp_path) -> None:
     assert summary["input_tokens"] == 1_000
     assert summary["cache_read_tokens"] == 800
     assert summary["prefix_versions"] == 1
+    assert context.state["context_provider_input_tokens"] == 1_000
 
 
 def test_plugin_does_not_count_host_work_batch_yield_as_a_model_call(tmp_path) -> None:
@@ -153,6 +154,33 @@ def test_plugin_enforces_actual_input_budget_before_each_inner_model_call(tmp_pa
         asyncio.run(
             plugin.before_model_callback(callback_context=context, llm_request=_Request())
         )
+
+
+def test_failed_provider_response_usage_counts_toward_budget(tmp_path) -> None:
+    from google.adk.models.llm_request import LlmRequest
+    from google.adk.models.llm_response import LlmResponse
+    from google.genai import types
+
+    from harness.adapters.providers.codex_responses import ProviderResponseError
+    from harness.core.config.models import ContextConfig
+
+    plugin = HarnessMetricsPlugin(
+        database=tmp_path / "metrics.db", default_task_id="task-1",
+        static_prefix_hash="prefix", static_prefix_tokens=500, default_model="test-model",
+    )
+    context = _Context(state={"task_id": "task-1", "task_input_token_limit": 10000})
+    request = LlmRequest(config=types.GenerateContentConfig(response_schema=ContextConfig))
+    asyncio.run(plugin.before_model_callback(callback_context=context, llm_request=request))
+    error = ProviderResponseError("max_output_tokens", LlmResponse(
+        usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=1000),
+    ))
+    asyncio.run(plugin.on_model_error_callback(
+        callback_context=context, llm_request=request, error=error,
+    ))
+    assert plugin.store.task_summary("task-1")["input_tokens"] == 1000
+    context.state["task_input_token_limit"] = 1000
+    with pytest.raises(RuntimeError, match="input-token budget exhausted"):
+        asyncio.run(plugin.before_model_callback(callback_context=context, llm_request=request))
 
 
 def test_plugin_prefers_provider_reported_cost_and_concrete_model(tmp_path) -> None:

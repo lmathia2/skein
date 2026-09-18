@@ -293,6 +293,9 @@ class MemoryConfig(FrozenModel):
 class ContextConfig(FrozenModel):
     window_management: bool = False
     reconstruction: Literal["handoff_tail", "fresh"] = "handoff_tail"
+    compaction_timing: Literal["immediate", "phase_boundary"] = "immediate"
+    max_context_tokens: int = Field(default=128_000, ge=2_000, le=1_000_000_000)
+    compaction_threshold_ratio: float = Field(default=0.8, gt=0.0, le=1.0)
     work_packet_tokens: int = Field(default=20_000, ge=2_000, le=256_000)
     max_task_input_tokens: int = Field(default=200_000, ge=8_000, le=1_000_000_000)
     recent_event_limit: int = Field(default=12, ge=1, le=100)
@@ -308,6 +311,8 @@ class ContextConfig(FrozenModel):
 
     @model_validator(mode="after")
     def validate_work_packet_budget(self) -> ContextConfig:
+        if self.window_management and self.max_context_tokens < self.work_packet_tokens:
+            raise ValueError("max_context_tokens cannot be smaller than work_packet_tokens")
         if self.max_task_input_tokens < self.work_packet_tokens:
             raise ValueError("max_task_input_tokens cannot be smaller than work_packet_tokens")
         return self

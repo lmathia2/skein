@@ -204,6 +204,8 @@ def settings_from_composition(
             + NOTEBOOK_PTC_INSTRUCTION
             + "\n\nPhase-aware cell composition:\n"
             + config.notebook_ptc.batching_instruction.strip()
+            + f"\nagent.parallel accepts at most {config.notebook_ptc.max_parallel_reads} reads "
+            "per call. Split larger lists into batches and inspect each result's status."
         )
         tool_names = ("execute_code",)
     coding_model = config.models[worker_config.model].name

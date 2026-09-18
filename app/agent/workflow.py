@@ -137,6 +137,13 @@ def _work_batch_yield_update(
     step: AgentStep,
     batch_yield: dict[str, Any],
 ) -> dict[str, Any]:
+    if not batch_yield.get("workspace_changed") and not ledger.files_modified:
+        return {
+            "phase": "plan", "status": "active",
+            "next_action": "Exploration checkpoint: use the evidence already collected to choose "
+            "and implement the smallest change. Record findings and remaining work in a working "
+            "note when memory is enabled. Read further only to resolve a specific missing fact.",
+        }
     if batch_yield.get("reason") == "max_cells" and batch_yield.get("workspace_changed") is True:
         return {
             "phase": "implement",
@@ -621,6 +628,7 @@ async def _verify_task(
         required_strength=request.verification_level,
         changed_paths=plan.changed_paths,
         baseline_results=baseline_results,
+        require_changed_paths=ledger.mode == "coding",
     )
     return {
         "report": report.model_dump(mode="json"),

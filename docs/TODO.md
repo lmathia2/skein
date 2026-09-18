@@ -8,6 +8,12 @@
 - [x] Document developer setup, eval commands, modes, and visual architecture.
 - [ ] Run the selected live Harbor campaigns; deterministic local checks do not
   replace provider-backed benchmark evidence.
+- [x] Correct empty-note compaction, phase tracking, recoverable oversized PTC
+  reads, and incomplete-provider usage accounting from the six-task diagnostics.
+- [x] Run the corrected-memory canary, frozen paired twenty-task panel, and
+  three-model forced-compaction follow-up in
+  `docs/experiments/memory-fixed-20-20260911.md`.
+- [x] Reject coding completion when verification sees no changed repository paths.
 
 ## Context programs and long-running recovery
 
@@ -15,6 +21,8 @@
   owned-continuity configuration with dependency and budget validation.
 - [x] Integrate bounded history/aggregate programs, receipts, notes, and safe artifact reads.
 - [x] Publish replayable context epochs and bounded advisory/PTC handoffs.
+- [x] Carry a bounded deterministic index of prior read ranges and validation
+  receipts in compaction handoffs.
 - [x] Bind operation identities and checkpoint integrity to safe ADK resume.
 - [x] Add explicitly owned prior-run recall and conversation notebook continuity.
 - [x] Prepare executable context experiment profiles, schedules, and independent graders.

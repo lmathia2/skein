@@ -268,3 +268,10 @@ def test_close_returns_promptly_after_normal_execution() -> None:
     started = time.monotonic()
     worker.close()
     assert time.monotonic() - started < 2
+
+
+def test_kernel_status_does_not_start_worker() -> None:
+    with PersistentPythonWorker() as worker:
+        assert worker.kernel_status() == {"live": False, "kernel_epoch": None}
+        epoch = worker.kernel_epoch
+        assert worker.kernel_status() == {"live": True, "kernel_epoch": epoch}

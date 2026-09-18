@@ -102,6 +102,32 @@ async def test_cancelled_tool_drains_synchronous_effect_before_return(tmp_path: 
 
 
 @pytest.mark.asyncio
+async def test_oversized_parallel_batch_preserves_heap_and_dispatches_nothing(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
+        cast(BaseLlm, "test-model"), ptc_config=config.notebook_ptc,
+    )
+    context = SimpleNamespace(state={"task_id": "task"}, invocation_id="inv", function_call_id="first")
+    assert worker.execute_code is not None
+    try:
+        first = await worker.execute_code("sentinel = 42", tool_context=context)
+        context.function_call_id = "second"
+        result = await worker.execute_code(
+            "results = agent.parallel([{'operation': 'fs.read', 'arguments': {'path': 'missing'}}] * 5)\n"
+            "assert all(r['error_code'] == 'invalid_arguments' for r in results)\n"
+            "assert sentinel == 42\nprint(sentinel)", tool_context=context,
+        )
+        assert first["status"] == result["status"] == "ok"
+        assert "42" in result["model_text"]
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+
+@pytest.mark.asyncio
 async def test_parallel_reads_overlap_and_keep_ordered_receipts(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
@@ -607,11 +633,16 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert worker.execute_code is not None
     execute_code_tool = worker.execute_code
 
+    context = SimpleNamespace(
+        state={"task_id": "task-1", "task_phase": "understand"},
+        invocation_id="phase-test", function_call_id="write-cell",
+    )
     try:
         first = await execute_code_tool("value = 40")
         second = await execute_code_tool(
             'agent.fs.write("answer.txt", str(value + 2), expected_absent=True)\n'
-            'agent.fs.read("answer.txt")["model_text"]'
+            'agent.fs.read("answer.txt")["model_text"]',
+            tool_context=context,
         )
         rich = await execute_code_tool('{"image/png": b"x" * 17000, "text/plain": "plot"}')
     finally:
@@ -627,6 +658,12 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     assert rich["status"] == "ok"
     assert len(rich["artifact_uris"]) == 1
     assert second["effect"] == "changed"
+    assert context.state["task_phase"] == "implement"
+    assert any(
+        event.kind == EventKind.LEDGER_PATCHED
+        and event.payload == {"set_fields": {"phase": "implement"}}
+        for event in events.read("task-1")
+    )
     assert (workspace / "answer.txt").read_text(encoding="utf-8") == "42"
     notebook_path = next((state_root / "notebooks").glob("*.ipynb"))
     assert notebook_path.exists()
@@ -651,6 +688,15 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
         if event.kind == EventKind.CAPABILITY_COMPLETED
     ]
     assert len(capability_events) == 2
+    read_event = next(
+        event for event in capability_events if event.payload["operation"] == "fs.read"
+    )
+    assert read_event.payload["read_evidence"] == {
+        "path": "answer.txt",
+        "sha256": hashlib.sha256(b"42").hexdigest(),
+        "offset": 1,
+        "returned_lines": 1,
+    }
     for event in capability_events:
         uri = event.payload["result_artifact_uri"]
         artifact = state_root / "artifacts" / "sha256" / uri.rsplit("/", 1)[-1]

@@ -90,6 +90,7 @@ class PtcSession:
     close: Callable[[], Awaitable[None] | None] | None = None
     before_model: Callable[[CallbackContext], Awaitable[LlmResponse | None]] | None = None
     after_agent: Callable[[CallbackContext], Awaitable[None]] | None = None
+    kernel_status: Callable[[], dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,6 +335,15 @@ def build_notebook_session(
                 "truncated": bool(result.get("truncated")),
                 "omitted_bytes": max(0, int(result.get("omitted_bytes", 0))),
             }
+            if common["operation"] == "fs.read" and status == "ok":
+                data = result.get("data", {})
+                if isinstance(data, dict) and all(
+                    key in data for key in ("path", "sha256", "offset", "returned_lines")
+                ):
+                    payload["read_evidence"] = {
+                        key: data[key]
+                        for key in ("path", "sha256", "offset", "returned_lines")
+                    }
             if result_artifact_uri is not None:
                 payload.update(
                     {
@@ -372,9 +382,11 @@ def build_notebook_session(
             if not isinstance(operations, list) or not operations:
                 raise ValueError("parallel operations must be a non-empty list")
             if len(operations) > active_ptc_config.max_parallel_reads:
-                raise ValueError(
-                    f"parallel supports at most {active_ptc_config.max_parallel_reads} reads"
-                )
+                return [{
+                    "status": "error", "data": {}, "error_code": "invalid_arguments",
+                    "model_text": f"Split this batch into at most {active_ptc_config.max_parallel_reads} "
+                    "reads per agent.parallel call. No reads executed.",
+                } for _ in operations]
             normalized: list[dict[str, Any]] = []
             for item in operations:
                 if not isinstance(item, dict) or item.get("operation") != "fs.read":
@@ -964,6 +976,13 @@ def build_notebook_session(
         batch_cells[batch_key] = batch_cells.get(batch_key, 0) + 1
         if effect == "changed":
             batch_changed.add(batch_key)
+            if tool_context is not None and tool_context.state.get("task_phase") in {"understand", "plan"}:
+                active_event_store.append(
+                    task_id, EventKind.LEDGER_PATCHED,
+                    {"set_fields": {"phase": "implement"}},
+                    idempotency_key=f"implementation-phase:{work_batch_id}",
+                )
+                tool_context.state["task_phase"] = "implement"
         notebook_state = reduce_notebook(notebook_events(task_id), notebook_id)
         notebook_bytes = await asyncio.to_thread(
             materialize_notebook,
@@ -1162,4 +1181,5 @@ def build_notebook_session(
         execute_code=execute_code,
         close=close,
         before_model=before_model,
+        kernel_status=python_worker.kernel_status,
     )

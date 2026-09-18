@@ -56,6 +56,17 @@ durable does the plugin replace the provider contents with the handoff header, r
 exact tail, and transient steering. The removed P0-P3 prompt-program layer is not a
 second live compiler.
 
+The timing policy is independently selectable. `immediate` publishes an epoch at the
+soft work-packet limit. `phase_boundary` leaves the append-only provider suffix intact
+after that limit and publishes at the next semantic task-phase transition; exceeding
+`max_context_tokens` (including estimated request overhead and reserved output)
+publishes immediately. `max_task_input_tokens` is a separate cumulative spending
+ceiling checked before dispatch. A populated, versioned working note is required:
+soft transitions request a note and defer; hard-limit transitions without one fail
+without replacing history. The initial hint and each epoch header remain frozen.
+Committed workspace mutations advance the implementation phase, while read-only
+batch exhaustion returns to planning rather than claiming a completed review.
+
 ### Example from trace to prompt
 
 Assume the ledger contains this abbreviated sequence:

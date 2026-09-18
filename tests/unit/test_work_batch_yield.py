@@ -25,7 +25,7 @@ def test_changed_max_cell_yield_stays_in_implementation() -> None:
     }
 
 
-def test_no_change_yield_enters_review() -> None:
+def test_no_change_yield_enters_planning_without_claiming_review() -> None:
     ledger = TaskLedger.from_request(
         TaskRequest(goal="Implement aspects"),
         task_id="task-1",
@@ -40,5 +40,5 @@ def test_no_change_yield_enters_review() -> None:
         {"reason": "no_workspace_change", "workspace_changed": False},
     )
 
-    assert update["phase"] == "review"
-    assert update["counterexample_review_completed"] is True
+    assert update["phase"] == "plan"
+    assert "counterexample_review_completed" not in update

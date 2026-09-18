@@ -47,6 +47,24 @@ def test_report_binds_each_validation_only_to_selected_criterion_row() -> None:
     assert report.criteria[0].evidence[0].reference == "validation:0"
 
 
+def test_coding_completion_requires_a_changed_path() -> None:
+    report = build_report(
+        criteria=["Implement the feature"],
+        results=[CommandResult(
+            category="test", command="pytest -q", exit_code=0,
+            stdout="1 passed", strength="behavioral",
+        )],
+        scope_violations=[],
+        require_changed_paths=True,
+    )
+
+    assert not report.passed
+    assert not report.criteria[0].satisfied
+    assert report.recommended_next_action == (
+        "Modify the repository before claiming coding completion"
+    )
+
+
 @pytest.mark.parametrize(
     ("command", "expected"),
     [

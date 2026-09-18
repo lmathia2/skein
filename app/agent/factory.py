@@ -455,6 +455,7 @@ class SkeinHarnessFactory:
                     return {
                         "status": "ok" if status in {"ok", "partial"} else "error",
                         "model_text": json.dumps(result, ensure_ascii=False, sort_keys=True),
+                        "data": result,
                         "truncated": status == "partial", "ui_details": {"memory": True},
                     }
             return ordinary_bash(command, **kwargs)
@@ -609,12 +610,14 @@ class SkeinHarnessFactory:
                 if config.memory.context_programs.mode != "active":
                     details = {"memory": "not model-accessible"}
                 unresolved = [receipt for receipt in receipt_store.for_task(task_id)
-                              if receipt.status != "completed"]
+                              if receipt.status == "started"]
                 details["unresolved_effects"] = {
                     "count": len(unresolved),
                     "operations": [{"id": item.tool_call_id, "status": item.status}
                                    for item in unresolved[:16]],
                 }
+                if worker.kernel_status is not None:
+                    details["kernel"] = worker.kernel_status()
                 return details
 
             plugins.insert(plugins.index(metrics_plugin), ContextWindowPlugin(

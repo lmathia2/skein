@@ -691,6 +691,12 @@ class PersistentPythonWorker:
             assert self._kernel_epoch is not None
             return self._kernel_epoch
 
+    def kernel_status(self) -> dict[str, Any]:
+        """Describe the current worker without starting or resetting it."""
+        with self._lock:
+            live = self._process is not None and self._process.is_alive()
+            return {"live": live, "kernel_epoch": self._kernel_epoch if live else None}
+
     @staticmethod
     def _broker_operation(broker: ReplBroker, operation: str) -> Callable[..., Any]:
         names: Mapping[str, str] = {
