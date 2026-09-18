@@ -368,7 +368,7 @@ def test_composition_loads_project_instructions_only_after_explicit_trust(
     assert trusted.skill_roots == (workspace / ".agents" / "skills",)
 
 
-def test_ptc_prompt_teaches_read_once_and_search(tmp_path: Path) -> None:
+def test_ptc_prompt_teaches_versioned_reuse_and_search(tmp_path: Path) -> None:
     composition = load_harness_composition()
     config = cast(SkeinConfig, composition.harness.config)
     configured = composition.model_copy(
@@ -392,12 +392,14 @@ def test_ptc_prompt_teaches_read_once_and_search(tmp_path: Path) -> None:
         RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
     ).static_instruction
 
-    assert "Read a file once into a variable" in instruction
+    assert "Reuse covered ranges of the same source" in instruction
+    assert "expected_sha256 for guarded edits" in instruction
     assert "exact calculation, parsing, aggregation, comparison" in instruction
     assert "return prose directly when" in instruction
     assert "execution adds no evidence" in instruction
     assert "result = agent.fs.read(path)" in instruction
-    assert "slice src again instead of rereading path" in instruction
+    assert "agent.state.annotate" in instruction
+    assert "--entries JSON" in instruction
     assert "search grep --pattern TEXT" in instruction
     assert "--path PATH --limit 20" in instruction
 

@@ -11,6 +11,7 @@ from harness.adapters.adk.context import (
     _complete_cuts,
     _evidence_manifest,
     _serialized,
+    render_handoff,
     select_context_cut,
 )
 from harness.core.config.models import ContextConfig
@@ -62,11 +63,21 @@ def test_evidence_manifest_is_bounded_deduplicated_and_newest_first(tmp_path):
     manifest = _evidence_manifest(events.read("task"), ["z.py", "a.py"])
 
     assert manifest["modified_paths"] == ["a.py", "z.py"]
-    assert len(manifest["reads_newest_first"]) == 8
+    assert len(manifest["reads_newest_first"]) == 10
     assert manifest["reads_newest_first"][0]["path"] == "src/9.py"
     assert manifest["validations_newest_first"] == [{
         "command_sha256": "a" * 64, "exit_code": 0, "status": "ok",
     }]
+
+
+def test_read_index_collapses_only_same_version_containment(tmp_path):
+    _, _, events, _ = setup(tmp_path)
+    for offset, count, digest in [(1, 40, "a"), (10, 10, "a"), (30, 20, "a"), (1, 40, "b")]:
+        events.append("task", EventKind.CAPABILITY_COMPLETED, {"read_evidence": {
+            "path": "src/a.py", "sha256": digest * 64, "offset": offset, "returned_lines": count,
+        }})
+    reads = _evidence_manifest(events.read("task"), [])["reads_newest_first"]
+    assert [(r["offset"], r["returned_lines"], r["sha256"][0]) for r in reads] == [(1, 40, "b"), (30, 20, "a"), (1, 40, "a")]
 
 
 @pytest.mark.asyncio
@@ -140,6 +151,26 @@ async def test_published_handoff_is_frozen_until_the_next_epoch(tmp_path):
     assert "view-1" in _serialized(second.contents)
     assert "view-2" not in _serialized(second.contents)
     assert sum(event.kind == EventKind.COMPACTION_CREATED for event in events.read("task")) == 1
+
+
+@pytest.mark.asyncio
+async def test_soft_pressure_preserves_epoch_until_unconsumed_result_can_be_cut(tmp_path):
+    plugin, context, events, _ = setup(tmp_path)
+    raw = [text("old evidence " + "x" * 9000)]
+    await plugin.before_model_callback(callback_context=context, llm_request=LlmRequest(contents=list(raw)))
+    first = next(event for event in events.read("task") if event.kind == EventKind.COMPACTION_CREATED)
+    raw.extend([
+        types.Content(role="model", parts=[types.Part.from_function_call(name="read", args={})]),
+        types.Content(role="user", parts=[types.Part.from_function_response(name="read", response={"data": "y" * 9000})]),
+    ])
+    request = LlmRequest(contents=list(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=request)
+    assert len([event for event in events.read("task") if event.kind == EventKind.COMPACTION_CREATED]) == 1
+    assert request.contents[0].model_dump(mode="json", exclude_none=True) == first.payload["header"]
+    assert request.contents[-1] == raw[-1]
+    raw.append(text("Result consumed; continue"))
+    await plugin.before_model_callback(callback_context=context, llm_request=LlmRequest(contents=list(raw)))
+    assert len([event for event in events.read("task") if event.kind == EventKind.COMPACTION_CREATED]) == 2
 
 
 @pytest.mark.asyncio
@@ -417,3 +448,37 @@ async def test_note_requested_before_phase_boundary_in_both_arms(tmp_path, windo
     request = LlmRequest(contents=list(raw))
     await plugin.before_model_callback(callback_context=context, llm_request=request)
     assert not any(e.kind == EventKind.COMPACTION_CREATED for e in events.read("task"))
+
+
+def test_whole_handoff_entries_preserve_structure_and_hide_dead_bindings():
+    import json
+
+    details = {"history_boundary": 12, "kernel": {"live": False, "kernel_epoch": None},
+               "retrieval": "memory note read", "note": {"event_id": "n1"},
+               "note_excerpt": "oversized " * 1000,
+               "working_set": {"data": {"findings": [{"finding": {"id": "relevant", "text": "public finding"}}]}},
+               "notebook": {"availability": "restart_pending_safe_restore", "state": {"manifest": [
+                   {"name": "dead_binding", "description": "must not be advertised as live"}]}},
+               "evidence_manifest": {"touched_paths": ["src/a.py"]}}
+    value = render_handoff(details, max_tokens=250)
+    assert estimate_tokens(value) <= 250
+    advisory = json.loads(value.split("Advisory memory (not execution authority):\n")[1])
+    assert advisory["omitted_count"] > 0
+    assert any(item["kind"] == "findings" for item in advisory["entries"])
+    assert "dead_binding" not in value and "..." not in value
+    assert render_handoff(details, max_tokens=250) == value
+
+
+def test_read_manifest_keeps_old_relevant_paths_and_direct_recovery_handles(tmp_path):
+    _, _, events, _ = setup(tmp_path)
+    for index in range(40):
+        events.append("task", EventKind.READ_OBSERVED, {
+            "read_evidence": {"path": f"src/{index}.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 10},
+            "result_artifact_uri": f"artifact://sha256/{index:064x}",
+        })
+    events.append("task", EventKind.CAPABILITY_COMPLETED, {"changed_paths": ["src/0.py"]})
+    manifest = _evidence_manifest(events.read("task"), [], ("src/0.py",))
+    assert manifest["reads_newest_first"][0]["path"] == "src/0.py"
+    assert manifest["reads_newest_first"][0]["artifact_uri"].startswith("artifact://")
+    assert manifest["touched_paths"] == ["src/0.py"] and manifest["modified_paths"] == []
+    assert len(manifest["reads_newest_first"]) == 32 and manifest["omitted_reads"] == 8

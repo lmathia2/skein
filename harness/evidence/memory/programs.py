@@ -20,6 +20,9 @@ PROGRAM_REGISTRY = {
         MemoryProgramSpec("event.read", 1),
         MemoryProgramSpec("events.count", 1),
         MemoryProgramSpec("artifact.read", 1),
+        MemoryProgramSpec("reads.lookup", 1),
+        MemoryProgramSpec("read.recover", 1),
+        MemoryProgramSpec("working_set", 1),
         MemoryProgramSpec("tools.usage", 1),
         MemoryProgramSpec("failures.by_kind", 1, requires_reuse=True),
     )

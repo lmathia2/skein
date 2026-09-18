@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from harness.core.models import ToolEnvelope
+from harness.evidence.memory.models import ReadEvidence, ViewRequest
 from harness.evidence.state import ToolReceipt, ToolReceiptStore
 from harness.execution.approvals import ApprovalRequest, ApprovalStore
 from harness.execution.environment import LocalWorkspaceEnvironment, WorkspaceEnvironment
@@ -116,10 +117,14 @@ def _normalize_result(value: Any) -> dict[str, Any]:
 class _ArtifactResolver:
     """Resolve only harness-owned content-addressed artifacts for managed read."""
 
-    def __init__(self, *, workspace: Path, state_root: Path) -> None:
+    def __init__(self, *, workspace: Path, state_root: Path,
+                 authorized_state_roots: tuple[Path, ...] = ()) -> None:
         self.workspace_artifact_root = (workspace / ".artifacts" / "tool-output").resolve()
         self.command_artifact_root = (state_root / "artifacts" / "commands").resolve()
         self.sha_artifact_root = (state_root / "artifacts" / "sha256").resolve()
+        self.sha_artifact_roots = tuple(dict.fromkeys((self.sha_artifact_root, *(
+            (root / "artifacts" / "sha256").resolve() for root in authorized_state_roots
+        ))))
 
     @staticmethod
     def _confined_file(root: Path, candidate: Path) -> Path:
@@ -145,9 +150,11 @@ class _ArtifactResolver:
                 digest = parsed.path.removeprefix("/")
                 if not re.fullmatch(r"[0-9a-f]{64}", digest) or parsed.path.count("/") != 1:
                     raise ValueError("artifact URI must contain one SHA-256 digest")
-                return self._confined_file(
-                    self.sha_artifact_root, self.sha_artifact_root / digest
-                ), digest
+                for root in self.sha_artifact_roots:
+                    candidate = root / digest
+                    if candidate.exists() or candidate.is_symlink():
+                        return self._confined_file(root, candidate), digest
+                raise ValueError("artifact is unavailable in authorized roots")
             if parsed.netloc != "tool-output":
                 raise ValueError("unsupported artifact collection")
             match = _CONTENT_ARTIFACT_NAME.fullmatch(parsed.path.removeprefix("/"))
@@ -174,14 +181,10 @@ class _ArtifactResolver:
 
         raise ValueError("unsupported artifact URI scheme")
 
-    def read(
-        self, uri: str, *, offset: int, limit: int,
+    def _read_content(
+        self, uri: str, *,
         max_source_bytes: int = _MAX_ARTIFACT_BYTES, deadline: float | None = None,
-    ) -> dict[str, Any]:
-        if offset < 1:
-            raise ValueError("offset must be at least 1")
-        if limit < 1 or limit > 400:
-            raise ValueError("limit must be between 1 and 400 lines")
+    ) -> bytes:
         target, expected_digest = self._target(uri)
         maximum = min(max_source_bytes, _MAX_ARTIFACT_BYTES)
         if maximum < 1 or target.stat().st_size > maximum:
@@ -204,6 +207,68 @@ class _ArtifactResolver:
         actual_digest = hashlib.sha256(content).hexdigest()
         if actual_digest != expected_digest:
             raise ValueError("artifact content hash does not match its URI")
+        return content
+
+    def recover_read(
+        self, uri: str, evidence: ReadEvidence, request: ViewRequest,
+    ) -> dict[str, Any]:
+        """Recover bounded historical source text, never read the current workspace."""
+        deadline = time.monotonic() + request.timeout_seconds
+        content = self._read_content(uri, max_source_bytes=16_000_000, deadline=deadline)
+        result = json.loads(content)
+        if not isinstance(result, dict) or result.get("status") != "ok":
+            raise ValueError("artifact is not a successful read result")
+        data = result.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("text"), str):
+            raise ValueError("read artifact has no source text")
+        actual = ReadEvidence.model_validate({key: data.get(key) for key in ReadEvidence.model_fields})
+        if actual != evidence:
+            raise ValueError("read artifact does not match the addressed evidence")
+        lines = data["text"].splitlines(keepends=True)
+        if len(lines) != evidence.returned_lines:
+            raise ValueError("read artifact line coverage is inconsistent")
+        # Offset is relative to the captured range, as in existing artifact reads.
+        start = request.offset - 1
+        if start > len(lines):
+            raise ValueError("offset is outside the captured range")
+        selected = lines[start:start + request.limit]
+        encoded = "".join(selected).encode("utf-8")
+        if request.byte_offset > len(encoded):
+            raise ValueError("byte offset is outside the selected range")
+        output: dict[str, Any] = {
+            "read_evidence": evidence.model_dump(), "artifact_uri": uri,
+            "freshness": "historical_snapshot", "source_offset": evidence.offset + start,
+            "source_coverage": evidence.source_coverage(data.get("total_lines")),
+            "complete_scope": "selected_capture_page",
+            "selected_lines": len(selected), "byte_offset": request.byte_offset,
+            "text": "", "next_byte_offset": len(encoded), "complete": False,
+            "next_offset": start + len(selected) + 1 if start + len(selected) < len(lines) else None,
+        }
+        overhead = len(json.dumps(output, ensure_ascii=False).encode())
+        allowance = min(request.byte_limit or 16000, (request.max_bytes - overhead) // 6)
+        if allowance < 4:
+            raise OverflowError("read metadata exceeds output budget")
+        end = min(len(encoded), request.byte_offset + allowance)
+        while end < len(encoded) and encoded[end] & 0xC0 == 0x80:
+            end -= 1
+        output["text"] = encoded[request.byte_offset:end].decode("utf-8")
+        output["next_byte_offset"] = end if end < len(encoded) else None
+        output["complete"] = end == len(encoded)
+        if time.monotonic() >= deadline:
+            raise TimeoutError("read recovery deadline exceeded")
+        return output
+
+    def read(
+        self, uri: str, *, offset: int, limit: int,
+        max_source_bytes: int = _MAX_ARTIFACT_BYTES, deadline: float | None = None,
+    ) -> dict[str, Any]:
+        if offset < 1:
+            raise ValueError("offset must be at least 1")
+        if limit < 1 or limit > 400:
+            raise ValueError("limit must be between 1 and 400 lines")
+        content = self._read_content(uri, max_source_bytes=max_source_bytes, deadline=deadline)
+        size = len(content)
+        actual_digest = hashlib.sha256(content).hexdigest()
         if b"\x00" in content[:8_192]:
             raise ValueError("binary artifacts cannot be read as text")
 

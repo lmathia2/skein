@@ -45,6 +45,8 @@ class EventKind(StrEnum):
     CAPABILITY_COMPLETED = "capability.completed"
     CAPABILITY_FAILED = "capability.failed"
     CAPABILITY_BLOCKED = "capability.blocked"
+    READ_OBSERVED = "read.observed"
+    WORKSPACE_EFFECT_OBSERVED = "workspace.effect_observed"
 
 
 class LedgerPatch(BaseModel):

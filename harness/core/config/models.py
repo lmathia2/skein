@@ -169,6 +169,7 @@ class ToolSurfaceConfig(FrozenModel):
 
 class NotebookPtcConfig(FrozenModel):
     enabled: bool = False
+    emit_state_updates: bool = True  # Representation ablation; does not change broker/state authority.
     serialization: Literal["native", "notebook", "jsonl"] = "native"
     state: Literal["native", "none", "replay_safe", "snapshot"] = "native"
     continuity: Literal["run", "conversation"] = "run"
@@ -292,6 +293,7 @@ class MemoryConfig(FrozenModel):
 
 class ContextConfig(FrozenModel):
     window_management: bool = False
+    continuity_representation: Literal["metadata", "described", "findings"] = "findings"
     reconstruction: Literal["handoff_tail", "fresh"] = "handoff_tail"
     compaction_timing: Literal["immediate", "phase_boundary"] = "immediate"
     max_context_tokens: int = Field(default=128_000, ge=2_000, le=1_000_000_000)

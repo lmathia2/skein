@@ -9,6 +9,58 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from harness.evidence.ledger.models import canonical_json
 
 
+class ReadEvidence(BaseModel):
+    """A historical range; its source hash does not assert current freshness."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    path: str = Field(min_length=1, max_length=4096)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    offset: int = Field(ge=1)
+    returned_lines: int = Field(ge=0)
+
+    def source_coverage(self, total_lines: int | None) -> dict[str, Any]:
+        """Whole-file coverage at capture, independent of recovery pagination."""
+        end = self.offset - 1 + self.returned_lines
+        if total_lines is not None and (type(total_lines) is not int or total_lines < end):
+            raise ValueError("source line count contradicts captured read range")
+        return {
+            "total_lines": total_lines,
+            "whole_file": self.offset == 1 and end == total_lines if total_lines is not None else None,
+            "next_unread_offset": (end + 1 if total_lines is not None and end < total_lines
+                                   else 1 if self.offset > 1 else None),
+        }
+
+
+class MemoryFinding(BaseModel):
+    """Public, advisory conclusions, not reasoning traces or verified task state."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,96}$")
+    kind: Literal["observation", "hypothesis", "decision", "rejected_approach", "open_question", "next_action"]
+    text: str = Field(min_length=1, max_length=1000)
+    evidence_refs: tuple[str, ...] = Field(default=(), max_length=16)
+    task_links: tuple[str, ...] = Field(default=(), max_length=16)
+    related_paths: tuple[str, ...] = Field(default=(), max_length=16)
+    status: Literal["active", "disputed", "superseded"] = "active"
+    supersedes: tuple[str, ...] = Field(default=(), max_length=16)
+    conflicts_with: tuple[str, ...] = Field(default=(), max_length=16)
+
+    @model_validator(mode="after")
+    def bounded_links(self) -> MemoryFinding:
+        if not self.text.strip() or len(self.text.encode()) > 2000:
+            raise ValueError("finding text requires bounded nonblank public content")
+        if self.kind == "observation" and not self.evidence_refs:
+            raise ValueError("observations require evidence; use hypothesis for unsupported claims")
+        for links in (self.evidence_refs, self.task_links, self.related_paths, self.supersedes, self.conflicts_with):
+            if any(not item or len(item.encode()) > 4096 for item in links) or len(set(links)) != len(links):
+                raise ValueError("finding links must be unique bounded nonempty strings")
+        if self.id in (*self.supersedes, *self.conflicts_with):
+            raise ValueError("finding cannot supersede or conflict with itself")
+        return self
+
+
 class ViewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -34,12 +86,24 @@ class ViewRequest(BaseModel):
     offset: int = Field(default=1, ge=1)
     byte_offset: int = Field(default=0, ge=0)
     byte_limit: int | None = Field(default=None, ge=1, le=16000)
+    path: str | None = Field(default=None, min_length=1, max_length=4096)
+    source_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    focus: tuple[str, ...] = Field(default=(), max_length=64)
 
     @model_validator(mode="after")
     def aware_times(self) -> ViewRequest:
+        if any(not item or len(item.encode()) > 4096 for item in self.focus):
+            raise ValueError("focus requires bounded nonempty task links or paths")
+        if self.program == "working_set" and (self.query or self.kinds or self.statuses or self.observed_after
+                                               or self.cursor or self.retrieval != "keyword"):
+            raise ValueError("working_set selects latest notes before ranking; use focus, not history filters")
         for value in (self.as_of, self.recorded_before, self.observed_after):
             if value is not None and value.utcoffset() is None:
                 raise ValueError("memory time boundaries require an explicit timezone")
+        if (self.path is not None or self.source_sha256 is not None) and self.program not in {
+            "reads.lookup", "read.recover"
+        }:
+            raise ValueError("source filters require a read evidence program")
         return self
 
 

@@ -45,6 +45,9 @@ def test_one_registry_controls_standard_and_reviewed_programs() -> None:
         "event.read": 1,
         "events.count": 1,
         "history.page": 1,
+        "reads.lookup": 1,
+        "read.recover": 1,
+        "working_set": 1,
         "tools.usage": 1,
     }
     assert available_programs(reuse=True, model_visible=True) == {

@@ -19,13 +19,15 @@ from google.genai import types
 
 from harness.core.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
 from harness.core.models.agent_step import StructuredAgentStep
-from harness.evidence.state import EventStore, JsonlEventStore
+from harness.evidence.memory.models import ReadEvidence
+from harness.evidence.state import EventKind, EventStore, JsonlEventStore
 from harness.evidence.state.events import HarnessEvent
 from harness.execution.approvals.waiting import ApprovalWaiter
 from harness.execution.environment.async_call import run_managed_thread
 from harness.execution.environment.runtime import LocalRepositoryRuntime
 from harness.execution.safety.redaction import SecretRedactor
 from harness.execution.tools.adk_adapter import AdkCodingTools, create_adk_tools
+from harness.ptc.notebook.artifacts import put_artifact
 
 from .config import HarnessSettings
 from .ptc import RegisteredCapability, build_notebook_session
@@ -57,6 +59,7 @@ def build_coding_worker(
     tool_config: ToolSurfaceConfig | None = None,
     ptc_config: NotebookPtcConfig | None = None,
     event_store: EventStore | None = None,
+    capture_read_evidence: bool = False,
     approvals: ApprovalWaiter | None = None,
     replies: PublicReplies | None = None,
     capabilities: dict[
@@ -138,6 +141,19 @@ def build_coding_worker(
             if key not in {"data", "ui_details"}
         }
 
+    def observe_effect(task_id: str | None, operation: str, result: dict[str, Any]) -> dict[str, Any]:
+        if capture_read_evidence and task_id:
+            metadata = result.get("ui_details") or {}
+            active_event_store.append(task_id, EventKind.WORKSPACE_EFFECT_OBSERVED, active_redactor.redact({
+                "operation": operation, "status": result.get("status"),
+                "changed_paths": sorted(set(result.get("changed_paths", [])))[:128],
+                "content_hashes": dict(sorted(result.get("content_hashes", {}).items())[:128]),
+                "workspace_may_have_changed": result.get("status") != "blocked" and
+                not (operation == "shell.run" and (metadata.get("memory") is True or
+                     str(metadata.get("virtual_operation", "")).startswith("search."))),
+            }))
+        return _model_result(result)
+
     async def read(
         path: str,
         offset: int = 1,
@@ -148,12 +164,28 @@ def build_coding_worker(
 
         if replies is not None:
             replies.guard_tool(tool_context)
-        del tool_context
-        return _model_result(await run_managed_thread(
+        task_scope, _ = _runtime_identity(tool_context)
+        if settings.task_id_override and task_scope != settings.task_id_override:
+            raise ValueError("read evidence task is outside this run")
+        result = active_redactor.redact(await run_managed_thread(
             _invoke_tool,
             "read",
             lambda: active_tools.read(path=path, offset=offset, limit=limit),
         ))
+        data = result.get("data")
+        if capture_read_evidence and task_scope and result.get("status") == "ok" and isinstance(data, dict) and all(
+            key in data for key in ReadEvidence.model_fields
+        ):
+            evidence = ReadEvidence.model_validate({key: data[key] for key in ReadEvidence.model_fields})
+            content = (json.dumps(result, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+            uri = put_artifact(settings.state_root / "artifacts" / "sha256", content)
+            active_event_store.append(task_scope, EventKind.READ_OBSERVED, {
+                "operation": "fs.read", "status": "ok", "read_evidence": evidence.model_dump(),
+                "source_coverage": evidence.source_coverage(data.get("total_lines")),
+                "result_artifact_uri": uri, "result_media_type": "application/json",
+                "result_bytes": len(content), "artifact_refs": [uri],
+            })
+        return _model_result(result)
 
     async def bash(
         command: str,
@@ -180,11 +212,11 @@ def build_coding_worker(
         if approvals is not None and result.get("approval_required") is True:
             decision = await approvals.wait(str(result["approval_request_id"]), task_scope or "")
             if decision.status == "approved":
-                return _model_result(await run_managed_thread(invoke))
+                return observe_effect(task_scope, "shell.run", await run_managed_thread(invoke))
             return _model_result({**result, "approval_required": False,
                     "model_text": f"Command not executed: approval {decision.status}."}
             )
-        return _model_result(result)
+        return observe_effect(task_scope, "shell.run", result)
 
     async def edit(
         path: str,
@@ -199,7 +231,7 @@ def build_coding_worker(
         if replies is not None:
             replies.guard_tool(tool_context)
         _require_verification(tool_context)
-        return _model_result(await run_managed_thread(
+        return observe_effect(task_scope, "fs.edit", await run_managed_thread(
             _invoke_tool,
             "edit",
             lambda: active_tools.edit(
@@ -226,7 +258,7 @@ def build_coding_worker(
         if replies is not None:
             replies.guard_tool(tool_context)
         _require_verification(tool_context)
-        return _model_result(await run_managed_thread(
+        return observe_effect(task_scope, "fs.write", await run_managed_thread(
             _invoke_tool,
             "write",
             lambda: active_tools.write(

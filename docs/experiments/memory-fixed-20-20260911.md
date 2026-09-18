@@ -268,3 +268,52 @@ test is a paired Koota/Oxvg canary selected to cut before additional reads, foll
 a larger frozen panel only if post-cut repeated-path and exact-range reads fall without
 quality regression. Separately, map the 8M guard to a structured task-input-budget
 terminal outcome instead of the current `runtime_failed` label.
+
+### Stage 8 — Koota/Oxvg evidence-manifest canary (complete)
+
+At revision `3fea1dcd8a7e67966a5198a395efc6c70b6d376d`, four OpenRouter
+GPT-5.6 Luna `max` trials ran concurrently: Koota and Oxvg once in each arm. The
+frozen manifest, 32,768 output cap, 8M cumulative-input budget, no-retry policy,
+and temporary 262,144-token context ceiling matched Stage 7. The recorded profile
+diff remained `928ff7243c02961fd656eeab11dcde72ed53ff5a36499a44f3d090e749cdf5f1`;
+production profiles were restored to 1,048,576 tokens afterward.
+
+| Arm | Pass | Mean partial | Calls | Input | Uncached | Output | Cost | Active wall | Cuts |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| control | 0/2 | 0.8654 | 112 | 8.92M | 256k | 67k | $0.318 | 1,072s | 0 |
+| compaction | 0/2 | 0.8654 | 191 | 11.84M | 411k | 108k | $0.460 | 1,830s | 2 |
+
+Quality was identical task by task: Koota scored 0.8190 and Oxvg 0.9118 in both
+arms. Both treatment cuts occurred during implementation and carried valid manifests:
+Koota compacted 103,842 to 35,842 estimated tokens and Oxvg 157,690 to 37,264.
+Koota subsequently made 36 reads; 34 revisited a prior path, 25 matched its prior
+hash, and 10 repeated an exact range. Oxvg made 11 post-cut reads, all on a prior
+path with the same hash and none on an exact prior range. Aggregate post-cut rates
+were therefore 45/47 repeated path, 36/47 same hash, and 10/47 exact range.
+
+The bounded manifest exposed eight recent read entries in each cut. Sixteen post-cut
+reads revisited an exposed path, 15 with the same hash, but none repeated an exposed
+exact range. All ten exact-range repeats referred to older ranges omitted by the
+eight-entry cap. The current latest-eight representation therefore validates wiring
+but fails the rediscovery gate: it preserves recent file identity, not enough range
+coverage. Compared with the earlier pre-manifest Luna aggregate (75/85 repeated path,
+53/85 same hash, 35/85 exact range), exact-range repetition fell descriptively while
+path/hash repetition did not; single stochastic attempts cannot attribute that change
+to the manifest.
+
+Aggregate efficiency is not comparable as an optimization result because Koota control
+blocked after 44 calls while treatment continued to 118 and exhausted the input budget.
+On the less-confounded Oxvg pair, treatment reduced input 33.6% and cost 7.6%, but
+increased calls 7.4%, uncached input 29.3%, output 41.8%, and active wall time 37.7%.
+Both Oxvg runs blocked on reconciliation after a timed-out Cargo test. Koota control
+also blocked on reconciliation; treatment reached the 8M task-input guard.
+
+Retained result roots:
+
+- `/Users/mathiasl/skein-eval-results/memory-luna-koota-oxvg-manifest-control-20260912`
+- `/Users/mathiasl/skein-eval-results/memory-luna-koota-oxvg-manifest-compaction-20260912`
+
+Do not start the twenty-task panel. First replace the latest-eight flat list with a
+budgeted per-path range index so exact ranges are retained across more files, then rerun
+this same four-trial canary. Independently classify task-input-budget exhaustion as a
+structured terminal outcome; neither change should alter the model tool surface.

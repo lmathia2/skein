@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import hashlib
 import importlib
 import io
 import json
@@ -23,6 +24,7 @@ import traceback
 from collections.abc import Callable, Mapping
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
+from itertools import islice
 from multiprocessing.connection import Connection
 from multiprocessing.process import BaseProcess
 from types import SimpleNamespace
@@ -213,9 +215,10 @@ def _safe_builtins() -> dict[str, Any]:
 
 
 class _RemoteOperation:
-    def __init__(self, connection: Connection, operation: str) -> None:
+    def __init__(self, connection: Connection, operation: str, state: _StateProxy | None = None) -> None:
         self._connection = connection
         self._operation = operation
+        self._state = state
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         request_id = uuid4().hex
@@ -233,7 +236,11 @@ class _RemoteOperation:
             raise RuntimeError("invalid broker response")
         if not response.get("ok"):
             raise RuntimeError(str(response.get("error", "broker call failed")))
-        return response.get("result")
+        result = response.get("result")
+        if self._state is not None:
+            for item in result if self._operation == "parallel" and type(result) is list else [result]:
+                self._state.register_read(item)
+        return result
 
 
 _PRELOADED_MODULES = ("json", "math", "re")
@@ -247,7 +254,8 @@ _AGENT_HELP = {
     "mcp.call": "agent.mcp.call(capability, arguments)",
     "parallel": "agent.parallel([{'operation': 'fs.read', 'arguments': {...}}, ...])",
     "state.list": "agent.state.list()",
-    "state.describe": "agent.state.describe(name)",
+    "state.describe": "agent.state.describe(name, selector=(), preview=False)",
+    "state.annotate": "agent.state.annotate(name, description, selector=())",
     "artifacts.load": "agent.artifacts.load(uri, offset=0, limit=16000)",
     "artifacts.list": "agent.artifacts.list()",
     "artifacts.publish": "agent.artifacts.publish(value, name, description=None)",
@@ -328,14 +336,15 @@ def _binding_description(
     metadata: Mapping[str, Mapping[str, str]],
 ) -> dict[str, Any]:
     value_type = type(value)
+    normal_type = type(value_type) is type
     item: dict[str, Any] = {
         "name": name,
-        "type": value_type.__name__,
-        "module": value_type.__module__,
+        "type": value_type.__name__ if normal_type else "object",
+        "module": value_type.__module__ if normal_type and type(value_type.__module__) is str else "unknown",
         "cell_id": metadata.get(name, {}).get("cell_id", "unknown"),
         "replay": metadata.get(name, {}).get("replay", "transient"),
     }
-    if value_type in {str, bytes, list, tuple, dict, set, frozenset}:
+    if any(value_type is known for known in (str, bytes, list, tuple, dict, set, frozenset)):
         item["size"] = len(value)
     return item
 
@@ -393,6 +402,53 @@ def _restore_snapshot(namespace: dict[str, Any], snapshot: bytes) -> None:
     namespace.update(pickle.loads(snapshot))
 
 
+def _value_fingerprint(value: Any) -> str | None:
+    """Validate bounded plain data before hashing; never invoke object hooks."""
+    nodes = 0
+    size = 0
+    seen: set[int] = set()
+
+    def supported(item: Any, depth: int = 0) -> bool:
+        nonlocal nodes, size
+        nodes += 1
+        if nodes > 1024 or depth > 12:
+            return False
+        kind = type(item)
+        if kind is str:
+            if len(item) > 65536 - size:
+                return False
+            size += len(item.encode("utf-8"))
+        elif any(kind is known for known in (type(None), bool, float)):
+            size += 16
+        elif kind is int:
+            if item.bit_length() > 256:
+                return False
+            size += 80
+        elif any(kind is known for known in (dict, list, tuple)):
+            if id(item) in seen or len(item) > 1024:
+                return False
+            seen.add(id(item))
+            if kind is dict:
+                valid = all(type(key) is str and supported(key, depth + 1) and
+                            supported(child, depth + 1) for key, child in item.items())
+            else:
+                valid = all(supported(child, depth + 1) for child in item)
+            seen.remove(id(item))
+            return valid
+        else:
+            return False
+        return size <= 65536
+
+    try:
+        if not supported(value):
+            return None
+        encoded = json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False,
+                             separators=(",", ":")).encode("utf-8")
+    except (ValueError, UnicodeError):
+        return None
+    return hashlib.sha256(encoded).hexdigest()
+
+
 class _StateProxy:
     def __init__(
         self,
@@ -401,22 +457,133 @@ class _StateProxy:
     ) -> None:
         self._namespace = namespace
         self._metadata = metadata
+        self._sources: dict[int, tuple[Any, str, dict[str, Any]]] = {}
+        self._annotations: dict[tuple[str, tuple[str | int, ...]], tuple[Any, str, str]] = {}
+
+    def register_read(self, result: Any) -> None:
+        """Called only on a host broker response, before returning it to code."""
+        if type(result) is not dict or result.get("status") != "ok":
+            return
+        reference = result.get("read_reference")
+        data = result.get("data")
+        if type(reference) is not dict or type(data) is not dict:
+            return
+        # Detach the attestation from all model-mutable result containers.
+        reference = json.loads(json.dumps(reference))
+        for value in (result, data, data.get("text")):
+            digest = _value_fingerprint(value)
+            if digest is None:
+                continue
+            self._sources[id(value)] = (value, digest, reference)
+            # ponytail: bounded live-value index, not whole-heap lineage tracking.
+            while len(self._sources) > 128:
+                self._sources.pop(next(iter(self._sources)))
+
+    def begin_cell(self, assigned_names: set[str]) -> None:
+        for key in tuple(self._annotations):
+            if key[0] in assigned_names:
+                self._annotations.pop(key, None)
+
+    def annotate(self, name: str, description: str, selector: tuple[str | int, ...] = ()) -> dict[str, Any]:
+        """Describe one current value; the annotation is advisory, not a fact."""
+        try:
+            value = self._resolve(name, selector)
+        except KeyError:
+            return {"status": "unavailable", "reason": "unknown live binding"}
+        if type(description) is not str or not description.strip() or len(description.encode(errors="replace")) > 500:
+            return {"status": "unavailable", "reason": "description must be nonempty and at most 500 UTF-8 bytes"}
+        description = description.encode(errors="replace").decode()
+        key = (name, tuple(selector))
+        digest = _value_fingerprint(value)
+        if digest is None:
+            return {"status": "unavailable", "reason": "value exceeds the supported fingerprint budget"}
+        if key not in self._annotations and len(self._annotations) >= 64:
+            return {"status": "unavailable", "reason": "at most 64 live annotations are supported"}
+        self._annotations[key] = (value, digest, description)
+        return {"status": "ok", **self.describe(name, selector)}
 
     def list(self) -> list[dict[str, Any]]:
         """Return metadata for live bindings without exposing their values."""
 
-        return _state_manifest(self._namespace, self._metadata)
+        names = sorted(name for name in self._namespace
+                       if not name.startswith("__") and name not in _RESERVED_NAMES)
+        keys = sorted(set((name, ()) for name in names) | set(self._annotations),
+                      key=lambda key: (key not in self._annotations, key[0], json.dumps(key[1])))
+        result = []
+        for name, selector in keys[:64]:
+            try:
+                result.append(self.describe(name, selector))
+            except KeyError:
+                self._annotations.pop((name, selector), None)
+                result.append({"name": name, "selector": list(selector), "availability": "unavailable"})
+        return result
 
-    def describe(self, name: str) -> dict[str, Any]:
-        """Describe one live binding without exposing its value."""
-
-        if not isinstance(name, str) or name.startswith("__") or name in _RESERVED_NAMES:
+    def _resolve(self, name: str, selector: tuple[str | int, ...]) -> Any:
+        if type(name) is not str or not name.isidentifier() or name.startswith("__") or name in _RESERVED_NAMES:
             raise KeyError("unknown state binding")
+        if (type(selector) is not list and type(selector) is not tuple) or len(selector) > 8 or any(
+            type(key) is not str and type(key) is not int for key in selector
+        ):
+            raise KeyError("selector must be at most eight string/integer keys")
+        if any((type(key) is str and len(key.encode(errors="replace")) > 4096) or
+               (type(key) is int and key.bit_length() > 256) for key in selector):
+            raise KeyError("selector key exceeds its bounded representation")
         try:
             value = self._namespace[name]
-        except KeyError as error:
+            for key in selector:
+                if type(value) is dict and (len(value) > 1024 or any(type(existing) is not str and type(existing) is not int for existing in value)):
+                    raise KeyError("selector requires bounded plain keys")
+                if type(value) is dict:
+                    value = value[key]
+                elif (type(value) is list or type(value) is tuple) and type(key) is int and key >= 0:
+                    value = value[int(key)]
+                else:
+                    raise KeyError("selector requires a plain container")
+        except (KeyError, IndexError) as error:
             raise KeyError(f"unknown state binding: {name}") from error
-        return _binding_description(name, value, self._metadata)
+        return value
+
+    def describe(self, name: str, selector: tuple[str | int, ...] = (), *, preview: bool = False) -> dict[str, Any]:
+        """Describe one live value using only plain-container selectors."""
+        value = self._resolve(name, selector)
+        key = (name, tuple(selector))
+        item = _binding_description(name, value, self._metadata)
+        if preview:
+            if type(value) is str:
+                item["preview"] = value[:256].encode(errors="replace").decode()
+                item["preview_truncated"] = len(value) > 256
+            elif type(value) is dict:
+                item["preview"] = {"keys": [key[:80] for key in islice(value, 8) if type(key) is str]}
+            elif type(value) is list or type(value) is tuple:
+                item["preview"] = {"item_types": [
+                    type(child).__name__ if type(type(child)) is type else "object"
+                    for child in value[:8]
+                ]}
+        if selector:
+            item["selector"] = list(selector)
+            item["binding_type"] = _binding_description(name, self._namespace[name], self._metadata)["type"]
+            item["access_expression"] = name + "".join(f"[{part!r}]" for part in selector)
+            item["inspect_expression"] = f"agent.state.describe({name!r}, selector={tuple(selector)!r}, preview=True)"
+        source = self._sources.get(id(value))
+        annotation = self._annotations.get(key)
+        digest = _value_fingerprint(value) if source or annotation else None
+        if source:
+            if source[0] is value and digest is not None and source[1] == digest:
+                item["read_reference"] = json.loads(json.dumps(source[2]))
+                item["freshness"] = "historical_snapshot"
+            else:
+                self._sources.pop(id(value), None)
+                item["provenance"] = "invalidated"
+        if annotation:
+            if annotation[0] is value and digest is not None and annotation[1] == digest:
+                item["description"] = annotation[2]
+                item["description_authority"] = "advisory"
+            else:
+                self._annotations.pop(key, None)
+                item["description_status"] = "invalidated"
+        if source or annotation:
+            item["value_fingerprint"] = digest
+        return item
 
 
 def _agent_proxy(
@@ -424,14 +591,15 @@ def _agent_proxy(
     namespace: Mapping[str, Any],
     metadata: Mapping[str, Mapping[str, str]],
     help_catalog: Mapping[str, Mapping[str, object]],
+    state: _StateProxy,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         help=lambda prefix=None, *, details=False: _agent_help(
             help_catalog, prefix, details=details
         ),
-        parallel=_RemoteOperation(connection, "parallel"),
+        parallel=_RemoteOperation(connection, "parallel", state).__call__,
         fs=SimpleNamespace(
-            read=_RemoteOperation(connection, "fs.read"),
+            read=_RemoteOperation(connection, "fs.read", state).__call__,
             write=_RemoteOperation(connection, "fs.write"),
             edit=_RemoteOperation(connection, "fs.edit"),
         ),
@@ -442,7 +610,7 @@ def _agent_proxy(
             list=_RemoteOperation(connection, "artifacts.list"),
             publish=_RemoteOperation(connection, "artifacts.publish"),
         ),
-        state=_StateProxy(namespace, metadata),
+        state=SimpleNamespace(list=state.list, describe=state.describe, annotate=state.annotate),
     )
 
 
@@ -469,10 +637,12 @@ def _execute_cell(
     state_metadata: dict[str, dict[str, str]] | None = None,
     state_recovery: str = "replay_safe",
     snapshot_max_bytes: int = 1_000_000,
+    state_catalog: _StateProxy | None = None,
 ) -> dict[str, Any]:
     stdout = _BoundedText(max_output_bytes)
     stderr = _BoundedText(max_output_bytes)
     failure_stage: Literal["parse", "source_validation", "execution"] = "parse"
+    annotation_checkpoint = dict(state_catalog._annotations) if state_catalog is not None else None
     snapshot = (
         _snapshot_namespace(namespace, snapshot_max_bytes)
         if state_recovery == "snapshot"
@@ -484,6 +654,8 @@ def _execute_cell(
         _validate_source(tree)
         failure_stage = "execution"
         touched_names = _bound_names(tree)
+        if state_catalog is not None:
+            state_catalog.begin_cell(touched_names)
         final_expression: ast.expr | None = None
         if tree.body:
             last_statement = tree.body[-1]
@@ -515,7 +687,7 @@ def _execute_cell(
                 metadata[name] = {"cell_id": cell_id, "replay": replay_policy}
             else:
                 metadata.pop(name, None)
-        manifest = _state_manifest(namespace, metadata)
+        manifest = state_catalog.list() if state_catalog is not None else _state_manifest(namespace, metadata)
         return {
             "status": "ok",
             "stdout": stdout.getvalue(),
@@ -525,11 +697,13 @@ def _execute_cell(
             "value_repr": value_repr,
             "display_data": display_data,
             "output_truncated": stdout.truncated or stderr.truncated,
-            "state_count": len(manifest),
+            "state_count": sum(not name.startswith("__") and name not in _RESERVED_NAMES for name in namespace),
             "state_delta": sorted(touched_names),
             "state_manifest": manifest[:64],
         }
     except BaseException as error:
+        if state_catalog is not None and annotation_checkpoint is not None:
+            state_catalog._annotations = annotation_checkpoint
         state_preserved = snapshot is not None and failure_stage == "execution"
         if state_preserved:
             assert snapshot is not None
@@ -578,7 +752,8 @@ def _worker_main(
     state_metadata: dict[str, dict[str, str]] = {}
     for name in _PRELOADED_MODULES:
         namespace[name] = importlib.import_module(name)
-    namespace["agent"] = _agent_proxy(connection, namespace, state_metadata, help_catalog)
+    state_catalog = _StateProxy(namespace, state_metadata)
+    namespace["agent"] = _agent_proxy(connection, namespace, state_metadata, help_catalog, state_catalog)
     while True:
         try:
             request = connection.recv()
@@ -597,6 +772,7 @@ def _worker_main(
             state_metadata=state_metadata,
             state_recovery=state_recovery,
             snapshot_max_bytes=snapshot_max_bytes,
+            state_catalog=state_catalog,
         )
         connection.send({"type": "execution_result", "id": request.get("id"), **result})
 

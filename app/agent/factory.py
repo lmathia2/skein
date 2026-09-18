@@ -40,6 +40,7 @@ from harness.core.config import (
     SkeinConfig,
 )
 from harness.core.context import prefix_hash
+from harness.core.models import TaskLedger
 from harness.evidence.ledger import LedgerBackedEventStore, LedgerStore, open_ledger
 from harness.evidence.ledger.importers import (
     import_approval,
@@ -406,6 +407,8 @@ class SkeinHarnessFactory:
             else operational_events
         )
         memory_services: dict[str, ContextProgramService] = {}
+        prior_tasks = bindings.prior_task_ids if config.memory.prior_runs else ()
+        prior_roots = bindings.prior_state_roots if config.memory.prior_runs else ()
         semantic_search = (
             self._semantic_search_factory(settings.state_root / "memory" / "lance")
             if self._semantic_search_factory is not None and config.memory.retrieval == "lance"
@@ -427,14 +430,18 @@ class SkeinHarnessFactory:
                     working_notes=config.memory.working_notes,
                     artifact_reader=lambda uri, offset, limit: _ArtifactResolver(
                         workspace=settings.workspace, state_root=settings.state_root,
+                        authorized_state_roots=prior_roots,
                     ).read(
                         uri, offset=offset, limit=limit, max_source_bytes=16_000_000,
                         deadline=time.monotonic() + program_config.timeout_seconds,
                     ),
-                    authorized_tasks=bindings.prior_task_ids,
+                    read_result_reader=_ArtifactResolver(
+                        workspace=settings.workspace, state_root=settings.state_root,
+                        authorized_state_roots=prior_roots,
+                    ).recover_read,
+                    authorized_tasks=prior_tasks,
                     source_ledgers={task: open_ledger(root, config.memory.ledger)
-                                    for task, root in zip(bindings.prior_task_ids,
-                                                          bindings.prior_state_roots, strict=True)},
+                                    for task, root in zip(prior_tasks, prior_roots, strict=True)},
                     redactor=SecretRedactor(known_secrets=known_secrets),
                     semantic_search=semantic_search,
                     on_note=lambda payload: event_store.append(
@@ -490,6 +497,7 @@ class SkeinHarnessFactory:
             tool_config=config.tools,
             ptc_config=config.notebook_ptc,
             event_store=event_store,
+            capture_read_evidence=canonical_ledger is not None,
             approvals=approvals,
             replies=replies,
             workspace_fingerprint=execution.repository.fingerprint,
@@ -605,8 +613,13 @@ class SkeinHarnessFactory:
         ):
             receipt_store = ToolReceiptStore(settings.state_root / "managed-tools.db")
 
-            def context_handoff(task_id: str) -> dict[str, Any]:
-                details: dict[str, Any] = memory_service(task_id).handoff()
+            def context_handoff(task: TaskLedger) -> dict[str, Any]:
+                task_id = task.task_id
+                focus = tuple(dict.fromkeys(filter(None, (
+                    task.current_step_id, *(row.criterion_id for row in task.criterion_rows),
+                    *task.files_modified,
+                ))))[:64]
+                details: dict[str, Any] = memory_service(task_id).handoff(focus=focus)
                 if config.memory.context_programs.mode != "active":
                     details = {"memory": "not model-accessible"}
                 unresolved = [receipt for receipt in receipt_store.for_task(task_id)

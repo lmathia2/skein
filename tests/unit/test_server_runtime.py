@@ -222,6 +222,20 @@ def _session_request(operation: str, thread: str, key: str = "followup-one", **k
 
 
 @pytest.mark.asyncio
+async def test_input_budget_exhaustion_has_its_own_terminal_category(tmp_path):
+    from harness.evidence.telemetry.adk_plugin import TaskInputBudgetExceeded
+
+    coordinator, factory = _coordinator(tmp_path)
+    record, _ = await coordinator.start(_start(), user_id="user")
+    execution = factory.executions[record.run_id]
+    await execution.entered.wait()
+    execution.fail(TaskInputBudgetExceeded("bounded test budget"))
+    await coordinator.wait(record.run_id)
+    events = coordinator.store.replay(record.run_id)
+    assert any(event.event.code == "task_input_budget_exhausted" for event in events)
+
+
+@pytest.mark.asyncio
 async def test_followups_are_durable_ordered_and_idempotent(tmp_path: Path) -> None:
     coordinator, factory = _coordinator(tmp_path)
     first, _ = await coordinator.start(_start(), user_id="user")

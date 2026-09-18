@@ -2,7 +2,7 @@
 
 > Status: core contracts implemented; safe automatic recovery remains opt-in
 >
-> Updated: 2026-09-09
+> Updated: 2026-09-12
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -19,6 +19,9 @@ Code-level requirements and test mappings are in the
    snapshot and does not serialize the Python heap.
 5. A model completion claim requires independent criterion-bound verification.
 6. Steering, cancellation, budgets, approvals, and deadlines remain host-owned.
+7. Recovery distinguishes live availability, historical evidence, and current
+   workspace observations. Missing optional memory is not an unknown effect, and a
+   memory summary cannot reconcile an uncertain operation.
 
 ## Execution loop
 
@@ -115,6 +118,41 @@ Recovery blocks on missing/corrupt evidence, workspace divergence, exhausted bud
 or an unknown effect that cannot be reconciled. It does not restore arbitrary files,
 promise exactly-once shell execution, or replay effectful notebook cells.
 
+### Compaction is not a worker restart
+
+An ordinary context cut changes the provider-visible suffix, not the Python worker.
+The handoff records observed worker availability and the last committed epoch. Parse
+and source-validation failures can preserve that worker; execution errors under the
+default replay-safe policy discard it. Experimental snapshot rollback covers selected
+primitive/container values within the same live worker, not timeout or process loss.
+The [PTC ADR](trace-native-harness.md#state-policies) defines that limited scope.
+
+A timeout during a broker call can leave an effect unknown even after the worker is
+discarded. Retaining a variable, restoring a snapshot, or replaying a notebook cannot
+resolve it. Automatic reconciliation is appropriate only where matching identities,
+receipts, and workspace evidence establish the outcome; otherwise continuation stays
+explicitly blocked. Current conservative blocking is not proof that every failure
+changed the workspace, and broader automatic reconciliation remains gated work.
+
+The [continuity implementation](../design/ptc-memory-continuity-plan.md) now carries
+receipt-confirmed touched paths separately from the task-ledger modified-file list,
+which can still lag in-loop edits. Neither list is a freshly verified workspace diff.
+PTC receipts and direct-tool workspace-effect observations retain available content
+hashes and conservative mutation uncertainty. Finding dependencies are annotated from
+that evidence as historical, changed, or requiring revalidation; they do not claim to
+detect external edits that were never observed. A current read/guarded mutation must
+still establish the required source version. Restored historical content never silently
+answers a current filesystem read or authorizes a stale guarded edit.
+
+Recoverable context pressure uses bounded output/artifact indirection or the available
+checkpoint without inventing missing findings. Corrupt captured history, scope/identity
+mismatch, and unresolved effects still fail closed. Terminal reporting must distinguish
+cumulative task-input-budget exhaustion from runtime bugs, provider failures, recovery
+blocks, and independent verifier failure; unequal stopping conditions confound paired
+quality and efficiency comparisons. The runtime now reports `TaskInputBudgetExceeded`
+as `task_input_budget_exhausted` instead of generic `runtime_failed`. This classification
+does not increase the budget or turn an incomplete run into a verified completion.
+
 ## Verification
 
 Completion requires evidence for the requested acceptance criteria, applicable
@@ -126,6 +164,11 @@ Verification uses the same workspace, sandbox, policy, approvals, redaction, and
 task identity as ordinary tools. A failing check becomes a durable counterexample for
 the next model invocation. A passing pre-existing baseline proves only no regression;
 it does not prove the requested behavior.
+
+Coding-mode completion additionally requires at least one changed repository path.
+This rejects unchanged-workspace completion; it is a necessary condition, not proof
+that an arbitrary diff meets acceptance criteria. Analysis/answer modes do not inherit
+that coding-only requirement.
 
 ## Steering and cancellation
 

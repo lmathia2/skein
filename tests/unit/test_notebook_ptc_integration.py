@@ -46,6 +46,45 @@ def _enabled_composition():
 
 
 @pytest.mark.asyncio
+async def test_description_notices_spill_selected_utf8_output_and_redact_values(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
+        cast(BaseLlm, "test-model"),
+        ptc_config=config.notebook_ptc.model_copy(update={"max_output_bytes": 2048}),
+        redactor=SecretRedactor(known_secrets=("private-fixture-token",)),
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        result = await worker.execute_code(
+            "value = 42\nagent.state.annotate('value', 'retained finding')\n"
+            "print('é' * 900)\n'private-fixture-token'"
+        )
+        assert result["status"] == "ok" and result["truncated"]
+        assert len(result["model_text"].encode()) <= 2048
+        assert "private-fixture-token" not in json.dumps(result)
+        assert result["artifact_uris"]
+        for uri in result["artifact_uris"]:
+            assert "private-fixture-token" not in (tmp_path / "state" / "artifacts" / "sha256" / uri.rsplit("/", 1)[-1]).read_text()
+        failure = await worker.execute_code("raise ValueError('private-fixture-token')")
+        assert failure["status"] == "error"
+        assert "private-fixture-token" not in json.dumps(failure)
+        context = SimpleNamespace(state={"task_id": "task"}, invocation_id="inv", function_call_id="secret")
+        code = "private_value = 'private-fixture-token'"
+        assert (await worker.execute_code(code, tool_context=context))["status"] == "ok"
+        assert (await worker.execute_code(code, tool_context=context))["replayed"]
+        assert (await worker.execute_code(code + " # changed", tool_context=context))["status"] == "blocked"
+        events = JsonlEventStore(tmp_path / "state" / "events").read("task")
+        assert "private-fixture-token" not in json.dumps([event.payload for event in events])
+        submitted = [event for event in events if event.kind == EventKind.REPL_CELL_SUBMITTED]
+        assert submitted[-1].payload["replay_policy"] == "never"
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
 async def test_notebook_ptc_rejects_a_different_task_scope(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
@@ -1022,6 +1061,12 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
             "agent.artifacts.load('artifact://sha256/' + ('0' * 64))"
         )
         denied_name = await worker.execute_code("agent.artifacts.publish('x', '../../')")
+        read_event = next(event for event in events.read("task")
+                          if event.kind == EventKind.CAPABILITY_COMPLETED and
+                          event.payload.get("operation") == "fs.read")
+        uri = read_event.payload["result_artifact_uri"]
+        (state_root / "artifacts" / "sha256" / uri.rsplit("/", 1)[-1]).write_bytes(b"corrupt")
+        corrupt = await worker.execute_code(f"agent.artifacts.load({uri!r})")
     finally:
         assert worker.close is not None
         worker.close()
@@ -1032,12 +1077,54 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
     assert "'published': True" in published["model_text"]
     assert "PermissionError" in denied["model_text"]
     assert "ValueError" in denied_name["model_text"]
+    assert "content hash does not match" in corrupt["model_text"]
     publish_events = [
         event for event in events.read("task") if event.kind == EventKind.ARTIFACT_PUBLISHED
     ]
     assert len(publish_events) == 2
     assert publish_events[0].payload["artifact_uri"] == publish_events[1].payload["artifact_uri"]
     assert publish_events[0].payload["host_visible"] is True
+
+
+@pytest.mark.asyncio
+async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "note.txt").write_text("historical source\n")
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(state_root / "events")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=workspace, state_root=state_root, task_id="task")),
+        cast(BaseLlm, "test-model"),
+        tools=create_adk_tools(workspace, state_root=state_root, task_scope="task"),
+        ptc_config=config.notebook_ptc, event_store=events,
+    )
+    assert worker.execute_code is not None
+    try:
+        await worker.execute_code(
+            "source = agent.fs.read('note.txt')\n"
+            "agent.state.annotate('source', 'Module needed for the next edit')"
+        )
+        description = await worker.execute_code("agent.state.describe('source')")
+        source_events = [event for event in events.read("task")
+                         if event.kind == EventKind.CAPABILITY_COMPLETED and
+                         event.payload.get("operation") == "fs.read"]
+        assert len(source_events) == 1
+        assert source_events[0].payload["result_artifact_uri"] in description["model_text"]
+        assert "Module needed for the next edit" in description["model_text"]
+        assert "historical source" not in description["model_text"]
+        assert "register_read" not in (await worker.execute_code("dir(agent.state)"))["model_text"]
+        changed = await worker.execute_code(
+            "source['data']['text'] = 'different text'\nagent.state.describe('source')"
+        )
+        assert "invalidated" in changed["model_text"]
+        assert "Module needed for the next edit" not in changed["model_text"]
+    finally:
+        assert worker.close is not None
+        worker.close()
 
 
 @pytest.mark.asyncio

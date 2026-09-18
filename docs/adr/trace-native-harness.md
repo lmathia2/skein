@@ -3,7 +3,7 @@
 > Status: historical implementation record. The current core architecture is
 > [Skein architecture design](skein_architecture_design.md).
 >
-> Updated: 2026-09-09
+> Updated: 2026-09-12
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -37,6 +37,11 @@ Code-level requirements and test mappings are in the
    Configuration may select registered programs and shared resource bounds, never
    import paths or arbitrary executable source.
 9. Deterministic code owns policy, budgets, recovery, verification, and completion.
+10. PTC continuity is an evidence-to-finding-to-reuse contract, not a promise that a
+    warm interpreter alone prevents rediscovery. The accepted
+    [continuity plan](../design/ptc-memory-continuity-plan.md) assigns live-value
+    tracking to PTC, durable findings/retrieval to memory, and prompt placement to
+    context assembly; those additions must pass their lifecycle gates before promotion.
 
 ## Architecture
 
@@ -132,13 +137,14 @@ loading. Unknown enum values, invalid budgets, and missing required settings rem
 validation errors. There is no fallback to another runtime or persistence policy.
 
 The transitional `notebook_ptc` schema accepts `serialization: native` and
-`state: native` by default. Skein additionally accepts its explicit `notebook` and
-`replay_safe` pairing. The matrix below is a delivery target, not a promise that all
-combinations are available now.
+`state: native` by default. Skein additionally accepts explicit `notebook` serialization
+with `replay_safe` or experimental `snapshot` state. The matrix below is a delivery
+target, not a promise that all combinations are available now.
 
 - `replay_safe` requires a persistent runtime and canonical cell lifecycle events.
-- `snapshot` requires a runtime that implements bounded snapshot/restore and records
-  snapshot manifests. It does not make opaque heap bytes historical evidence.
+- The current `snapshot` policy is bounded pre-cell rollback within a live worker,
+  not durable snapshot-manifest recovery after process loss. A future durable policy
+  would additionally require validated snapshot manifests. Neither is effect evidence.
 - `serialization: notebook` requires a registered deterministic notebook projector.
 - `serialization: jsonl` adds no runtime-specific transcript writer: lifecycle events
   remain in the operational task stream and, when enabled, the canonical ledger.
@@ -158,9 +164,9 @@ selectable plugin contract.
 | Module | Current code seam | Current status | Host-owned invariant |
 | --- | --- | --- | --- |
 | Environment lifecycle | `ExecutionRuntime`, `CommandSandbox`, and PTC-owned local processes | Typed host and runtime implementations | Exclusive ownership, clean setup/reset, cleanup verification |
-| PTC session | `PtcSession` returned by closed `select_ptc_session` dispatch | Common assembly/lifecycle result for two implementations | One model tool and explicit cleanup/reconciliation hooks |
+| PTC session | `PtcSession` returned by closed `select_ptc_session` dispatch | Common assembly/lifecycle seam; Skein notebook is the retained implementation | One model tool and explicit cleanup/reconciliation hooks |
 | PTC serialization | Implementation-owned notebook or ledger events | Native bundle | Stable attempt identity and provenance; serialization never grants execution authority |
-| Runtime-state policy | Implementation-owned safe replay, none, or bounded snapshot | Native bundle | Explicit restore eligibility; uncertain effects are never automatically replayed |
+| Runtime-state policy | Implementation-owned safe replay or bounded in-worker snapshot rollback | Native bundle; `none` is unsupported | Explicit restore eligibility; uncertain effects are never automatically replayed |
 | Memory programs | `MemoryProgramSpec`, `MemoryProgramRuntime`, `ViewRequest`/`ViewResult` | Exact version selection through one finite registry | Authorized scope, watermarks, bounds, evidence and result hashes |
 | Context assembly | Pure `select_context_cut` plus one `ContextWindowPlugin`; ADK Pi compaction is separate | Policy seam; strategies are not one plugin registry | Stable prefix, bounded dynamic suffix, complete tool-call/result boundaries |
 | Result presentation | `ToolEnvelope` and `compact_tool_result` | Shared by all PTC implementations; not configuration-selectable | Redaction, output bounds and links to authoritative evidence |
@@ -322,9 +328,11 @@ model envelope:
 
 Only applicable non-default fields are emitted. The envelope may additionally include
 `exit_code`, `truncated`, `omitted_bytes`, `replayed`, and
-`reconciliation_required`. It never repeats stdout, stderr, display bundles, notebook
-paths, runtime epochs, or internal state deltas already represented by `model_text`,
-artifacts, or the durable terminal event. The result hash identifies semantic output
+`reconciliation_required`. Notebook PTC additionally returns bounded failure diagnostics,
+`state_preserved`, and an observed `kernel` liveness/epoch record so a historical cell
+epoch is not mistaken for a currently live worker. It does not repeat stdout, stderr,
+display bundles, notebook paths, or the entire internal state catalog already represented
+by `model_text`, artifacts, or the durable terminal event. The result hash identifies semantic output
 and is stable across replay and runtime-epoch changes. Full receipts remain in the
 canonical trace; bounded reads recover them when authorized.
 
@@ -390,17 +398,91 @@ retain import compatibility and prove replay equality before changing writers.
 `none` makes no continuity claim. A runtime may remain warm during its natural lifetime,
 but restart begins with an empty namespace.
 
-`replay_safe` preserves current Skein behavior. A failed cell discards the dirty runtime
-epoch. Restart executes only completed, self-contained data-construction cells classified
-as safe. Imports, definitions, calls, dependent expressions, and broker effects are not
-silently replayed.
+`replay_safe` is the shipped default. A cell execution error discards the dirty runtime
+epoch; parse/source-validation errors preserve it because execution did not begin.
+Restart executes only completed, self-contained data-construction cells classified as
+safe. Imports, definitions, calls, dependent expressions, and broker effects are not
+silently replayed. `none` is not a supported Skein notebook configuration today.
 
-`snapshot` remains a reserved recovery policy. Any future implementation must apply
-total and per-value byte caps, write payload and manifest atomically, and restore only
-for the same owner, workspace, runtime implementation/version, and compatible Python
-environment. Snapshot bytes are an opaque recovery artifact: they do not prove how a
-value was produced, whether an external effect completed, or that the current
-environment is semantically equivalent. Unknown effects still block retry or completion.
+Experimental `snapshot` captures a size-limited selection of exact primitive/container
+values before a cell and restores that selection after a caught execution exception.
+Unsupported, cyclic, excessively nested, and over-budget values are omitted; rollback
+therefore does not promise preservation of the full namespace. It does not undo brokered
+effects. The bytes stay inside the worker: timeout, transport loss, and process restart
+do not restore them. Restart still uses conservative safe-cell replay. This is distinct
+from the immutable `.ipynb` artifact emitted as `notebook.snapshotted` at shutdown.
+
+A future durable runtime snapshot requires atomic payload/manifest publication, scope
+and runtime compatibility validation, and bounded restore. Neither an in-worker rollback
+nor a future snapshot proves provenance, current workspace equivalence, or external
+effect completion. Unknown effects still require reconciliation.
+
+### Working values and durable memory
+
+Stage 2 extends the live state catalog through the existing PTC surface:
+
+```python
+agent.state.annotate("sources", "Module needed for the next edit", selector=("main",))
+agent.state.describe("sources", selector=("main",), preview=True)
+```
+
+`annotate` records a bounded advisory purpose for one supported live value; it does
+not create a durable semantic finding. `describe` retains name/type/size/cell/replay
+metadata, optionally adds a bounded string or structural preview, and includes a
+broker-established read reference when available. Selectors contain at most eight
+string/integer keys into plain containers, never expressions evaluated with `eval`.
+Preview is opt-in; listing the catalog does not dump value contents.
+
+Broker read results carry task/operation identity, artifact URI, source path/hash,
+and range. Before returning those results to Python, the runtime registers bounded
+fingerprints for the result mapping, its data mapping, and source text where supported.
+References are detached from model-mutable containers. Merely copying or constructing
+a dictionary with a `read_reference` field does not establish broker provenance.
+
+Descriptions and provenance require both the recorded object and a matching bounded
+content fingerprint. Reassignment clears the affected annotation; same-size in-place
+mutation invalidates its description and the relevant read association. Aliases can
+reuse an unchanged registered object, while a separately retained original string can
+remain valid historical evidence after its parent mapping changes. Nested descriptors
+distinguish the parent `binding_type` from the selected value's `type`, and supply
+escaped `access_expression` and `inspect_expression` recipes. These are advisory
+references, not executed code or new authority. Selector keys and integer
+representations are bounded. Missing selectors
+are unavailable. Failed-cell annotation changes are rolled back; committed state
+manifests are redacted in the terminal event and scoped by its cell and kernel epoch.
+Worker loss discards the live registry rather than claiming old descriptors are live.
+
+This is deliberately limited plain-data support: at most 64 annotations/catalog
+entries and 128 registered source values, 500 UTF-8 bytes per annotation, and bounded
+fingerprint traversal (1,024 nodes, depth 12, and 65,536-byte content accounting).
+Unsupported/cyclic/over-budget values lose eligibility instead of acquiring guessed
+lineage. Preview/fingerprinting does not call arbitrary `repr`, properties, iterators,
+or serialization hooks. The catalog does not track every transformation or establish
+current workspace freshness; read references remain historical snapshots.
+
+Focused descriptor and notebook integration tests cover these delivered seams. Stage 3
+now separately persists typed evidence-linked findings and explicit corrections in
+versioned memory notes, with a bounded `working_set@1` view; see the
+[finding contract](context-and-memory.md#delivered-finding-lifecycle-and-working-set-program).
+Annotations are not automatically converted to those durable findings. Stage 4 adds
+bounded changed-only state notices under `notebook_ptc.emit_state_updates`, with
+cell/epoch attribution and a selective-inspection pointer. At most eight entries are
+selected under the existing output budget; unchanged or irrelevant catalog metadata
+does not generate a notice. Lost associations are reported as invalidated, not as
+evidence that the underlying historical artifact disappeared. Pre-execution failures
+preserve the prior state description; actual worker loss does not advertise it as live.
+The compact result separately reports observed kernel liveness/epoch, including after
+execution failure, instead of relying on a prior successful cell's metadata.
+Selected output, exception diagnostics, and retained cell source redact known secrets.
+If redaction changes source, that cell is never automatically replayed; an original
+source digest preserves content-sensitive operation identity without persisting the
+secret-bearing source. Redaction is not permission to replay altered Python code.
+
+The context renderer admits described bindings only when observed worker availability
+and epoch match. Its metadata/described/findings representation choices support
+controlled comparison without changing broker authority. Focused tests cover the
+changed-only notices and whole-entry handoff construction; these checks do not establish
+that the complete continuity mechanism or its live quality gate has passed.
 
 ## Notebook contract
 
@@ -435,8 +517,8 @@ notebook reducer creates:
 
 - Markdown cells for the task request, user/assistant messages, steering, working
   notes, and compaction handoffs;
-- code cells containing exact submitted Python plus attempt, effect, artifact,
-  source-event, watermark, and kernel metadata;
+- code cells containing retained, secret-redacted Python plus the original source
+  digest, attempt, effect, artifact, source-event, watermark, and kernel metadata;
 - selected bounded stdout, stderr, display data, and exceptions.
 
 The same events at the same watermark produce byte-stable `.ipynb` output. Clean
@@ -530,8 +612,9 @@ remain separate configuration axes.
 
 This delivery ledger distinguishes landed seams from the remaining extraction:
 
-1. **Landed:** both PTC implementations return a shared `PtcSession` assembly
-   result and the same compact result envelope; selection is centralized.
+1. **Landed:** PTC assembly returns a shared `PtcSession` result and compact envelope;
+   selection is centralized. Skein notebook is the retained runtime after ADK Code
+   Mode removal, not one of two currently available implementations.
 2. **Landed:** unsupported serialization/state/continuity/module combinations fail at
    configuration loading with specific errors.
 3. **Landed:** exact memory program versions resolve through one finite registry; the
@@ -550,6 +633,7 @@ Canonical runtime/persistence matrix after implementation audit:
 | Runtime | Serialization | State | Status | Contract |
 | --- | --- | --- | --- | --- |
 | `skein_repl` | `notebook` | `replay_safe` | supported | Durable cells and conservative replay |
+| `skein_repl` | `notebook` | `snapshot` | experimental | Bounded in-worker pre-cell rollback; no durable heap restore |
 | `skein_repl` | `jsonl` | `replay_safe` | not implemented | Requires extraction of notebook serialization from the coordinator |
 
 For identical brokered programs, changing only serialization must preserve runtime

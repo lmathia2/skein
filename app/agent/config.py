@@ -34,8 +34,18 @@ Retain reusable intermediate values instead of spending a model turn on each tri
 Use Python for exact calculation, parsing, aggregation, comparison, and deterministic
 transformation when it reduces copying or reasoning error; return prose directly when
 execution adds no evidence.
-Read a file once into a variable, print only the range needed now, and slice the retained
-value in later cells instead of reading the file again. Use `search grep --pattern TEXT
+Retain useful reads under meaningful names. Reuse covered ranges of the same source
+version; a partial read is not a whole-file snapshot. After edits, external changes,
+unknown shell effects, or a missing range, obtain fresh evidence where needed and use
+expected_sha256 for guarded edits. A missing match in captured lines is not evidence
+of absence in the file. Check data.complete/total_lines/next_offset and read the
+uncovered range or search the current file; never substitute a different symbol or
+weaken the task requirement to avoid a necessary read. Recovery returns captured
+coverage only, not unseen lines: recovery `complete` applies to its selected capture
+page, whereas `source_coverage.whole_file` describes the original source capture.
+Use `source_coverage.next_unread_offset` for a needed fresh source read, never as a
+recovery-page offset. Correctness takes priority over reducing re-reads.
+Use `search grep --pattern TEXT
 --path PATH --limit 20` through `agent.shell.run` before recursive grep or repeated
 exploratory reads.
 
@@ -44,7 +54,10 @@ Compose work until new semantic judgment is required. Examples:
 result = agent.fs.read(path)
 src = result["data"]["text"] if result["status"] == "ok" else ""
 print(src[start:start + 4000])
-# In later cells, slice src again instead of rereading path.
+agent.state.annotate("src", "Source range used for the next edit")
+# Later: agent.state.describe("src", preview=True), then slice the retained range.
+# A read_reference artifact URI can recover exact historical text after worker loss:
+# agent.shell.run("memory query --program read.recover --artifact-uri URI --offset 1 --limit 40")
 
 pages = agent.parallel([
     {"operation": "fs.read", "arguments": {"path": path}} for path in known_paths
@@ -63,8 +76,22 @@ the model when results require interpretation; independent verification owns com
 input order; other operations remain serial.
 Use
 `agent.state.list()` or
-`agent.state.describe(name)` to inspect
-live variable metadata without exposing values. For `.ipynb` files, use `nb read` or
+`agent.state.describe(name, selector=(), preview=False)` to inspect
+live values selectively. A descriptor with a selector describes the selected leaf,
+not the parent binding: use its `access_expression` or `inspect_expression` exactly;
+`binding_type` identifies the parent and `type` identifies the selected value.
+`agent.state.annotate(name, description, selector=())` attaches
+a brief advisory purpose to supported values; it does not durably retain conclusions.
+When working notes are enabled, record concise public findings and next actions with
+`memory note write --text TEXT --entries JSON --expected-version N --operation-id ID`
+through `agent.shell.run`. Each entry has id, kind, text, and optional evidence_refs,
+task_links, related_paths, supersedes, conflicts_with. An observation requires a public
+event ID or read_reference artifact URI; use hypothesis for an unsupported claim.
+Record useful findings after interpreting evidence or before changing phase, not after
+every read. Use `memory query --program working_set` to recover them. Findings survive
+binding loss but remain advisory and historical, never proof of current freshness or
+verification. Missing/disabled memory is not an execution failure; continue using
+available evidence. For `.ipynb` files, use `nb read` or
 `nb search` through `agent.shell.run`; never parse notebook JSON in Python. The notebook
 records code and selected outputs, while the append-only ledger records execution and
 nested capability outcomes. `open()` and direct filesystem, process, or network APIs are

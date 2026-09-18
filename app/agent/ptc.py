@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import re
+import shlex
 from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -20,6 +21,8 @@ from google.adk.tools import ToolContext
 from google.genai import types
 
 from harness.core.config import NotebookPtcConfig
+from harness.evidence.ledger.models import canonical_json
+from harness.evidence.memory.models import ReadEvidence
 from harness.evidence.state import EventKind, EventStore
 from harness.evidence.state.events import HarnessEvent
 from harness.execution.approvals.waiting import ApprovalWaiter
@@ -27,7 +30,7 @@ from harness.execution.environment.async_call import run_managed_thread
 from harness.execution.repo import build_repository_manifest
 from harness.execution.safety.redaction import SecretRedactor
 from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT
-from harness.execution.tools.adk_adapter import AdkCodingTools
+from harness.execution.tools.adk_adapter import AdkCodingTools, _ArtifactResolver
 from harness.execution.tools.output import bound_output, compact_tool_result
 from harness.ptc.notebook import (
     NotebookCell,
@@ -80,6 +83,30 @@ def _replay_policy(code: str) -> str:
     if any(isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) for node in nodes):
         return "requires_reconciliation"
     return "safe"
+
+
+def _state_updates(previous: list[dict[str, Any]], current: list[dict[str, Any]], max_bytes: int) -> list[dict[str, Any]]:
+    """Expose only changed supported descriptions; missing catalog entries aren't live."""
+    def key(item: dict[str, Any]) -> str:
+        return canonical_json([item.get("name"), item.get("selector", [])])
+
+    before = {key(item): item for item in previous if item.get("description") or item.get("read_reference")}
+    after = {key(item): item for item in current}
+    updates = []
+    for identity in sorted(set(before) | set(after), key=lambda identity: (
+        identity not in before, not bool(after.get(identity, {}).get("description")), identity
+    )):
+        item = after.get(identity)
+        if item == before.get(identity):
+            continue
+        if not item or not (item.get("description") or item.get("read_reference")):
+            if identity not in before:
+                continue
+            old = before[identity]
+            item = {"name": old["name"], "selector": old.get("selector", []), "availability": "association_invalidated"}
+        if len(updates) < 8 and len(canonical_json([*updates, item]).encode()) <= max_bytes:
+            updates.append(item)
+    return updates
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,7 +277,17 @@ def build_notebook_session(
                 "operation_id": operation_id,
                 "operation": operation,
                 "arguments_sha256": arguments_hash,
+                "workspace_may_have_changed": operation not in {"fs.read", "artifacts.load", "artifacts.list", "artifacts.publish"},
             }
+            if operation == "shell.run":
+                try:
+                    words = shlex.split(str(arguments.get("command", "")))
+                except ValueError:
+                    words = []
+                common["discovery_kind"] = (
+                    "search" if words[:1] in (["rg"], ["grep"], ["search"]) or words[:2] == ["git", "grep"]
+                    else "memory" if words[:1] == ["memory"] else "unclassified_shell"
+                )
             active_event_store.append(
                 self.task_id,
                 EventKind.CAPABILITY_REQUESTED,
@@ -326,6 +363,7 @@ def build_notebook_session(
             result_hash = hashlib.sha256(
                 json.dumps(result, sort_keys=True, separators=(",", ":"), default=str).encode()
             ).hexdigest()
+            metadata = result.get("ui_details") or {}
             payload = {
                 **common,
                 "status": status,
@@ -334,6 +372,11 @@ def build_notebook_session(
                 "artifact_refs": sorted(refs),
                 "truncated": bool(result.get("truncated")),
                 "omitted_bytes": max(0, int(result.get("omitted_bytes", 0))),
+                "changed_paths": sorted(set(result.get("changed_paths", [])))[:128],
+                "content_hashes": dict(sorted(result.get("content_hashes", {}).items())[:128]),
+                "workspace_may_have_changed": bool(common.get("workspace_may_have_changed")) and status != "blocked"
+                and not (common["operation"] == "shell.run" and (metadata.get("memory") is True or
+                         str(metadata.get("virtual_operation", "")).startswith("search."))),
             }
             if common["operation"] == "fs.read" and status == "ok":
                 data = result.get("data", {})
@@ -344,6 +387,8 @@ def build_notebook_session(
                         key: data[key]
                         for key in ("path", "sha256", "offset", "returned_lines")
                     }
+                    payload["source_coverage"] = ReadEvidence.model_validate(
+                        payload["read_evidence"]).source_coverage(data.get("total_lines"))
             if result_artifact_uri is not None:
                 payload.update(
                     {
@@ -358,6 +403,13 @@ def build_notebook_session(
                 payload,
                 idempotency_key=f"capability:{operation_id}:terminal",
             )
+            if "read_evidence" in payload and result_artifact_uri is not None:
+                result = {**result, "read_reference": {
+                    "task_id": self.task_id, "operation_id": operation_id,
+                    "artifact_uri": result_artifact_uri,
+                    **payload["read_evidence"],
+                    "source_coverage": payload["source_coverage"],
+                }}
             return result
 
         def _call(
@@ -602,7 +654,9 @@ def build_notebook_session(
                 digest = uri.removeprefix("artifact://sha256/")
                 if not re.fullmatch(r"[0-9a-f]{64}", digest):
                     raise ValueError("invalid content-addressed artifact URI")
-                content = (settings.state_root / "artifacts" / "sha256" / digest).read_bytes()
+                content = _ArtifactResolver(
+                    workspace=settings.workspace, state_root=settings.state_root,
+                )._read_content(uri, max_source_bytes=16_000_000)
                 selected = content[offset : offset + limit]
                 return {
                     "status": "ok",
@@ -814,7 +868,10 @@ def build_notebook_session(
                 "model_text": "A prior timed-out Python cell has an unknown effect; reconcile it before more execution.",
             }
         if previous_attempt is not None:
-            if previous_attempt.source != code:
+            previous_source_hash = next((event.payload.get("source_sha256") for event in notebook_events(task_id)
+                                         if event.kind == EventKind.REPL_CELL_SUBMITTED and
+                                         event.payload.get("attempt_id") == attempt_id), None)
+            if (previous_source_hash or hashlib.sha256(previous_attempt.source.encode()).hexdigest()) != hashlib.sha256(code.encode()).hexdigest():
                 return {
                     "status": "blocked",
                     "model_text": "Python operation identity reused with different source",
@@ -834,11 +891,13 @@ def build_notebook_session(
                 "model_text": "Cell already completed; effects were not repeated. Inspect durable history for its outputs.",
                 "state_available": previous_attempt.replay_policy == "safe",
             }
-        replay_policy = _replay_policy(code)
+        retained_source = redactor.redact_text(code)
+        replay_policy = _replay_policy(code) if retained_source == code else "never"
         cell_payload = {
             "notebook_id": notebook_id,
             "cell_id": cell_id,
-            "source": code,
+            "source": retained_source,
+            "source_sha256": hashlib.sha256(code.encode()).hexdigest(),
             "attempt_id": attempt_id,
             "kernel_epoch": kernel_epoch,
             "replay_policy": replay_policy,
@@ -924,7 +983,7 @@ def build_notebook_session(
                     "media_type": "text/plain; charset=utf-8",
                 }
             )
-        display_data = result.display_data
+        display_data = redactor.redact(result.display_data) if result.display_data is not None else None
         if display_data is not None:
             display_data, display_refs = externalize_mime_bundle(
                 display_data,
@@ -949,15 +1008,27 @@ def build_notebook_session(
             "state": {
                 "count": result.state_count,
                 "delta": list(result.state_delta),
-                "manifest": list(result.state_manifest),
+                "manifest": redactor.redact(list(result.state_manifest)),
             },
         }
         if display_data is not None:
             terminal_payload["display"] = display_data
         elif result.value_repr is not None:
-            terminal_payload["display"] = {"text/plain": result.value_repr}
+            terminal_payload["display"] = {"text/plain": redactor.redact_text(result.value_repr)}
+        prior_state = next((event.payload.get("state", {}).get("manifest", [])
+                            for event in reversed(active_event_store.read(task_id))
+                            if event.kind == EventKind.REPL_CELL_COMPLETED
+                            and event.payload.get("kernel_epoch") == kernel_epoch), [])
+        current_state = terminal_payload["state"]["manifest"]
+        if result.failure_stage in {"parse", "source_validation"}:
+            current_state = prior_state
+        elif result.status != "ok" and not state_preserved:
+            current_state = []
+        updates = _state_updates(prior_state, current_state,
+                                 min(2048, active_ptc_config.max_output_bytes // 4))
+        terminal_payload["state_updates"] = updates
         if result.error_type is not None:
-            terminal_payload["exception"] = {
+            terminal_payload["exception"] = redactor.redact({
                 "ename": result.error_type,
                 "evalue": result.error_message or "",
                 "traceback": list(result.traceback),
@@ -965,7 +1036,7 @@ def build_notebook_session(
                 "line": result.error_line,
                 "source": result.error_source,
                 "state_preserved": state_preserved,
-            }
+            })
         active_event_store.append(
             task_id,
             terminal_kind,
@@ -1001,7 +1072,7 @@ def build_notebook_session(
             },
             idempotency_key=f"notebook-materialized:{attempt_id}",
         )
-        visible = "\n".join(
+        visible = redactor.redact_text("\n".join(
             part
             for part in (
                 full_stdout or stdout,
@@ -1014,13 +1085,14 @@ def build_notebook_session(
                 ),
             )
             if part
-        )
+        ))
         bounded = bound_output(
             visible,
             max_chars=active_ptc_config.max_output_bytes,
             max_lines=400,
         )
         model_text = bounded.text
+        displaced_bytes = 0
         if output_artifacts:
             refs = ", ".join(item["artifact_uri"] for item in output_artifacts)
             notice = f"\n[complete output artifacts: {refs}]"
@@ -1031,6 +1103,24 @@ def build_notebook_session(
             )
             model_text = preview.text + notice
             bounded = preview
+        if updates and active_ptc_config.emit_state_updates:
+            notice = "\nState updates (advisory; sources historical):\n" + canonical_json({
+                "kernel_epoch": kernel_epoch, "cell_id": cell_id, "entries": updates,
+                "more": "agent.state.list(); agent.state.describe(name, preview=True)",
+            })
+            available = max(0, active_ptc_config.max_output_bytes - len(notice.encode()))
+            if len(model_text.encode()) > available:
+                uri = put_artifact(settings.state_root / "artifacts" / "sha256", visible.encode())
+                broker.model_artifact_refs.add(uri)
+                active_event_store.append(task_id, EventKind.TOOL_ARTIFACT_RECORDED, {
+                    "tool_name": "execute_code", "artifact_uri": uri, "content_hash": uri.rsplit("/", 1)[-1],
+                }, idempotency_key=f"selected-output:{attempt_id}")
+                notice += f"\n[complete selected output: {uri}]"
+                available = max(0, active_ptc_config.max_output_bytes - len(notice.encode()))
+            bounded = bound_output(model_text, max_chars=max(1, available), max_lines=396)
+            selected = bounded.text.encode()[:available].decode(errors="ignore")
+            displaced_bytes = max(0, len(model_text.encode()) - len(selected.encode()))
+            model_text = selected + notice
         return {
             "status": result.status,
             "model_text": model_text,
@@ -1044,15 +1134,16 @@ def build_notebook_session(
             "artifact_uris": sorted(broker.model_artifact_refs),
             "output_artifacts": output_artifacts,
             "duration_ms": result.duration_ms,
-            "truncated": result.output_truncated or bounded.truncated,
-            "omitted_bytes": bounded.omitted_bytes,
+            "truncated": result.output_truncated or bounded.truncated or bool(displaced_bytes),
+            "omitted_bytes": max(bounded.omitted_bytes, displaced_bytes),
             "state_count": result.state_count,
             "state_delta": list(result.state_delta),
             "failure_stage": result.failure_stage,
             "error_type": result.error_type,
             "error_line": result.error_line,
-            "error_source": result.error_source,
+            "error_source": redactor.redact_text(result.error_source) if result.error_source else None,
             "state_preserved": state_preserved,
+            "kernel": worker.kernel_status(),
         }
 
     async def execute_code(
@@ -1071,6 +1162,7 @@ def build_notebook_session(
             "error_line",
             "error_source",
             "state_preserved",
+            "kernel",
         ):
             if result.get(key) is not None:
                 compact[key] = result[key]

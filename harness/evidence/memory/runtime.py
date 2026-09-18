@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from harness.evidence.ledger import LedgerStore
 from harness.execution.safety.redaction import SecretRedactor
 
-from .context import ArtifactReader, compute_context
+from .context import ArtifactReader, ReadResultReader, compute_context
 from .lance import LanceMemorySearch
 from .models import ViewRequest, ViewResult
 from .programs import PROGRAM_REGISTRY
@@ -18,6 +18,7 @@ class MemoryProgramRuntime:
         self, ledger: LedgerStore, *, semantic_search: LanceMemorySearch | None = None,
         authorized_tasks: tuple[str, ...] = (), redactor: SecretRedactor | None = None,
         reuse: bool = False, artifact_reader: ArtifactReader | None = None,
+        read_result_reader: ReadResultReader | None = None,
         source_ledgers: Mapping[str, LedgerStore] | None = None,
     ) -> None:
         self.ledger = ledger
@@ -26,6 +27,7 @@ class MemoryProgramRuntime:
         self.redactor = redactor or SecretRedactor()
         self.reuse = reuse
         self.artifact_reader = artifact_reader
+        self.read_result_reader = read_result_reader
         self.source_ledgers = source_ledgers
         self._known_context_sources: set[str] = set()
 
@@ -39,6 +41,7 @@ class MemoryProgramRuntime:
             redactor=self.redactor,
             reuse=self.reuse,
             artifact_reader=self.artifact_reader,
+            read_result_reader=self.read_result_reader,
             source_ledgers=self.source_ledgers,
             semantic_search=self.semantic_search,
             known_sources=self._known_context_sources,

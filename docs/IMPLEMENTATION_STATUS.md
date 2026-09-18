@@ -45,6 +45,37 @@ product surfaces and have been removed.
   content-addressed artifacts. Internal result artifacts stay out of model responses;
   bounded task-scoped load/list operations recover them, while explicit publish adds
   normalized host-facing metadata without forwarding data.
+- Active memory supports `reads.lookup` and `read.recover` over addressed PTC and
+  newly captured four-tool reads. Recovery checks artifact integrity and recorded
+  path/version/range, returns bounded historical text with UTF-8 byte paging, and
+  supports explicitly authorized prior-run artifact roots. Decoding is capped at
+  16 MB; older unaddressed reads remain unavailable. This is evidence recovery, not
+  a claim of current source freshness.
+  Recovery-page completeness is separate from historical whole-file coverage;
+  read references and handoffs retain source line counts and missing-range pointers.
+- PTC read results now carry durable read references into a bounded live-value
+  catalog. `agent.state.annotate` attaches advisory descriptions to supported plain
+  data; `state.describe` supports restricted container selectors and opt-in previews.
+  Bounded fingerprints invalidate descriptions/provenance after reassignment or
+  mutation. Catalogs hold at most 64 descriptors/annotations and 128 tracked source
+  locations; oversized/opaque values are not implicitly given provenance. Committed
+  descriptors are redacted into the existing cell event, not a second memory store.
+- Working notes accept typed advisory findings with authorized evidence citations,
+  source dependencies, explicit conflicts/supersession, and task/path relevance links.
+  `working_set@1` selects whole findings deterministically at an identified watermark;
+  text-only notes remain compatible. Whole-entry handoffs now integrate findings,
+  described live bindings, historical read handles, and receipt-confirmed touched paths.
+  Changed-only PTC notices and actual kernel observations preserve bounded output;
+  displaced output remains a redacted artifact. Headers freeze per epoch and the
+  model/tool prefix stays invariant. Same-version contained read ranges are collapsed
+  without inventing merged artifacts or discarding distinct versions.
+- Source dependencies distinguish historical snapshots, observed changes, and
+  revalidation requirements. Unobserved external changes require current reads or
+  version guards; restored artifacts are never silently substituted for fresh reads.
+  Prior recall requires both the feature and explicit owned source bindings. Worker
+  loss preserves findings/artifacts without promising arbitrary heap restoration or
+  replaying unresolved effects. Cumulative input-budget exhaustion has its own runtime
+  terminal category. These are tested code contracts, not live quality conclusions.
 - Conservative replay-safe recovery remains the shipped default. A bounded
   primitive/container snapshot policy is available only as an experimental opt-in.
 - `harness/verification` owns acceptance checks and the final complete/retry/blocked
@@ -60,6 +91,12 @@ product surfaces and have been removed.
 Four tools remain the default because notebook PTC has not cleared the matched quality
 gate. Notebook PTC remains available for controlled evaluations. The reference-six
 audit and subsequent two-task comparison are retained under `docs/audits/`.
+
+The completed 48-case OpenRouter continuity cohort reduced exact-line duplicate
+emissions with findings but did not reduce source rereads, cost 13% more than the
+metadata arm, and failed the missing-range case. DeepSWE expansion and default
+promotion remain held. See [the continuity audit](audits/ptc-memory-continuity-2026-09-12.md)
+for the separate cohort results and subsequent coverage diagnostic.
 
 Deterministic unit and integration tests establish code contracts, not model quality.
 See [Package layout](package-layout.md), [Architecture](architecture.md), and

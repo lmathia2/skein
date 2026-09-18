@@ -20,11 +20,12 @@ from harness.evidence.ledger.models import canonical_json, extend_event_hash
 from harness.execution.safety.redaction import SecretRedactor
 
 from .lance import LanceMemorySearch
-from .models import ViewRequest, ViewResult
+from .models import MemoryFinding, ReadEvidence, ViewRequest, ViewResult
 from .programs import resolve_program
 
 ArtifactReader = Callable[[str, int, int], dict[str, Any]]
-EXPOSURE_VERSION = "context-public-v1"
+ReadResultReader = Callable[[str, ReadEvidence, ViewRequest], dict[str, Any]]
+EXPOSURE_VERSION = "context-public-v2"
 # Explicit field/kind allowlist: never expose raw ADK sessions, traces, heaps or reasoning.
 _FIELDS = {
     "context.history": {"role", "parts"},
@@ -36,21 +37,34 @@ _FIELDS = {
     "verification.completed": {"verification", "passed", "commands", "summary"},
     "task.blocked": {"reason", "summary"},
     "task.finished": {"status", "summary", "outcome"},
-    "memory.note": {"version", "text", "evidence_event_ids", "expected_version"},
+    "memory.note": {"version", "text", "evidence_event_ids", "expected_version", "entries"},
+    "workspace.effect_observed": {"operation", "status", "changed_paths", "content_hashes", "workspace_may_have_changed"},
+    "execution.validation_observed": {"operation_id", "command_sha256", "workspace_before", "workspace_after", "result"},
+    "execution.validation_completed": {"operation_id", "command_sha256", "workspace_before", "workspace_after", "result"},
     "metric.tool": {
         "invocation_id", "tool_name", "status", "arguments_hash", "result_hash",
         "duration_ms", "model_visible_bytes", "omitted_bytes", "replayed",
     },
     "capability.requested": {
         "attempt_id", "operation_id", "operation", "arguments_sha256",
+        "discovery_kind",
     },
     "capability.completed": {
         "attempt_id", "operation_id", "operation", "status", "effect", "result_hash",
         "artifact_refs", "truncated", "omitted_bytes",
+        "read_evidence", "result_artifact_uri", "result_media_type", "result_bytes",
+        "source_coverage",
+        "changed_paths", "content_hashes", "workspace_may_have_changed",
+    },
+    "read.observed": {
+        "operation", "status", "read_evidence", "result_artifact_uri",
+        "source_coverage",
+        "result_media_type", "result_bytes", "artifact_refs",
     },
     "capability.failed": {
         "attempt_id", "operation_id", "operation", "status", "effect", "result_hash",
         "error", "truncated", "omitted_bytes",
+        "workspace_may_have_changed",
     },
     "capability.blocked": {
         "attempt_id", "operation_id", "operation", "status", "effect", "result_hash",
@@ -62,6 +76,40 @@ _TOOL_FIELDS = {"tool_name", "status", "artifact_uri", "error", "result_hash"}
 
 def _hash(value: object) -> str:
     return hashlib.sha256(canonical_json(value).encode()).hexdigest()
+
+
+def _matches_read(row: dict[str, Any], request: ViewRequest) -> bool:
+    payload = row["payload"]
+    if (row["kind"] not in {"capability.completed", "read.observed"} or payload.get("operation") != "fs.read" or
+            not isinstance(payload.get("read_evidence"), dict)):
+        return False
+    read = ReadEvidence.model_validate(payload["read_evidence"])
+    return ((request.path is None or read.path == request.path) and
+            (request.source_sha256 is None or read.sha256 == request.source_sha256))
+
+
+def _recover_read(
+    payload: dict[str, Any], request: ViewRequest, reader: ReadResultReader | None,
+    redactor: SecretRedactor, deadline: float,
+) -> tuple[dict[str, Any], str]:
+    uri = payload.get("result_artifact_uri")
+    if (not isinstance(uri, str) or not uri.startswith("artifact://sha256/") or
+            reader is None or (request.artifact_uri is not None and request.artifact_uri != uri)):
+        return {"reason": "read result is unavailable in the authorized projection"}, "unavailable"
+    read = ReadEvidence.model_validate(payload["read_evidence"])
+    data = redactor.redact(reader(uri, read, request))
+    if time.monotonic() >= deadline:
+        raise TimeoutError("read recovery deadline exceeded")
+    if len(canonical_json(data).encode()) > request.max_bytes:
+        return {"reason": "read recovery exceeds output budget", "complete": False}, "partial"
+    return data, "ok" if data.get("complete") else "partial"
+
+
+def _artifact_references(payload: dict[str, Any]) -> set[str]:
+    refs = {value for value in (payload.get("artifact_uri"), payload.get("result_artifact_uri"))
+            if isinstance(value, str)}
+    refs.update(value for value in payload.get("artifact_refs", ()) if isinstance(value, str))
+    return refs
 
 
 def project(event: LedgerEvent, redactor: SecretRedactor) -> dict[str, Any] | None:
@@ -262,6 +310,7 @@ def _fast_counts(
 def compute_context(
     ledger: LedgerStore, request: ViewRequest, *, authorized_tasks: tuple[str, ...],
     redactor: SecretRedactor, reuse: bool = False, artifact_reader: ArtifactReader | None = None,
+    read_result_reader: ReadResultReader | None = None,
     source_ledgers: Mapping[str, LedgerStore] | None = None,
     semantic_search: LanceMemorySearch | None = None,
     known_sources: set[str] | None = None,
@@ -269,7 +318,7 @@ def compute_context(
     """Execute only finite reviewed builtins; no evaluation/import of model code."""
     start = time.monotonic()
     deadline = start + request.timeout_seconds
-    from . import semantic
+    from . import findings, semantic
 
     versions = {"python": platform.python_version()}
     for dependency in ("pydantic", "duckdb", "lancedb", "pyarrow"):
@@ -277,12 +326,21 @@ def compute_context(
             versions[dependency] = importlib.metadata.version(dependency)
         except importlib.metadata.PackageNotFoundError:
             versions[dependency] = "unavailable"
-    program_hash = _hash({"source": inspect.getsource(sys.modules[__name__]) + inspect.getsource(semantic)
+    program_hash = _hash({"source": inspect.getsource(sys.modules[__name__]) + inspect.getsource(semantic) + inspect.getsource(findings)
                           + inspect.getsource(LanceMemorySearch) + inspect.getsource(SecretRedactor),
                           "program": request.program, "version": request.version,
                           "exposure": EXPOSURE_VERSION, "fields": {k: sorted(v) for k, v in _FIELDS.items()},
                           "tool_fields": sorted(_TOOL_FIELDS), "request_contract": ViewRequest.model_json_schema(),
+                          "read_contract": ReadEvidence.model_json_schema(),
+                          "read_source": inspect.getsource(ReadEvidence),
+                          "finding_contract": MemoryFinding.model_json_schema(),
                           "output_contract": ViewResult.model_json_schema(), "dependencies": versions})
+    if request.program == "read.recover" and read_result_reader is not None:
+        reader_source = inspect.getsource(
+            type(read_result_reader.__self__) if inspect.ismethod(read_result_reader)
+            else read_result_reader
+        )
+        program_hash = _hash({"context_program": program_hash, "reader_source": reader_source})
     parameters = request.model_dump(mode="json", exclude={"cursor"})
     parameters["embedding_version"] = semantic_search.embedding_version if semantic_search else None
     parameters["redaction_identity"] = _hash({"known_secrets": sorted(redactor.known_secrets),
@@ -309,7 +367,7 @@ def compute_context(
     if request.retrieval != "keyword" and (semantic_search is None or not request.query):
         return result({"reason": "semantic retrieval requires an explicit provider and query"}, "unavailable")
     if request.retrieval != "keyword" and request.program in {
-        "event.read", "artifact.read", "tools.usage"
+        "event.read", "artifact.read", "read.recover", "reads.lookup", "tools.usage"
     }:
         return result({"reason": "selected program does not apply semantic ranking"}, "unavailable")
     previous: dict[str, Any] | None = None
@@ -373,6 +431,8 @@ def compute_context(
                     continue
                 if request.statuses and event.status not in request.statuses:
                     continue
+                if request.program in {"reads.lookup", "read.recover"} and not _matches_read(row, request):
+                    continue
                 if request.retrieval == "keyword" and request.query and request.query.casefold() not in canonical_json(row).casefold():
                     continue
                 visible.append(row)
@@ -390,6 +450,8 @@ def compute_context(
             visible = [safe_rows[event_id] for event_id in dict.fromkeys(ranked_ids) if event_id in safe_rows]
             ranked_partial = True  # semantic top-k is never an exact full-set predicate
         execution_hash = _hash({"parameters": parameters, "sources": manifest, "program": program_hash})
+        if request.program == "working_set":
+            return result(*findings.select_findings(visible, request))
         if request.program == "tools.usage":
             return result(*_tool_usage(retained_events, request))
         if request.program in {"events.count", "failures.by_kind"}:
@@ -402,10 +464,16 @@ def compute_context(
             if len(canonical_json(data).encode()) > request.max_bytes:
                 return result({"reason": "aggregate output exceeds budget", "complete": False}, "partial")
             return result(data, "partial" if ranked_partial else "ok")
-        if request.program in {"event.read", "artifact.read"}:
-            visible = [row for row in visible if row["event_id"] == request.event_id]
+        if request.program in {"event.read", "artifact.read", "read.recover"}:
+            if request.program == "read.recover" and request.event_id is None and request.artifact_uri:
+                visible = [row for row in visible if row["payload"].get("result_artifact_uri") == request.artifact_uri][-1:]
+            else:
+                visible = [row for row in visible if row["event_id"] == request.event_id]
             if not visible:
                 return result({"reason": "event is unavailable in the authorized projection"}, "unavailable")
+        if request.program == "read.recover":
+            data, status = _recover_read(visible[0]["payload"], request, read_result_reader, redactor, deadline)
+            return result(data, status, (visible[0]["event_id"],))
         if request.program == "event.read" and (
             request.byte_limit is not None or request.byte_offset or
             len(canonical_json(visible[0]).encode()) > request.max_bytes // 2
@@ -427,8 +495,9 @@ def compute_context(
                            "total_bytes": len(encoded), "representation_hash": hashlib.sha256(encoded).hexdigest()},
                           "partial" if end < len(encoded) else "ok", (visible[0]["event_id"],))
         if request.program == "artifact.read":
-            uri = visible[0]["payload"].get("artifact_uri")
-            if not uri or uri != request.artifact_uri or artifact_reader is None:
+            refs = _artifact_references(visible[0]["payload"])
+            uri = request.artifact_uri
+            if not uri or uri not in refs or artifact_reader is None:
                 return result({"reason": "artifact is not authorized or reader unavailable"}, "unavailable")
             data = redactor.redact(artifact_reader(uri, request.offset, request.limit))
             if time.monotonic() >= deadline:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 from collections.abc import Callable
@@ -13,8 +14,9 @@ from google.adk.plugins.base_plugin import BasePlugin
 from google.genai import types
 
 from harness.core.config.models import ContextConfig
-from harness.core.context import estimate_tokens, truncate_to_tokens
+from harness.core.context import estimate_tokens
 from harness.core.context.compiler import estimate_model_tokens
+from harness.core.models import TaskLedger
 from harness.core.orchestration import build_work_packet
 from harness.evidence.ledger import LedgerStore
 from harness.evidence.ledger.models import canonical_json
@@ -68,18 +70,34 @@ def _complete_cuts(contents: list[types.Content]) -> list[int]:
     return cuts
 
 
-def _evidence_manifest(events: list[Any], modified_paths: list[str]) -> dict[str, Any]:
+def _evidence_manifest(events: list[Any], modified_paths: list[str], focus: tuple[str, ...] = ()) -> dict[str, Any]:
     """Return a small deterministic index of evidence hidden by a future cut."""
     reads: list[dict[str, Any]] = []
     seen_reads: set[str] = set()
     validations: list[dict[str, Any]] = []
+    touched: set[str] = set()
     for event in reversed(events):
         evidence = event.payload.get("read_evidence")
-        if event.kind == EventKind.CAPABILITY_COMPLETED and isinstance(evidence, dict):
+        touched.update(event.payload.get("changed_paths", ()))
+        if event.kind in {EventKind.CAPABILITY_COMPLETED, EventKind.READ_OBSERVED} and isinstance(evidence, dict):
             identity = canonical_json(evidence)
-            if identity not in seen_reads and len(reads) < 8:
+            if identity not in seen_reads:
                 seen_reads.add(identity)
-                reads.append(evidence)
+                item = dict(evidence)
+                if isinstance(event.payload.get("source_coverage"), dict):
+                    item["source_coverage"] = event.payload["source_coverage"]
+                same = [read for read in reads if (read.get("path"), read.get("sha256")) ==
+                        (item.get("path"), item.get("sha256"))]
+                start, end = item["offset"], item["offset"] + item["returned_lines"]
+                if any(read["offset"] <= start and read["offset"] + read["returned_lines"] >= end for read in same):
+                    continue
+                # A single addressed superset can replace contained ranges. Keep
+                # partial overlaps separate: never invent one merged artifact.
+                reads = [read for read in reads if read not in same or not (
+                    start <= read["offset"] and read["offset"] + read["returned_lines"] <= end)]
+                if event.payload.get("result_artifact_uri"):
+                    item["artifact_uri"] = event.payload["result_artifact_uri"]
+                reads.append(item)
         if event.kind in {"execution.validation_completed", "execution.validation_observed"}:
             result = event.payload.get("result", {})
             if isinstance(result, dict) and len(validations) < 4:
@@ -88,13 +106,58 @@ def _evidence_manifest(events: list[Any], modified_paths: list[str]) -> dict[str
                     "exit_code": result.get("exit_code"),
                     "status": result.get("status"),
                 })
-        if len(reads) >= 8 and len(validations) >= 4:
-            break
+    reads.sort(key=lambda item: item.get("path") not in focus)
     return {
         "modified_paths": sorted(modified_paths)[:16],
-        "reads_newest_first": reads,
+        "touched_paths": sorted(touched)[:128],
+        "reads_newest_first": reads[:32],
+        "omitted_reads": max(0, len(reads) - 32),
         "validations_newest_first": validations,
     }
+
+
+def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
+    """Preserve control metadata and whole advisory entries, never JSON fragments."""
+    critical = {key: details[key] for key in (
+        "history_boundary", "kernel", "unresolved_effects", "retrieval"
+    ) if key in details}
+    notebook = details.get("notebook", {})
+    if notebook:
+        critical["notebook"] = {key: value for key, value in notebook.items() if key != "state"}
+    working = details.get("working_set", {})
+    if working:
+        critical["working_set"] = {key: working[key] for key in (
+            "program", "version", "program_hash", "execution_hash", "watermark", "content_hash", "status"
+        ) if key in working}
+    required = "Required continuation metadata:\n" + json.dumps(critical, sort_keys=True, ensure_ascii=False)
+    candidates: list[tuple[str, Any]] = []
+    for item in working.get("data", {}).get("findings", []):
+        candidates.append(("findings", item))
+    if details.get("note"):
+        candidates.append(("note", details["note"]))
+    if details.get("note_excerpt"):
+        candidates.append(("note_excerpt", details["note_excerpt"]))
+    if notebook.get("availability") == "live":
+        candidates.extend(("live_bindings", item) for item in notebook.get("state", {}).get("manifest", [])
+                          if item.get("description") or item.get("read_reference"))
+    manifest = details.get("evidence_manifest", {})
+    for key in ("touched_paths", "modified_paths", "validations_newest_first", "reads_newest_first"):
+        candidates.extend((key, item) for item in manifest.get(key, []))
+    advisory: dict[str, Any] = {"entries": [], "omitted_count": len(candidates),
+                               "upstream_omitted_count": working.get("data", {}).get("omitted_count", 0)
+                               + manifest.get("omitted_reads", 0)}
+
+    def serialized(value: dict[str, Any]) -> str:
+        return required + "\nAdvisory memory (not execution authority):\n" + json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+    if estimate_tokens(serialized(advisory)) > max_tokens:
+        raise ValueError("required handoff exceeds compaction budget; context retained")
+    for kind, value in candidates:
+        proposed = {**advisory, "entries": [*advisory["entries"], {"kind": kind, "value": value}],
+                    "omitted_count": advisory["omitted_count"] - 1}
+        if estimate_tokens(serialized(proposed)) <= max_tokens:
+            advisory = proposed
+    return serialized(advisory)
 
 
 def select_context_cut(
@@ -105,6 +168,7 @@ def select_context_cut(
     transient: list[types.Content],
     config: ContextConfig,
     available_tokens: int | None = None,
+    previous_header: types.Content | None = None,
 ) -> int:
     """Purely select a bounded complete-interaction suffix boundary."""
     cuts = _complete_cuts(contents)
@@ -120,7 +184,8 @@ def select_context_cut(
             if estimate_tokens(_serialized(tail)) <= config.recent_event_tokens:
                 selected = candidate
                 break
-    effective = [header, *contents[selected:], *transient]
+    effective = [previous_header if selected == prior_cut and previous_header is not None else header,
+                 *contents[selected:], *transient]
     # The latest call/result is indivisible and may exceed the soft packet target.
     # Never drop an unconsumed result; the remaining hard-window budget still wins.
     hard_limit = config.max_context_tokens if available_tokens is None else available_tokens
@@ -142,7 +207,7 @@ class ContextWindowPlugin(BasePlugin):
         events: EventStore,
         ledger: LedgerStore,
         config: ContextConfig,
-        handoff: Callable[[str], dict[str, Any]],
+        handoff: Callable[[TaskLedger], dict[str, Any]],
         known_secrets: tuple[str, ...] = (),
         require_notes: bool = False,
     ) -> None:
@@ -261,48 +326,51 @@ class ContextWindowPlugin(BasePlugin):
             _serialized(raw[:cut]).encode()
         ).hexdigest()):
             raise ValueError("context epoch does not match retained ADK history")
-        details = self.handoff(task_id)
+        details = self.handoff(task)
+        if self.config.continuity_representation != "findings":
+            details.pop("working_set", None)
         note_available = not self.require_notes or (
             details.get("note", {}).get("status") == "ok"
             and int(details.get("note", {}).get("version", 0)) > 0
-            and bool(str(details.get("note_excerpt", "")).strip())
+            and bool(str(details.get("note_excerpt", "")).strip() or details.get("note", {}).get("entry_count"))
         )
         if not note_available and previous.get("note"):
             details["note"] = previous["note"]
             details["note_excerpt"] = previous.get("note_excerpt", "")
             details["note_stale"] = True
         details["history_boundary"] = events[-1].sequence
-        details["evidence_manifest"] = _evidence_manifest(events, task.files_modified)
+        finding_paths = tuple(path for item in details.get("working_set", {}).get("data", {}).get("findings", [])
+                              for path in item.get("finding", {}).get("related_paths", []))
+        details["evidence_manifest"] = _evidence_manifest(events, task.files_modified, finding_paths)
+        if self.config.continuity_representation == "metadata":
+            manifest = details["evidence_manifest"]
+            manifest["omitted_reads"] += max(0, len(manifest["reads_newest_first"]) - 8)
+            manifest["reads_newest_first"] = manifest["reads_newest_first"][:8]
         committed = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED]
         failures = [event for event in events if event.kind in {
             EventKind.REPL_CELL_FAILED, EventKind.REPL_CELL_TIMEOUT,
         }]
         if committed:
-            last = committed[-1]
+            observations = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED or
+                            (event.kind == EventKind.REPL_CELL_FAILED and event.payload.get("exception", {}).get("state_preserved")
+                             and event.payload.get("exception", {}).get("stage") not in {"parse", "source_validation"})]
+            last = observations[-1]
             kernel = details.get("kernel", {})
             unknown_failure = next((event for event in reversed(failures)
                                     if event.payload.get("effect") == "unknown"), None)
             details["notebook"] = {
-                "last_committed_kernel_epoch": last.payload.get("kernel_epoch"),
+                "last_committed_kernel_epoch": committed[-1].payload.get("kernel_epoch"),
+                "observation_kernel_epoch": last.payload.get("kernel_epoch"),
+                "observation_cell_id": last.payload.get("cell_id"),
                 "state": last.payload.get("state", {}),
                 "availability": "effect_reconciliation_required"
                 if unknown_failure and unknown_failure.sequence > last.sequence
                 else "live" if kernel.get("live") and kernel.get("kernel_epoch") ==
                 last.payload.get("kernel_epoch") else "restart_pending_safe_restore",
             }
-        critical = {key: details[key] for key in (
-            "history_boundary", "kernel", "unresolved_effects", "retrieval"
-        ) if key in details}
-        if "notebook" in details:
-            critical["notebook"] = {key: value for key, value in details["notebook"].items()
-                                    if key != "state"}
-        required = "Required continuation metadata:\n" + canonical_json(self.redactor.redact(critical))
-        allowance = self.config.compaction_tokens - estimate_tokens(required) - 16
-        if allowance < 0:
-            raise ValueError("required handoff exceeds compaction budget; context retained")
-        advisory = json.dumps(self.redactor.redact(details), sort_keys=True, ensure_ascii=False)
-        advisory, _ = truncate_to_tokens(advisory, allowance)
-        handoff = required + "\nAdvisory memory (not execution authority):\n" + advisory
+            if self.config.continuity_representation == "metadata":
+                details["notebook"]["state"] = {}
+        handoff = render_handoff(self.redactor.redact(details), max_tokens=self.config.compaction_tokens)
         active_handoff = str(previous.get("summary") or handoff)
         # Newest intent first; full text remains in canonical history. Never
         # head/tail-splice old instructions around the newest correction.
@@ -335,10 +403,13 @@ class ContextWindowPlugin(BasePlugin):
             if self.require_notes:
                 initial_hint += (
                     "\nKeep working intent in memory notes before changing phase. Use "
-                    "agent.shell.run('memory note read') and then memory note write "
+                    "the bash capability (agent.shell.run in PTC) with memory note read, then memory note write "
                     "--text TEXT --expected-version N --operation-id ID through the same "
                     "capability. Record findings, the selected approach, remaining work, "
-                    "and evidence paths. Read results from the data field."
+                    "and evidence paths. --entries JSON adds typed public findings: id, kind, text, "
+                    "evidence_refs, task_links, related_paths. Observations require available event IDs "
+                    "or read artifact URIs; unsupported claims are hypotheses. Use supersedes or "
+                    "conflicts_with for corrections. Read PTC results from the data field."
                 )
             callback_context.state[root_key] = initial_hint
         effective = [header, *remaining, *transient] if cut else [raw[0], types.Content(
@@ -390,7 +461,7 @@ class ContextWindowPlugin(BasePlugin):
                 )
                 effective.append(types.Content(role="user", parts=[types.Part.from_text(
                     text="A working-note checkpoint is pending. Before further work, persist a nonempty "
-                    "working note with memory note write through agent.shell.run. Include your "
+                    "working note with memory note write through bash (agent.shell.run in PTC). Include your "
                     "findings, approach, remaining work, and evidence paths."
                 )]))
                 if phase:
@@ -422,7 +493,17 @@ class ContextWindowPlugin(BasePlugin):
                 transient=transient,
                 config=self.config,
                 available_tokens=self.config.max_context_tokens - request_overhead - reserved_output,
+                previous_header=types.Content.model_validate(previous["header"]) if previous.get("header") else None,
             )
+            if new_cut == cut:
+                # The newest tool result is indivisible and not consumed yet.
+                # Keep the published epoch; refreshing its content under the same
+                # identity would violate both idempotency and the cache contract.
+                if phase:
+                    callback_context.state[phase_key] = phase
+                callback_context.state[estimate_key] = estimate_tokens(_serialized(effective)) + request_overhead
+                llm_request.contents = effective
+                return
             effective = [header, *raw[new_cut:], *transient]
             prefix_hash = hashlib.sha256(_serialized(raw[:new_cut]).encode()).hexdigest()
             epoch = hashlib.sha256(f"{invocation}:{anchor}:{new_cut}:{prefix_hash}".encode()).hexdigest()
@@ -438,6 +519,12 @@ class ContextWindowPlugin(BasePlugin):
                  "phase": phase,
                  "note": details.get("note"), "note_excerpt": details.get("note_excerpt", ""),
                  "history_watermark": events[-1].sequence,
+                 "handoff_program": "continuation@2",
+                 "handoff_program_hash": hashlib.sha256((inspect.getsource(render_handoff) +
+                                                          inspect.getsource(_evidence_manifest) +
+                                                          inspect.getsource(select_context_cut) +
+                                                          inspect.getsource(type(self))).encode()).hexdigest(),
+                 "working_set": {key: value for key, value in details.get("working_set", {}).items() if key != "data"},
                  "tokens_before": projected_provider_tokens,
                  "tokens_after": estimate_tokens(_serialized(effective)) + request_overhead,
                  "token_estimate_source": "provider_previous_plus_delta"

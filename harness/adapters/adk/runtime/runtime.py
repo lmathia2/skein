@@ -1080,6 +1080,9 @@ class RunCoordinator:
                 )
         except Exception as error:
             safe_error = self.redactor.redact_text(str(error))[:4_096]
+            from harness.evidence.telemetry.adk_plugin import TaskInputBudgetExceeded
+
+            budget_exhausted = isinstance(error, TaskInputBudgetExceeded)
             if not current_execution_closed:
                 cleanup_warning = await self._close_execution(current_execution)
                 current_execution_closed = True
@@ -1098,7 +1101,7 @@ class RunCoordinator:
                         type=AgUiEventType.RUN_ERROR,
                         thread_id=record.thread_id,
                         run_id=record.run_id,
-                        code="runtime_failed",
+                        code="task_input_budget_exhausted" if budget_exhausted else "runtime_failed",
                         message=safe_error or "runtime failed",
                     ),
                     source_key="server:run-error",

@@ -31,6 +31,36 @@
 See [the context and memory ADR](adr/context-and-memory.md). Implementation
 does not satisfy the live empirical gates; default behavior remains unchanged.
 
+### Evidence-backed PTC and memory continuity
+
+Implementation ownership, dependencies, and acceptance gates are in the
+[PTC and memory continuity plan](design/ptc-memory-continuity-plan.md).
+
+- [x] S0 — Freeze reproducible reread/exposure measurements and continuity contracts.
+  - [x] Add a bounded canonical-ledger read-coverage analyzer with overlap/version
+    regression tests. Versioned exact-line exposure now distinguishes selected PTC,
+    shell/artifact output, and decoded public provider input; unmappable content stays
+    unknown. Old canaries still lack complete exposure capture.
+- [x] S1 — Complete authorized evidence addressing and bounded direct recovery.
+- [x] S2 — Add provenance-aware PTC descriptions and safe binding lifecycle tracking.
+- [x] S3 — Preserve evidence-linked findings and build a task-relevant working set.
+  - [x] Add typed advisory findings, versioned corrections, authorized citations,
+    and bounded focus-ranked selection over the existing note ledger.
+- [x] S4 — Integrate bounded state updates and cache-stable continuation messages.
+  Whole-entry handoffs retain findings and recovery handles, identify actual worker
+  availability, collapse compatible contained reads, and freeze provider prefixes.
+- [x] S5 — Verify freshness, interruption, worker-loss, and prior-run lifecycles.
+  Observed changes invalidate dependencies; historical recovery never bypasses
+  current-version guards. Unknown effects still fail closed. Live quality is S6.
+- [ ] S6 — Run approved controlled continuations and diverse paired DeepSWE trials;
+  decide promotion separately per feature.
+  - [x] Complete the 48-case Luna/OpenRouter continuity cohort and analyze paired
+    correctness, fetched versus emitted reads, cost, and provider-wire stability.
+  - DeepSWE expansion held: findings failed missing-range correctness and the
+    no-cost-increase gate. See the [continuity audit](audits/ptc-memory-continuity-2026-09-12.md).
+  - [x] Separate recovery-page completion from source coverage and run the eight-case
+    live diagnostic. Six passed; findings still failed missing-range evidence use.
+
 ## Project identity
 
 - [x] Rename the distribution, CLI, launchers, runtime/config identity, environment
