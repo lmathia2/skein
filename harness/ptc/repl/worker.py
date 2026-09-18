@@ -57,6 +57,8 @@ class ReplBroker(Protocol):
 
     def bash(self, command: str, timeout_seconds: int = 120) -> Any: ...
 
+    def verify(self, command: str, timeout_seconds: int = 120) -> Any: ...
+
     def call(self, capability: str, arguments: dict[str, Any]) -> Any: ...
 
     def parallel(self, operations: list[dict[str, Any]]) -> Any: ...
@@ -78,6 +80,7 @@ class PythonExecutionResult:
     full_stdout: str | None = None
     full_stderr: str | None = None
     value_repr: str | None = None
+    full_value_repr: str | None = None
     display_data: dict[str, Any] | None = None
     error_type: str | None = None
     error_message: str | None = None
@@ -90,6 +93,7 @@ class PythonExecutionResult:
     output_truncated: bool = False
     state_count: int = 0
     state_delta: tuple[str, ...] = ()
+    state_deleted: tuple[str, ...] = ()
     state_manifest: tuple[dict[str, Any], ...] = ()
     retained_read_uses: tuple[str, ...] = ()
     state_preserved: bool = False
@@ -103,6 +107,8 @@ class _BoundedText(io.TextIOBase):
         self._parts: list[str] = []
         self._full_parts: list[str] = []
         self._size = 0
+        self._full_size = 0
+        self._original_size = 0
         self.truncated = False
 
     def writable(self) -> bool:
@@ -110,7 +116,12 @@ class _BoundedText(io.TextIOBase):
 
     def write(self, value: str) -> int:
         text = str(value)
-        self._full_parts.append(text)
+        encoded = text.encode('utf-8')
+        retained = encoded[:max(256_000 - self._original_size, 0)].decode('utf-8', errors='ignore')
+        self._original_size += len(encoded)
+        if retained:
+            self._full_parts.append(retained)
+        self._full_size += len(retained.encode())
         remaining = self._limit - self._size
         if remaining > 0:
             kept = text.encode("utf-8")[:remaining].decode("utf-8", errors="ignore")
@@ -124,7 +135,12 @@ class _BoundedText(io.TextIOBase):
         return "".join(self._parts)
 
     def full_value(self) -> str | None:
-        return "".join(self._full_parts) if self.truncated else None
+        if not self.truncated:
+            return None
+        text = "".join(self._full_parts)
+        if self._original_size > self._full_size:
+            text += f"\n[retention truncated: original {self._original_size} bytes; suffix unavailable]"
+        return text
 
 
 _BLOCKED_MODULES = frozenset(
@@ -248,8 +264,55 @@ class _RemoteOperation:
         return result
 
 
+class _DirectResult(str):
+    """Readable direct-helper result with the old mapping contract preserved."""
+
+    def __new__(cls, text: str, raw: Mapping[str, Any]):
+        value = super().__new__(cls, text)
+        value.raw = raw
+        return value
+
+    def __getitem__(self, key: Any) -> Any:
+        return self.raw[key] if isinstance(key, str) else super().__getitem__(key)
+
+    def __reduce__(self):
+        return type(self), (str(self), self.raw)
+
+    def __getattr__(self, name: str) -> Any:
+        data = self.raw.get("data", {})
+        if name in data:
+            return data[name]
+        if name in self.raw:
+            return self.raw[name]
+        raise AttributeError(name)
+
+
+class _DirectOperation(_RemoteOperation):
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        result = super().__call__(*args, **kwargs)
+        if not isinstance(result, Mapping):
+            return result
+        data = result.get("data", {})
+        if self._operation == "fs.read":
+            text = str(data.get("text", ""))
+        elif self._operation in {"shell.run", "verify"}:
+            text = str(data.get("output") or (
+                str(data.get("stdout", ""))
+                + ("\n[stderr]\n" + str(data["stderr"]) if data.get("stderr") else "")
+                + f'\n[exit {data.get("exit_code")}]'
+            ))
+        else:
+            text = (f'{self._operation.rsplit(".", 1)[-1]}: {data.get("path", "")} — '
+                    f'{"changed" if data.get("changed") else "no change"}')
+        value = _DirectResult(text, result)
+        if self._operation == "verify" and result.get("status") != "ok":
+            raise AssertionError(value)
+        return value
+
+
 _PRELOADED_MODULES = ("json", "math", "re")
-_RESERVED_NAMES = frozenset({"agent", *_PRELOADED_MODULES})
+_DIRECT_TOOL_NAMES = ("read", "write", "edit", "bash", "verify")
+_RESERVED_NAMES = frozenset({"agent", *_PRELOADED_MODULES, *_DIRECT_TOOL_NAMES})
 _MAX_HELP_BYTES = 16_000
 
 WORKSPACE_EXECUTION_GUIDANCE = """The PTC worker is a computation environment, not the workspace interpreter;
@@ -450,6 +513,8 @@ def _state_manifest(
 def _snapshot_value(value: Any, seen: set[int], depth: int = 0) -> bool:
     if type(value) in {type(None), bool, int, float, str, bytes}:
         return True
+    if type(value) is _DirectResult:
+        return _snapshot_value(value.raw, seen, depth + 1)
     if depth >= 20 or type(value) not in {list, tuple, dict, set, frozenset}:
         return False
     identity = id(value)
@@ -459,7 +524,7 @@ def _snapshot_value(value: Any, seen: set[int], depth: int = 0) -> bool:
     values = value.items() if type(value) is dict else value
     if type(value) is dict:
         valid = all(
-            type(key) is str and _snapshot_value(item, seen, depth + 1)
+            _snapshot_value(key, seen, depth + 1) and _snapshot_value(item, seen, depth + 1)
             for key, item in values
         )
     else:
@@ -952,7 +1017,9 @@ def _execute_cell(
     snapshot_max_bytes: int = 1_000_000,
     state_catalog: _StateProxy | None = None,
     capture_committed: bool = False,
+    helper_contract: dict | None = None,
 ) -> dict[str, Any]:
+    prior_names = set(namespace)
     stdout = _BoundedText(max_output_bytes)
     stderr = _BoundedText(max_output_bytes)
     failure_stage: Literal["parse", "source_validation", "execution"] = "parse"
@@ -973,6 +1040,9 @@ def _execute_cell(
         tree = ast.parse(code, filename=source_name, mode="exec")
         failure_stage = "source_validation"
         _validate_source(tree)
+        if helper_contract:
+            from .preflight import validate
+            validate(tree, namespace, helper_contract)
         failure_stage = "execution"
         touched_names = _bound_names(tree)
         if state_catalog is not None:
@@ -998,7 +1068,11 @@ def _execute_cell(
             and all(isinstance(key, str) and "/" in key for key in value)
             else None
         )
-        value_repr = None if value is None or display_data is not None else repr(value)
+        value_repr = None if value is None or display_data is not None else (repr(value) if _snapshot_value(value, set()) else f"<{type(value).__name__}; inspect explicitly>")
+        full_value_repr = value_repr
+        if full_value_repr is not None and len(full_value_repr.encode()) > 256_000:
+            original_bytes = len(full_value_repr.encode())
+            full_value_repr = full_value_repr.encode()[:256_000].decode(errors='ignore') + f"\n[retention truncated: original {original_bytes} bytes; suffix unavailable]"
         if value_repr is not None and len(value_repr.encode()) > max_output_bytes:
             value_repr = value_repr.encode()[:max_output_bytes].decode(errors="ignore")
             stdout.truncated = True
@@ -1022,10 +1096,12 @@ def _execute_cell(
             "full_stdout": selected_full_stdout,
             "full_stderr": stderr.full_value(),
             "value_repr": value_repr,
+            "full_value_repr": state_catalog.sanitize_output(full_value_repr) if state_catalog else full_value_repr,
             "display_data": display_data,
             "output_truncated": stdout.truncated or stderr.truncated,
             "state_count": sum(not name.startswith("__") and name not in _RESERVED_NAMES for name in namespace),
-            "state_delta": sorted(touched_names),
+            "state_delta": sorted(name for name in touched_names if name in namespace),
+            "state_deleted": sorted(prior_names - set(namespace)),
             "state_manifest": manifest[:64],
             "retained_read_uses": state_catalog.used_read_handles() if state_catalog else (),
             "checkpoint_values": checkpoint_values,
@@ -1070,6 +1146,7 @@ def _execute_cell(
             ),
             "traceback": tuple(traceback.format_exception_only(error)),
             "state_preserved": state_preserved,
+            "state_deleted": sorted(prior_names - set(namespace)),
             "retained_read_uses": state_catalog.used_read_handles() if state_catalog else (),
             "output_truncated": stdout.truncated or stderr.truncated,
         }
@@ -1082,6 +1159,7 @@ def _worker_main(
     state_recovery: str,
     snapshot_max_bytes: int,
     capture_committed: bool,
+    helper_contract: dict | None,
 ) -> None:
     namespace: dict[str, Any] = {
         "__builtins__": _safe_builtins(),
@@ -1092,6 +1170,13 @@ def _worker_main(
         namespace[name] = importlib.import_module(name)
     state_catalog = _StateProxy(namespace, state_metadata)
     namespace["agent"] = _agent_proxy(connection, namespace, state_metadata, help_catalog, state_catalog)
+    namespace.update({
+        "read": _DirectOperation(connection, "fs.read", state_catalog),
+        "write": _DirectOperation(connection, "fs.write"),
+        "edit": _DirectOperation(connection, "fs.edit"),
+        "bash": _DirectOperation(connection, "shell.run"),
+        "verify": _DirectOperation(connection, "verify"),
+    })
     while True:
         try:
             request = connection.recv()
@@ -1140,6 +1225,7 @@ def _worker_main(
             snapshot_max_bytes=snapshot_max_bytes,
             state_catalog=state_catalog,
             capture_committed=capture_committed,
+            helper_contract=helper_contract,
         )
         connection.send({"type": "execution_result", "id": request.get("id"), **result})
 
@@ -1176,6 +1262,7 @@ class PersistentPythonWorker:
         state_recovery: str = "replay_safe",
         snapshot_max_bytes: int = 1_000_000,
         capture_committed: bool = False,
+        helper_contract: dict | None = None,
     ) -> None:
         if max_output_bytes < 1_024:
             raise ValueError("max_output_bytes must be at least 1024")
@@ -1189,6 +1276,7 @@ class PersistentPythonWorker:
         self.state_recovery = state_recovery
         self.snapshot_max_bytes = snapshot_max_bytes
         self.capture_committed = capture_committed
+        self.helper_contract = helper_contract
         self._process: BaseProcess | None = None
         self._connection: Connection | None = None
         self._kernel_epoch: str | None = None
@@ -1209,6 +1297,7 @@ class PersistentPythonWorker:
                 self.state_recovery,
                 self.snapshot_max_bytes,
                 self.capture_committed,
+                self.helper_contract,
             ),
             daemon=True,
             name="agent-cpython-worker",
@@ -1253,6 +1342,7 @@ class PersistentPythonWorker:
             "fs.write": "write",
             "fs.edit": "edit",
             "shell.run": "bash",
+            "verify": "verify",
             "mcp.call": "call",
             "parallel": "parallel",
             "artifacts.load": "artifacts_load",
@@ -1275,6 +1365,7 @@ class PersistentPythonWorker:
         *,
         cell_id: str = "unknown",
         replay_policy: str = "transient",
+        shell_timeout_margin: float | None = None,
     ) -> PythonExecutionResult:
         if not isinstance(code, str):
             raise TypeError("code must be a string")
@@ -1312,6 +1403,11 @@ class PersistentPythonWorker:
                         )
                     response = self._connection.recv()
                     if response.get("type") == "broker_call":
+                        if shell_timeout_margin is not None and response.get("operation") in {"shell.run", "verify"}:
+                            args = response.get("args", ())
+                            budget = response.get("kwargs", {}).get("timeout_seconds", args[1] if len(args) > 1 else 120)
+                            if type(budget) is int and 1 <= budget <= 600:
+                                deadline = max(deadline, time.monotonic() + budget + shell_timeout_margin)
                         replies: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=1)
 
                         def invoke_broker(
@@ -1364,6 +1460,9 @@ class PersistentPythonWorker:
                                 effect_unknown=True,
                                 failure_stage="execution",
                             )
+                        if shell_timeout_margin is not None and response.get("operation") in {"shell.run", "verify"}:
+                            # Each returned shell call leaves a fresh bounded Python budget.
+                            deadline = time.monotonic() + timeout_seconds
                         self._connection.send(reply)
                         continue
                     if (
@@ -1378,6 +1477,7 @@ class PersistentPythonWorker:
                         full_stdout=response.get("full_stdout"),
                         full_stderr=response.get("full_stderr"),
                         value_repr=response.get("value_repr"),
+                        full_value_repr=response.get("full_value_repr"),
                         display_data=response.get("display_data"),
                         error_type=response.get("error_type"),
                         error_message=response.get("error_message"),
@@ -1389,6 +1489,7 @@ class PersistentPythonWorker:
                         output_truncated=bool(response.get("output_truncated", False)),
                         state_count=int(response.get("state_count", 0)),
                         state_delta=tuple(str(name) for name in response.get("state_delta", ())),
+                        state_deleted=tuple(response.get("state_deleted", ())),
                         state_manifest=tuple(response.get("state_manifest", ())),
                         retained_read_uses=tuple(
                             str(handle) for handle in response.get("retained_read_uses", ())

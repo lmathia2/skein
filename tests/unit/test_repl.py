@@ -331,6 +331,16 @@ def test_bounded_snapshot_restores_only_safe_values_after_runtime_failure() -> N
     assert restored.value_repr == "({'items': [1, 2]}, False)"
 
 
+def test_direct_tool_aliases_survive_snapshot_rollback() -> None:
+    with PersistentPythonWorker(state_recovery="snapshot") as worker:
+        direct = worker.execute("saved = read('input.txt')\nsaved['model_text']", _Broker(), 5)
+        worker.execute("temporary = 1\n1 / 0", _Broker(), 5)
+        restored = worker.execute("read('input.txt')['model_text'], saved['model_text']", _Broker(), 5)
+
+    assert direct.value_repr == "'hello'"
+    assert restored.value_repr == "('hello', 'hello')"
+
+
 def test_timeout_during_broker_call_returns_without_waiting_for_late_result() -> None:
     entered = threading.Event()
     release = threading.Event()

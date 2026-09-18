@@ -1,0 +1,166 @@
+{
+  "name": "Pi + Skein PTC v3 checklist ablation",
+  "baseline_root": "/Users/mathiasl/src/skein/.worktrees/e13-ptc-isolation/.artifacts/e13-pi-skein-v2",
+  "result_root": "/Users/mathiasl/src/skein/.worktrees/e13-ptc-isolation/.artifacts/e13-v3-checklist",
+  "tasks": [
+    {
+      "artifact_sha256": "5d1499ab0b27daafc310ab4a23866d61b2731aa0c7a3ffea6ecd693ac63abc5f",
+      "benchmark": "deep_swe",
+      "category": "feature_request",
+      "difficulty": "hard",
+      "expected_runtime_seconds": 5400,
+      "harbor_task": "datacurve/ink-grid-box-layout",
+      "internet_policy": "allowed",
+      "language": "typescript",
+      "published_pass_rate": 0.28294573643410853,
+      "repository": "https://github.com/vadimdemedes/ink",
+      "resources": {
+        "cpus": 2,
+        "gpus": 0,
+        "memory_mb": 8192,
+        "storage_mb": 20480
+      },
+      "runtime_verifier_image": "sha256:f66cb7dc102519bd1ca7d56d5caee909ce63755e42554126d1cd847e55a19ab7",
+      "selection_rank": "59cf98a7d49c1995ec7b08032763ad5d4dbf1d3d22ae74154ba9cf248a37c843",
+      "selection_tags": [],
+      "task_id": "ink-grid-box-layout",
+      "verifier_contract": "binary_behavioral",
+      "verifier_isolated": true
+    },
+    {
+      "artifact_sha256": "5ffe854a4225a8a5b7cdd806c497a0500eca9a0cd1bee940d26b03caea6973b7",
+      "benchmark": "deep_swe",
+      "category": "feature_request",
+      "difficulty": "easy",
+      "expected_runtime_seconds": 5400,
+      "harbor_task": "datacurve/obsidian-linter-scoped-ignore-markers",
+      "internet_policy": "allowed",
+      "language": "typescript",
+      "published_pass_rate": 0.7076923076923077,
+      "repository": "https://github.com/platers/obsidian-linter",
+      "resources": {
+        "cpus": 2,
+        "gpus": 0,
+        "memory_mb": 8192,
+        "storage_mb": 20480
+      },
+      "runtime_verifier_image": "sha256:6e945a8dd53dba3bf355595302e95663d1397c35fc4526c137d8886e161d5fdf",
+      "selection_rank": "32cdcdb2b41b75bc82b4c7f1f6e8a5f3860644f6312597b13ec73df9b1cf11ae",
+      "selection_tags": [],
+      "task_id": "obsidian-linter-scoped-ignore-markers",
+      "verifier_contract": "binary_behavioral",
+      "verifier_isolated": true
+    },
+    {
+      "artifact_sha256": "6892464f5a019db9a70d766a3186c60936f36189b3886b8b32da93a13d4746bb",
+      "benchmark": "deep_swe",
+      "category": "feature_request",
+      "difficulty": "medium",
+      "expected_runtime_seconds": 5400,
+      "harbor_task": "datacurve/scriggo-method-declarations",
+      "internet_policy": "allowed",
+      "language": "go",
+      "published_pass_rate": 0.62890625,
+      "repository": "https://github.com/open2b/scriggo",
+      "resources": {
+        "cpus": 2,
+        "gpus": 0,
+        "memory_mb": 8192,
+        "storage_mb": 20480
+      },
+      "runtime_verifier_image": "sha256:b91f7656bae4d6b44218370b7c51e6ab2729fcc902756762faa84ed4345e97ff",
+      "selection_rank": "39b0620ca2587d991b9eecce463e356176c7aa8d07bacfe064b2af3554bf8cb2",
+      "selection_tags": [],
+      "task_id": "scriggo-method-declarations",
+      "verifier_contract": "binary_behavioral",
+      "verifier_isolated": true
+    },
+    {
+      "artifact_sha256": "c797d90c439169b30f8cff3d240f47a8bc0de27ab63d75cfb96a1da6f1910033",
+      "benchmark": "deep_swe",
+      "category": "feature_request",
+      "difficulty": "easy",
+      "expected_runtime_seconds": 5400,
+      "harbor_task": "datacurve/textual-richlog-follow-state",
+      "internet_policy": "allowed",
+      "language": "python",
+      "published_pass_rate": 0.676923076923077,
+      "repository": "https://github.com/Textualize/textual",
+      "resources": {
+        "cpus": 2,
+        "gpus": 0,
+        "memory_mb": 8192,
+        "storage_mb": 20480
+      },
+      "runtime_verifier_image": "sha256:ed637b42baa0f34f7af23c05a0e49c8600e409f392230eb11e1bf038c4e298a4",
+      "selection_rank": "5038a6ba12354ebc4d0cd66c572bfbb0e7a0a7c04defb2e592c31c67d717e59e",
+      "selection_tags": [],
+      "task_id": "textual-richlog-follow-state",
+      "verifier_contract": "binary_behavioral",
+      "verifier_isolated": true
+    }
+  ],
+  "trials_per_task": 3,
+  "total_trials": 24,
+  "configuration": {
+    "model": "meta/muse-spark-1.3-contributor",
+    "provider": "openrouter",
+    "reasoning": "xhigh",
+    "max_output_tokens": 32768,
+    "max_task_input_tokens": 1000000000,
+    "max_iterations": 1000,
+    "concurrency": 6,
+    "attempts": 3,
+    "retries": 0,
+    "config": "harness/core/config/profiles/four-tool.yaml",
+    "manifest_sha256": "f30a3bb6245a360820be5684ed98d001cea460169168633c18487ef28d48fad4"
+  },
+  "task_job_timeout_seconds": 26100,
+  "agent_process_timeout_seconds": 6900,
+  "prompt_components": [
+    "runtime",
+    "routing",
+    "batching",
+    "generated_helper_contract",
+    "contract",
+    "examples"
+  ],
+  "preflight": "stdlib conservative blocking; no mypy",
+  "cost_estimate_usd": [
+    5,
+    8
+  ],
+  "openrouter_starting_balance_usd": 53.728729466,
+  "billing_note": "Actual account debit must be separated from provider trace cost and estimated repricing.",
+  "source_sha256": {
+    "harness/ptc/repl/worker.py": "9c66fc422499c1a13d167151e9e1b7bec944afc11eb8f93b9c30b496509731e2",
+    "harness/ptc/repl/preflight.py": "e135dcec3a0489fc3ab2e6bea526ed47f9bb68f5332c5fe49c664369660873e6",
+    "scripts/pi_skein_ptc_extension.mjs": "c61231b3f13a2dcf4d8d4b8bae53ba8e233d87d2130ba581358fbd3e11984a03",
+    "scripts/pi_code_tool_harbor.py": "cab244dc0802be207cd9c4adda8b8f2691179887677a0caa81dfbd86a99d4558",
+    "scripts/run_harbor_eval.py": "b691ba846d8bc459f802483843320a7ac792bb4a8ba0d9400bcbcb708b0b1191",
+    "scripts/run_e13_v3_checklist.sh": "7c16f90be3599e166c0368152de5b1a86aab91427983c0856aa80316e637558f"
+  },
+  "command": "bash scripts/run_e13_v3_checklist.sh",
+  "arms": [
+    {
+      "name": "checklist-off",
+      "PTC_COMPLETION_CHECKLIST": "0"
+    },
+    {
+      "name": "checklist-on",
+      "PTC_COMPLETION_CHECKLIST": "1"
+    }
+  ],
+  "concurrency_per_arm": 3,
+  "expected_cost_usd": 5.7,
+  "status": "complete",
+  "selection_note": "Diagnostic subset selected from v3 failures; not an unbiased overall-quality estimate.",
+  "openrouter_starting_total_usage_usd": 201.271270534,
+  "started_at": "2026-09-17T15:31:50.393139+00:00",
+  "automation_id": "ptc-v3-checklist-progress",
+  "completed_trials": 24,
+  "actual_account_debit_usd": 6.283516004,
+  "openrouter_ending_balance_usd": 47.445213462,
+  "openrouter_ending_total_usage_usd": 207.554786538,
+  "comparison_report": "docs/experiments/e13-pi-skein-v3-checklist-comparison.md"
+}

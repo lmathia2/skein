@@ -1,0 +1,100 @@
+{
+  "schema_version": "skein-code-mode-experiment-v1",
+  "name": "e13-code-mode-deep-swe-20-v2",
+  "status": "complete",
+  "main_commit_binding": "The single PTC v4.1 commit containing this manifest records both runs.jsonl SHA-256 values in its commit message.",
+  "executions": {
+    "pi_code_tool": {
+      "result_root": "/Users/mathiasl/src/skein/.worktrees/e13-ptc-isolation/.artifacts/e13-muse-20-v3-pricing-fixed-pi-code-tool",
+      "runs_jsonl_sha256": "cd6ba9e216435b0e6c7193bfd74ec3c3fffc77f93a75a5d6b340607db7227fc6",
+      "run_metadata_sha256": "ae94417875d2a63f939749144a4acf093f0665d2b8e85ba075fdfb964aa0e617",
+      "run_git_revision": "55a6856827b628f638356a22292d27066ef7070f",
+      "run_git_diff_sha256": "be219d8254a4dc0ddb95a53dd308b1c697b59f83870f635549f0d1a7b4af025f",
+      "concurrency": 3,
+      "completed_trials": 60
+    },
+    "pi_skein_ptc_v4_1": {
+      "result_root": "/Users/mathiasl/src/skein/.worktrees/e13-ptc-isolation/.artifacts/e13-muse-20-v4.1-pi-skein-ptc",
+      "runs_jsonl_sha256": "f00309f789f24c9017f30568014f5da55b2276a5536fc7b0511a54ac4bd7c385",
+      "run_metadata_sha256": "ec9d62cb267d1478cc2672ceee5c24ad0458cc63f8991991ae9a5cd842334847",
+      "run_git_revision": "55a6856827b628f638356a22292d27066ef7070f",
+      "run_git_diff_sha256": "198dc46f5334658c75742340dfd910d7784f14bf01e00a5c4fef020b5fdaf854",
+      "source_equivalent_pre_squash_commit": "f019d1c841760498e604dbb284b3504420becefc",
+      "concurrency": 6,
+      "completed_trials": 60
+    }
+  },
+  "source": {
+    "dataset": "datacurve/deep-swe-1-1",
+    "manifest_path": "tests/eval/manifests/evaluation-confirm-v1.json",
+    "manifest_sha256": "f30a3bb6245a360820be5684ed98d001cea460169168633c18487ef28d48fad4"
+  },
+  "protocol": {
+    "arms": ["pi_code_tool", "pi_skein_ptc_v4_1"],
+    "model": "meta/muse-spark-1.3-contributor",
+    "reasoning": "xhigh",
+    "rollouts_per_task_per_arm": 3,
+    "recorded_concurrency": {"pi_code_tool": 3, "pi_skein_ptc_v4_1": 6},
+    "concurrency_note": "The arms ran sequentially. Code Tool used concurrency 3; PTC v4.1 used the established host maximum of 6. Quality, tokens, and provider cost remain comparable; campaign duration and contention-sensitive latency are not controlled at identical concurrency.",
+    "harbor_retries": 0,
+    "max_output_tokens": 32768,
+    "per_trial_timeout_seconds": 6900,
+    "pricing": {
+      "source": "https://openrouter.ai/api/v1/models",
+      "mode": "live exact-model catalog snapshot"
+    },
+    "isolation": "Fresh container and agent session for every trial; no prior transcripts, variables, summaries, or tool state."
+  },
+  "panel": {
+    "task_count": 20,
+    "selection_rule": "Twenty unique repositories from the pinned DeepSWE confirm manifest, excluding the fourteen tasks used by the earlier six-task screen or the eight-task v4 development panel.",
+    "excluded_task_ids": [
+      "arcane-drift-detection-baselines",
+      "cliffy-config-file-parsing",
+      "dasel-html-document-format",
+      "ink-grid-box-layout",
+      "katex-multicolumn-array-spans",
+      "koota-pair-relation-tracking",
+      "obsidian-linter-scoped-ignore-markers",
+      "pest-character-class-coalescing",
+      "query-persist-restored-query-state",
+      "returns-validated-error-accumulation",
+      "scriggo-method-declarations",
+      "tengo-destructuring-bindings",
+      "testem-per-launcher-reports",
+      "textual-richlog-follow-state"
+    ],
+    "distribution": {
+      "language": {"go": 5, "python": 7, "rust": 1, "typescript": 7},
+      "difficulty": {"easy": 7, "medium": 8, "hard": 5}
+    },
+    "tasks": [
+      {"task_id":"actionlint-action-pinning-lint","artifact_sha256":"af94035dc7d0fa0c283b1c1a055dd47b1d7d460b89348bb69866090d4a750a65","harbor_task":"datacurve/actionlint-action-pinning-lint","repository":"https://github.com/rhysd/actionlint","language":"go","difficulty":"easy"},
+      {"task_id":"anko-default-function-arguments","artifact_sha256":"e99368c8e599e7fc1687ac11dd92d6d9b9985329168e204d519f730e363d7057","harbor_task":"datacurve/anko-default-function-arguments","repository":"https://github.com/mattn/anko","language":"go","difficulty":"easy"},
+      {"task_id":"pebble-durability-wait-apis","artifact_sha256":"d64e09b3aaf3d27559180739c37a3fa61b2891c55f4c0007babe30fddff28cfd","harbor_task":"datacurve/pebble-durability-wait-apis","repository":"https://github.com/cockroachdb/pebble","language":"go","difficulty":"medium"},
+      {"task_id":"scc-bounded-memory-spilling","artifact_sha256":"52b0fbf109608f749676af2cfcf2093cb973292873ce6402e3d3b7013dede2b0","harbor_task":"datacurve/scc-bounded-memory-spilling","repository":"https://github.com/boyter/scc.git","language":"go","difficulty":"medium"},
+      {"task_id":"updo-policy-alerting","artifact_sha256":"105759ee3bd1e251e1030de14bcad581c79afeb3f72dac16d701f8ab5f8b2587","harbor_task":"datacurve/updo-policy-alerting","repository":"https://github.com/Owloops/updo","language":"go","difficulty":"hard"},
+      {"task_id":"true-myth-iterable-collection-combinators","artifact_sha256":"18e557e6812a5f8cc94dee7a2cb8308b0de8e26957b0e743a67632d7fdfa9fb5","harbor_task":"datacurve/true-myth-iterable-collection-combinators","repository":"https://github.com/true-myth/true-myth","language":"typescript","difficulty":"easy"},
+      {"task_id":"sql-formatter-bigquery-pipe-formatting","artifact_sha256":"ce2d4b906c1eddcd2bdb95d51b6702df0c1117965c61134818f879b9cef7fbe8","harbor_task":"datacurve/sql-formatter-bigquery-pipe-formatting","repository":"https://github.com/sql-formatter-org/sql-formatter","language":"typescript","difficulty":"easy"},
+      {"task_id":"arktype-json-schema-refs-dependencies","artifact_sha256":"a1bb7f7ea8e64bb8514a063282d16c55d55510aa8af5baaa7ab53d9c279a9d18","harbor_task":"datacurve/arktype-json-schema-refs-dependencies","repository":"https://github.com/arktypeio/arktype","language":"typescript","difficulty":"medium"},
+      {"task_id":"clack-async-autocomplete-options","artifact_sha256":"5cb8b7f3c5e920d8a3839eac5951223526dc2d5b3ba4fcff8b1b0bb73d22a9b5","harbor_task":"datacurve/clack-async-autocomplete-options","repository":"https://github.com/bombshell-dev/clack","language":"typescript","difficulty":"medium"},
+      {"task_id":"claude-code-by-agents-recursive-delegation","artifact_sha256":"6291cdc99a21eb0cf772e98bdde21cd88d07d186814ee7fa379f99b9f7c5c31b","harbor_task":"datacurve/claude-code-by-agents-recursive-delegation","repository":"https://github.com/baryhuang/claude-code-by-agents","language":"typescript","difficulty":"medium"},
+      {"task_id":"meriyah-explicit-resource-declarations","artifact_sha256":"69009265abe2719be213265d9bc74502ea1ea6b1f695c7740484d5fbd688d27a","harbor_task":"datacurve/meriyah-explicit-resource-declarations","repository":"https://github.com/meriyah/meriyah","language":"typescript","difficulty":"hard"},
+      {"task_id":"quill-shared-toolbar-focus","artifact_sha256":"83cdb03701ccc1db30182b0452e30d1af6365ed9296f5e5aed1cf039664874e4","harbor_task":"datacurve/quill-shared-toolbar-focus","repository":"https://github.com/slab/quill","language":"typescript","difficulty":"hard"},
+      {"task_id":"narwhals-rolling-window-suite","artifact_sha256":"5c2fd65054d4e75bc14f62fac49165e4a88186c6f615ca3b19592f6d3d9a950e","harbor_task":"datacurve/narwhals-rolling-window-suite","repository":"https://github.com/narwhals-dev/narwhals","language":"python","difficulty":"easy"},
+      {"task_id":"tomlkit-toml-table-converters","artifact_sha256":"cd9cba3f39e22f0827cd1922bb9dc9f6c386496cb96b8b0a4bc48d9fe0454573","harbor_task":"datacurve/tomlkit-toml-table-converters","repository":"https://github.com/python-poetry/tomlkit","language":"python","difficulty":"easy"},
+      {"task_id":"numba-stencil-boundary-modes","artifact_sha256":"ca591eeeb75a5306bfc4ed2e7e6ab392d93c993c7a90958d213491121e1c8ead","harbor_task":"datacurve/numba-stencil-boundary-modes","repository":"https://github.com/numba/numba","language":"python","difficulty":"easy"},
+      {"task_id":"httpx-streaming-json-iteration","artifact_sha256":"02512d67c53caa9d4c3394519f12af9c44d11ee505e2c077a3cf4070a2c1983b","harbor_task":"datacurve/httpx-streaming-json-iteration","repository":"https://github.com/encode/httpx","language":"python","difficulty":"medium"},
+      {"task_id":"skrub-duration-encoding","artifact_sha256":"e8fc99fd2a2e3a87f189bf2e6cd8f59c1f99838d9e7356d443f633f196c95320","harbor_task":"datacurve/skrub-duration-encoding","repository":"https://github.com/skrub-data/skrub","language":"python","difficulty":"medium"},
+      {"task_id":"pwntools-tube-multiplexing","artifact_sha256":"8d8d89e217490aab2415e141e61564fe7b41dff28cbb8dc59e7f0a4734c4daeb","harbor_task":"datacurve/pwntools-tube-multiplexing","repository":"https://github.com/Gallopsled/pwntools","language":"python","difficulty":"medium"},
+      {"task_id":"bandit-structured-nosec-directives","artifact_sha256":"eb7a3d6f669d2035b18e7caffc8d1c92c5c6fd86fb9845dd838504bbced6b38d","harbor_task":"datacurve/bandit-structured-nosec-directives","repository":"https://github.com/PyCQA/bandit.git","language":"python","difficulty":"hard"},
+      {"task_id":"oxvg-structural-selector-preservation","artifact_sha256":"a0ffff637b54c8d172b988e7875b9e78e0fb41431eca7b7b8864b7a5b1278e43","harbor_task":"datacurve/oxvg-structural-selector-preservation","repository":"https://github.com/noahbald/oxvg","language":"rust","difficulty":"hard"}
+    ]
+  },
+  "metrics": {
+    "quality": ["official pass rate", "F2P", "P2P", "partial credit", "paired task wins"],
+    "efficiency": ["input", "cache read", "output", "calls", "PTC cells", "tool-result bytes"],
+    "latency": ["active wall", "end-to-end wall", "campaign span"],
+    "cost": ["provider USD", "repriced USD", "cost per official pass"]
+  }
+}

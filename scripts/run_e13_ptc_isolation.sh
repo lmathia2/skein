@@ -5,10 +5,20 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 arm=${1:-}
 case "$arm" in
   pi-code) agent=scripts.pi_code_tool_harbor:PiCodeToolPierAgent ;;
-  pi-skein) agent=scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent ;;
+  pi-skein|pi-skein-v3|pi-skein-v4) agent=scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent ;;
   skein) agent=harness.adapters.pier:SkeinPierAgent ;;
-  *) echo "usage: $0 pi-code|pi-skein|skein" >&2; exit 2 ;;
+  *) echo "usage: $0 pi-code|pi-skein|pi-skein-v3|pi-skein-v4|skein" >&2; exit 2 ;;
 esac
+
+concurrency=2
+jobs_name="e13-ptc-isolation-$arm"
+trackio_group=e13-ptc-isolation
+if [[ "$arm" == pi-skein-v3 || "$arm" == pi-skein-v4 ]]; then
+  concurrency=6
+  jobs_name="e13-$arm"
+  trackio_group="e13-$arm"
+  export PTC_COMPLETION_CHECKLIST=0
+fi
 
 tasks=(
   obsidian-linter-scoped-ignore-markers
@@ -34,10 +44,10 @@ cd "$root"
 exec uv run python scripts/run_harbor_eval.py \
   --suite confirm --benchmark deep_swe \
   --model meta/muse-spark-1.3-contributor --reasoning xhigh \
-  --attempts 3 --concurrency 2 --retries 0 --timeout-seconds 7200 \
+  --attempts 3 --concurrency "$concurrency" --retries 0 --timeout-seconds 7200 \
   --max-iterations 1000 --max-output-tokens 32768 --max-task-input-tokens 1000000000 \
   --agent-import-path "$agent" "${extra[@]}" \
-  --jobs-dir "$root/.artifacts/e13-ptc-isolation-$arm" \
+  --jobs-dir "$root/.artifacts/$jobs_name" \
   --trackio-project "${TRACKIO_PROJECT:-skein-harbor}" \
-  --trackio-group e13-ptc-isolation --trackio-run-name "$arm" \
+  --trackio-group "$trackio_group" --trackio-run-name "$arm" \
   "${task_args[@]}"

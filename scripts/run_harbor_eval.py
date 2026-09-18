@@ -91,7 +91,9 @@ class TrackioRun:
                 "official_reward",
                 "cost_usd",
                 "input_tokens",
+                "uncached_input_tokens",
                 "cache_read_tokens",
+                "cache_write_tokens",
                 "output_tokens",
                 "active_wall_time_seconds",
                 "end_to_end_wall_time_seconds",
@@ -141,6 +143,10 @@ def trial_tracking_metrics(record: dict[str, Any]) -> dict[str, float]:
     def total(name: str) -> float:
         return sum(float(metric.get(name) or 0) for metric in trials)
 
+    task_cost = total("cost_usd")
+    total_tokens = sum(total(name) for name in (
+        "uncached_input_tokens", "cache_read_tokens", "cache_write_tokens", "output_tokens"
+    ))
     return {
         "task_index": float(record.get("task_index") or 0),
         "retry": float(record.get("retry") or 0),
@@ -152,12 +158,18 @@ def trial_tracking_metrics(record: dict[str, Any]) -> dict[str, float]:
         "resumed": float(bool(record.get("resumed"))),
         "trial_count": float(count),
         "official_reward": total("official_reward") / count if count else 0.0,
+        "task_cost_usd": task_cost,
+        "cost_per_trial_usd": task_cost / count if count else 0.0,
+        "total_tokens": total_tokens,
+        "tokens_per_usd": total_tokens / task_cost if task_cost else 0.0,
         **{
             name: total(name)
             for name in (
                 "cost_usd",
                 "input_tokens",
+                "uncached_input_tokens",
                 "cache_read_tokens",
+                "cache_write_tokens",
                 "output_tokens",
                 "active_wall_time_seconds",
                 "end_to_end_wall_time_seconds",
@@ -221,6 +233,7 @@ def result_summary(root: Path) -> tuple[list[str], list[int], list[str], list[di
                 rewards.append(int(reward))
                 agent = payload.get("agent_result") or {}
                 metadata = agent.get("metadata") or {}
+                pi_usage = (metadata.get("pi_code_tool") or {}).get("usage") or {}
                 skein = metadata.get("skein") or {}
                 metrics = skein.get("metrics") or {}
                 trial_metrics.append(
@@ -231,9 +244,11 @@ def result_summary(root: Path) -> tuple[list[str], list[int], list[str], list[di
                         ),
                         "end_to_end_wall_time_seconds": _duration_seconds(payload),
                         "input_tokens": metrics.get("input_tokens", agent.get("n_input_tokens")),
+                        "uncached_input_tokens": pi_usage.get("input"),
                         "cache_read_tokens": metrics.get(
                             "cache_read_tokens", agent.get("n_cache_tokens")
                         ),
+                        "cache_write_tokens": pi_usage.get("cache_write"),
                         "output_tokens": metrics.get(
                             "output_tokens", agent.get("n_output_tokens")
                         ),
@@ -512,6 +527,8 @@ def run_command(
             "--agent-kwarg", f"max_task_input_tokens={args.max_task_input_tokens}",
             "--agent-kwarg", f"wall_time_seconds={task['expected_runtime_seconds']}",
         ]
+    if getattr(args, "per_trial_timeout_seconds", None) is not None:
+        command += ["--agent-kwarg", f"execution_timeout_seconds={args.per_trial_timeout_seconds}"]
     if args.reasoning is not None:
         command += ["--agent-kwarg", f"reasoning={args.reasoning}"]
     if args.max_output_tokens is not None and args.agent_import_path in {
@@ -555,6 +572,14 @@ def incomplete_job(output: Path, prefix: str) -> Path | None:
             if not (job_dir / "result.json").exists():
                 return job_dir
     return None
+
+
+def task_watchdog_seconds(args, task, attempts):
+    per_trial = getattr(args, "per_trial_timeout_seconds", None)
+    if per_trial is not None:
+        # Pi enforces each execution deadline; reserve setup/verifier time per attempt.
+        return attempts * (per_trial + 1800)
+    return args.timeout_seconds or (int(task["expected_runtime_seconds"]) + 1800)
 
 
 def run_task(
@@ -623,7 +648,7 @@ def run_task(
             dump({**task, "runtime_verifier_image": verifier_image}), encoding="utf-8"
         )
         started = time.monotonic()
-        timeout_seconds = args.timeout_seconds or (int(task["expected_runtime_seconds"]) + 1800)
+        timeout_seconds = task_watchdog_seconds(args, task, attempts)
         with (
             (task_dir / "pier.stdout.log").open("a", encoding="utf-8") as stdout,
             (task_dir / "pier.stderr.log").open("a", encoding="utf-8") as stderr,
@@ -698,6 +723,7 @@ def main() -> int:
     parser.add_argument("--cohort-file", type=Path)
     parser.add_argument("--cohort-group", choices=("core", "all"), default="core")
     parser.add_argument("--timeout-seconds", type=int)
+    parser.add_argument("--per-trial-timeout-seconds", type=int, help="Pi execution budget per trial; replaces the shared watchdog with attempts * (budget + 1800s setup/verifier allowance)")
     parser.add_argument("--max-iterations", type=int, default=1_000)
     parser.add_argument("--max-output-tokens", type=int, default=16_384)
     parser.add_argument(
@@ -721,6 +747,11 @@ def main() -> int:
     parser.add_argument("--trackio-space-id", help="optional Hugging Face Space ID for remote sync")
     parser.add_argument("--plan", action="store_true")
     args = parser.parse_args()
+    if args.per_trial_timeout_seconds is not None:
+        if args.per_trial_timeout_seconds < 1 or not args.agent_import_path.startswith("scripts.pi_code_tool_harbor:"):
+            parser.error("--per-trial-timeout-seconds requires a positive budget and a Pi adapter")
+        if args.timeout_seconds is not None:
+            parser.error("use either --timeout-seconds or --per-trial-timeout-seconds")
     if args.retries < 0:
         parser.error("--retries cannot be negative")
     if not 1 <= args.concurrency <= 8:
@@ -794,6 +825,8 @@ def main() -> int:
                     "concurrency": args.concurrency,
                     "retries": args.retries,
                     "timeout_seconds": args.timeout_seconds,
+                    "per_trial_timeout_seconds": args.per_trial_timeout_seconds,
+                    "completion_checklist": os.environ.get("PTC_COMPLETION_CHECKLIST"),
                     "reasoning": args.reasoning,
                     "max_output_tokens": args.max_output_tokens,
                     "max_task_input_tokens": args.max_task_input_tokens,
@@ -861,6 +894,10 @@ def main() -> int:
         if args.trackio_project
         else None,
     }
+    if "PTC_COMPLETION_CHECKLIST" in os.environ:
+        metadata["completion_checklist"] = os.environ["PTC_COMPLETION_CHECKLIST"]
+    if args.per_trial_timeout_seconds is not None:
+        metadata["per_trial_timeout_seconds"] = args.per_trial_timeout_seconds
     write_or_validate_metadata(output / "run-metadata.json", metadata)
 
     tracker = None

@@ -1,0 +1,340 @@
+{
+  "arms": {
+    "pi-code": {
+      "latency": {
+        "mean_agent_seconds": 1206.724086125,
+        "mean_agent_steps": 151.66666666666666,
+        "median_agent_seconds": 1065.214438,
+        "median_agent_steps": 119.0,
+        "p90_agent_seconds": 1863.7441267
+      },
+      "quality": {
+        "mean_f2p": 0.955,
+        "mean_p2p": 0.99992055926279,
+        "mean_partial": 0.9976186638385001,
+        "pass_rate": 0.875,
+        "passes": 21,
+        "task_pass_at_3": 8,
+        "trials": 24
+      },
+      "tokens_cost": {
+        "cache_read_ratio": 0.9163163480201565,
+        "cost_per_pass_usd": 0.22503024190476195,
+        "cost_per_trial_usd": 0.1969014616666667,
+        "total_cache_read_tokens": 388877290,
+        "total_input_tokens": 424391959,
+        "total_output_tokens": 1982068,
+        "total_repriced_cost_usd": 4.725635080000001,
+        "total_uncached_input_tokens": 35514669
+      },
+      "trace": {
+        "bash": 2505,
+        "by_reward": {
+          "0": {
+            "bash": 218.33333333333334,
+            "cells": 278,
+            "edit": 36.333333333333336,
+            "helper_calls": 281.6666666666667,
+            "read": 23.666666666666668,
+            "reuse_cells": 3.3333333333333335,
+            "shell_test": 4.333333333333333,
+            "test": 0,
+            "write": 3.3333333333333335
+          },
+          "1": {
+            "bash": 88.0952380952381,
+            "cells": 131.57142857142858,
+            "edit": 13.523809523809524,
+            "helper_calls": 148.47619047619048,
+            "read": 37.714285714285715,
+            "reuse_cells": 8.714285714285714,
+            "shell_test": 6.285714285714286,
+            "test": 0,
+            "write": 9.142857142857142
+          }
+        },
+        "cells": 3597,
+        "cross_cell_reuse_rate": 0.053655824298026136,
+        "edit": 393,
+        "event_bytes": 21586227922,
+        "helper_calls": 3963,
+        "multi_helper_cell_rate": 0.10480956352515985,
+        "multi_helper_cells": 377,
+        "non_ok_cell_rate": 0.020011117287381877,
+        "non_ok_cells": 72,
+        "passes": 21,
+        "read": 863,
+        "reuse_cells": 193,
+        "shell_execute": 191,
+        "shell_git_inspect": 88,
+        "shell_inspect": 1266,
+        "shell_literal": 2504,
+        "shell_other": 336,
+        "shell_search": 478,
+        "shell_test": 145,
+        "syntax_errors": 15,
+        "tool_result_status": {
+          "error": 72,
+          "ok": 3526,
+          "timeout": 0
+        },
+        "traces": 24,
+        "write": 202
+      }
+    },
+    "pi-skein": {
+      "latency": {
+        "mean_agent_seconds": 1190.8223959583333,
+        "mean_agent_steps": 144.5,
+        "median_agent_seconds": 1060.7386860000001,
+        "median_agent_steps": 121.5,
+        "p90_agent_seconds": 1846.2023883
+      },
+      "quality": {
+        "mean_f2p": 0.9759210526315789,
+        "mean_p2p": 1.0,
+        "mean_partial": 0.995061982003641,
+        "pass_rate": 0.7083333333333334,
+        "passes": 17,
+        "task_pass_at_3": 8,
+        "trials": 24
+      },
+      "tokens_cost": {
+        "cache_read_ratio": 0.9031413485337032,
+        "cost_per_pass_usd": 0.2956520030588236,
+        "cost_per_trial_usd": 0.2094201688333334,
+        "total_cache_read_tokens": 361990526,
+        "total_input_tokens": 400812704,
+        "total_output_tokens": 2099426,
+        "total_repriced_cost_usd": 5.026084052000002,
+        "total_uncached_input_tokens": 38822178
+      },
+      "trace": {
+        "bash": 2159,
+        "by_reward": {
+          "0": {
+            "bash": 142.57142857142858,
+            "cells": 195.57142857142858,
+            "edit": 12.714285714285714,
+            "helper_calls": 198.57142857142858,
+            "read": 31,
+            "reuse_cells": 28,
+            "shell_test": 7.571428571428571,
+            "test": 0,
+            "write": 8.714285714285714
+          },
+          "1": {
+            "bash": 68.29411764705883,
+            "cells": 121.23529411764706,
+            "edit": 10.294117647058824,
+            "helper_calls": 129.8235294117647,
+            "read": 45.411764705882355,
+            "reuse_cells": 19.235294117647058,
+            "shell_test": 5.9411764705882355,
+            "test": 0,
+            "write": 4.9411764705882355
+          }
+        },
+        "cells": 3430,
+        "cross_cell_reuse_rate": 0.15247813411078717,
+        "edit": 264,
+        "event_bytes": 138987847,
+        "help": 18,
+        "helper_calls": 3597,
+        "multi_helper_cell_rate": 0.06763848396501458,
+        "multi_helper_cells": 232,
+        "non_ok_cell_rate": 0.026239067055393587,
+        "non_ok_cells": 90,
+        "parallel": 22,
+        "passes": 17,
+        "read": 989,
+        "reuse_cells": 523,
+        "shell_execute": 309,
+        "shell_git_inspect": 72,
+        "shell_inspect": 937,
+        "shell_literal": 2028,
+        "shell_other": 92,
+        "shell_search": 464,
+        "shell_test": 154,
+        "syntax_errors": 19,
+        "tool_result_status": {
+          "error": 88,
+          "ok": 3340,
+          "timeout": 2
+        },
+        "traces": 24,
+        "write": 145
+      }
+    }
+  },
+  "protocol": {
+    "max_output_tokens": 32768,
+    "model": "meta/muse-spark-1.3-contributor",
+    "reasoning": "xhigh",
+    "tasks": 8,
+    "trials_per_task": 3
+  },
+  "schema_version": "e13-pi-code-vs-pi-skein-trace-v1",
+  "task_metrics": {
+    "ink-grid-box-layout": {
+      "pi-code": {
+        "mean_agent_seconds": 1317.557084,
+        "mean_agent_steps": 103.66666666666667,
+        "mean_partial": 0.990990990990991,
+        "output_tokens": 211866,
+        "passes": 2,
+        "patch_files_mean": 4.666666666666667,
+        "repriced_cost_usd": 0.5193971079999999
+      },
+      "pi-skein": {
+        "mean_agent_seconds": 1358.8491686666666,
+        "mean_agent_steps": 120.66666666666667,
+        "mean_partial": 0.9864864864864865,
+        "output_tokens": 212845,
+        "passes": 1,
+        "patch_files_mean": 4.666666666666667,
+        "repriced_cost_usd": 0.45263058400000006
+      }
+    },
+    "koota-pair-relation-tracking": {
+      "pi-code": {
+        "mean_agent_seconds": 1376.9085483333333,
+        "mean_agent_steps": 168.33333333333334,
+        "mean_partial": 1.0,
+        "output_tokens": 282376,
+        "passes": 3,
+        "patch_files_mean": 17.666666666666668,
+        "repriced_cost_usd": 0.645583066
+      },
+      "pi-skein": {
+        "mean_agent_seconds": 1436.7042703333334,
+        "mean_agent_steps": 168.33333333333334,
+        "mean_partial": 0.9904761904761905,
+        "output_tokens": 324738,
+        "passes": 1,
+        "patch_files_mean": 17.333333333333332,
+        "repriced_cost_usd": 0.7658458300000002
+      }
+    },
+    "obsidian-linter-scoped-ignore-markers": {
+      "pi-code": {
+        "mean_agent_seconds": 1594.0784716666667,
+        "mean_agent_steps": 244.66666666666666,
+        "mean_partial": 0.9905660377358491,
+        "output_tokens": 343463,
+        "passes": 2,
+        "patch_files_mean": 2.6666666666666665,
+        "repriced_cost_usd": 0.983979484
+      },
+      "pi-skein": {
+        "mean_agent_seconds": 1009.293992,
+        "mean_agent_steps": 104,
+        "mean_partial": 1.0,
+        "output_tokens": 250087,
+        "passes": 3,
+        "patch_files_mean": 4.333333333333333,
+        "repriced_cost_usd": 0.38911466800000005
+      }
+    },
+    "query-persist-restored-query-state": {
+      "pi-code": {
+        "mean_agent_seconds": 665.3370406666667,
+        "mean_agent_steps": 96.33333333333333,
+        "mean_partial": 1.0,
+        "output_tokens": 141711,
+        "passes": 3,
+        "patch_files_mean": 4.666666666666667,
+        "repriced_cost_usd": 0.342644208
+      },
+      "pi-skein": {
+        "mean_agent_seconds": 625.1205006666667,
+        "mean_agent_steps": 104,
+        "mean_partial": 1.0,
+        "output_tokens": 130261,
+        "passes": 3,
+        "patch_files_mean": 5,
+        "repriced_cost_usd": 0.38517162800000004
+      }
+    },
+    "scriggo-method-declarations": {
+      "pi-code": {
+        "mean_agent_seconds": 2184.666869,
+        "mean_agent_steps": 297.6666666666667,
+        "mean_partial": 0.9993922819811607,
+        "output_tokens": 466489,
+        "passes": 2,
+        "patch_files_mean": 17,
+        "repriced_cost_usd": 1.2470592900000002
+      },
+      "pi-skein": {
+        "mean_agent_seconds": 2550.0801466666667,
+        "mean_agent_steps": 326,
+        "mean_partial": 0.9963536918869644,
+        "output_tokens": 600808,
+        "passes": 1,
+        "patch_files_mean": 17,
+        "repriced_cost_usd": 1.7732495840000002
+      }
+    },
+    "tengo-destructuring-bindings": {
+      "pi-code": {
+        "mean_agent_seconds": 901.4847516666666,
+        "mean_agent_steps": 101.66666666666667,
+        "mean_partial": 1.0,
+        "output_tokens": 202072,
+        "passes": 3,
+        "patch_files_mean": 8.666666666666666,
+        "repriced_cost_usd": 0.518114148
+      },
+      "pi-skein": {
+        "mean_agent_seconds": 950.4421473333333,
+        "mean_agent_steps": 132.33333333333334,
+        "mean_partial": 1.0,
+        "output_tokens": 229652,
+        "passes": 3,
+        "patch_files_mean": 8,
+        "repriced_cost_usd": 0.733336102
+      }
+    },
+    "testem-per-launcher-reports": {
+      "pi-code": {
+        "mean_agent_seconds": 772.42449,
+        "mean_agent_steps": 68.66666666666667,
+        "mean_partial": 1.0,
+        "output_tokens": 119813,
+        "passes": 3,
+        "patch_files_mean": 6,
+        "repriced_cost_usd": 0.20700499000000003
+      },
+      "pi-skein": {
+        "mean_agent_seconds": 713.8428283333333,
+        "mean_agent_steps": 72,
+        "mean_partial": 1.0,
+        "output_tokens": 118508,
+        "passes": 3,
+        "patch_files_mean": 6.333333333333333,
+        "repriced_cost_usd": 0.19931840800000003
+      }
+    },
+    "textual-richlog-follow-state": {
+      "pi-code": {
+        "mean_agent_seconds": 841.3354336666666,
+        "mean_agent_steps": 132.33333333333334,
+        "mean_partial": 1.0,
+        "output_tokens": 214278,
+        "passes": 3,
+        "patch_files_mean": 3,
+        "repriced_cost_usd": 0.26185278600000006
+      },
+      "pi-skein": {
+        "mean_agent_seconds": 882.2461136666667,
+        "mean_agent_steps": 128.66666666666666,
+        "mean_partial": 0.9871794871794872,
+        "output_tokens": 232527,
+        "passes": 2,
+        "patch_files_mean": 3,
+        "repriced_cost_usd": 0.32741724800000005
+      }
+    }
+  }
+}

@@ -191,9 +191,15 @@ def test_trackio_metrics_use_the_ledger_record() -> None:
         "resumed": 0.0,
         "trial_count": 1.0,
         "official_reward": 1.0,
+        "task_cost_usd": 0.12,
+        "cost_per_trial_usd": 0.12,
+        "total_tokens": 100.0,
+        "tokens_per_usd": 833.3333333333334,
         "cost_usd": 0.12,
         "input_tokens": 100.0,
+        "uncached_input_tokens": 0.0,
         "cache_read_tokens": 80.0,
+        "cache_write_tokens": 0.0,
         "output_tokens": 20.0,
         "active_wall_time_seconds": 30.0,
         "end_to_end_wall_time_seconds": 40.0,
@@ -464,8 +470,10 @@ def test_scored_harbor_result_is_complete_even_when_skein_stopped_on_budget(
             "official_reward": 1,
             "active_wall_time_seconds": 100.0,
             "end_to_end_wall_time_seconds": 120.0,
-            "input_tokens": 200,
-            "cache_read_tokens": None,
+                "input_tokens": 200,
+                "uncached_input_tokens": None,
+                "cache_read_tokens": None,
+                "cache_write_tokens": None,
             "output_tokens": 30,
             "reasoning_tokens": None,
             "cost_usd": None,
@@ -480,3 +488,13 @@ def test_next_attempt_directory_survives_process_restart(tmp_path: Path) -> None
     (tmp_path / "001-example-attempt-01").mkdir()
     (tmp_path / "001-example-attempt-03").mkdir()
     assert runner.next_attempt_dir(tmp_path, "001-example").name.endswith("attempt-04")
+
+
+def test_per_trial_watchdog_does_not_share_one_attempt_budget():
+    from types import SimpleNamespace
+    runner = load_runner()
+    args = SimpleNamespace(per_trial_timeout_seconds=6900, timeout_seconds=None)
+    assert runner.task_watchdog_seconds(args, {'expected_runtime_seconds': 5400}, 3) == 26100
+    args.per_trial_timeout_seconds = None
+    args.timeout_seconds = 7200
+    assert runner.task_watchdog_seconds(args, {'expected_runtime_seconds': 5400}, 3) == 7200

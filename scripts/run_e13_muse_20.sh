@@ -10,7 +10,7 @@ if [[ "$arm" != "pi" && "$arm" != "ptc" ]]; then
 fi
 shift
 
-manifest="$root/tests/eval/experiments/e13-code-mode-20-v1.json"
+manifest="$root/tests/eval/experiments/e13-code-mode-20-v2.json"
 task_args=()
 while IFS= read -r task_id; do
   task_args+=(--task-id "$task_id")
@@ -23,12 +23,12 @@ common=(
   --attempts 3
   --concurrency 3
   --retries 0
-  --timeout-seconds 7200
+  --per-trial-timeout-seconds 6900
   --max-iterations 1000
-  --max-output-tokens 16384
+  --max-output-tokens 32768
   --max-task-input-tokens 1000000000
   --trackio-project "${TRACKIO_PROJECT:-skein-harbor}"
-  --trackio-group "${TRACKIO_GROUP:-e13-muse-20}"
+  --trackio-group "${TRACKIO_GROUP:-e13-muse-20-v3-pricing-fixed}"
 )
 if [[ -n "${TRACKIO_SPACE_ID:-}" ]]; then
   common+=(--trackio-space-id "$TRACKIO_SPACE_ID")
@@ -39,16 +39,16 @@ if [[ "$arm" == "pi" ]]; then
     --reasoning xhigh
     --agent-import-path scripts.pi_code_tool_harbor:PiCodeToolPierAgent
     --config harness/core/config/profiles/four-tool.yaml
-    --jobs-dir "$root/.artifacts/e13-muse-20-xhigh-pi-code-tool"
-    --trackio-run-name pi-code-tool-xhigh
+    --jobs-dir "$root/.artifacts/e13-muse-20-v3-pricing-fixed-pi-code-tool"
+    --trackio-run-name pi-code-tool-xhigh-pricing-fixed
   )
 else
   arm_args=(
     --reasoning xhigh
-    --agent-import-path harness.adapters.pier:SkeinPierAgent
-    --config harness/core/config/profiles/notebook-ptc-jsonl.yaml
-    --jobs-dir "$root/.artifacts/e13-muse-20-xhigh-skein-ptc"
-    --trackio-run-name skein-ptc-xhigh
+    --agent-import-path scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent
+    --config harness/core/config/profiles/four-tool.yaml
+    --jobs-dir "$root/.artifacts/e13-muse-20-v4.1-pi-skein-ptc"
+    --trackio-run-name pi-skein-ptc-v4.1-xhigh
   )
 fi
 

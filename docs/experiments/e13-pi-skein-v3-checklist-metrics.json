@@ -1,0 +1,2817 @@
+{
+  "rows": [
+    {
+      "arm": "off",
+      "task": "ink-grid-box-layout",
+      "trial": "5d1499ab0b27daafc310ab4a23866d61__DXdSmmH",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/001-ink-grid-box-layout-attempt-01/001-ink-grid-box-layout-attempt-01/5d1499ab0b27daafc310ab4a23866d61__DXdSmmH/result.json",
+      "reward": 0,
+      "f2p_total": 25,
+      "f2p_passed": 23,
+      "p2p_total": 49,
+      "p2p_passed": 49,
+      "f2p": 0.92,
+      "p2p": 1.0,
+      "partial": 0.972972972972973,
+      "uncached": 4700743,
+      "cache": 28253032,
+      "output": 143139,
+      "repriced_usd": 0.5552081640000001,
+      "provider_usd": 9.558746969999998,
+      "agent_seconds": 2660.193172,
+      "total_seconds": 2719.546524,
+      "trace": {
+        "cells": 231,
+        "batch_cells": 28,
+        "visible_bytes": 283531,
+        "cell_errors": 3,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 1,
+        "truncated": 36,
+        "shell_calls": 107,
+        "shell_timeouts": 1,
+        "diagnostic_notices": 8
+      },
+      "errors": [
+        "429: {\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta/muse-spark-1.3-contributor is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Meta\",\"is_byok\":false,\"provider_error_code\":\"rate_limit_exceeded\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\",\"retry_after_seconds\":60,\"retry_after_seconds_raw\":60,\"headers\":{\"Retry-After\":\"60\"}}}",
+        "429: {\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta/muse-spark-1.3-contributor is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Meta\",\"is_byok\":false,\"provider_error_code\":\"rate_limit_exceeded\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\",\"retry_after_seconds\":60,\"retry_after_seconds_raw\":60,\"headers\":{\"Retry-After\":\"60\"}}}"
+      ],
+      "final": "Done. Implemented CSS grid layout on a new branch `grid-layout` (from `master`) and committed everything.\n\n**Commit:** `4cfc9fe Add CSS grid layout support (display: grid)` \u2014 10 files, +1398/\u221247.\n\nHow it works (Yoga 3.2.1 has no grid, so Ink computes grid itself):\n- `src/styles.ts`: `display` accepts `\"grid\"` (mapped to Yoga `FLEX` so containers still size as flex items; `\"none\"` still hides); new props `gridTemplateColumns`, `gridTemplateRows`, `gridColumn` (`number | \"start / end\"`), `gridRow`.\n- `src/grid.ts` (new): tokenizes track lists respecting `minmax()` parens; supports fixed numbers, `fr`, `auto`, `minmax(min, fixed|fr)`; auto-placement (row-major, skipping occupied cells, extending implicit rows/columns); `fr` remainder distributed by largest-remainder so tracks fill exactly; `minmax` with `fr` max satisfies minimums first then distributes the rest proportionally; auto rows created when `gridTemplateRows` is omitted. Zero Yoga mutations (deliberate \u2014 mutating/freeing live Yoga nodes corrupted WASM across sequential renders); all positions/sizes go into a `WeakMap` of renderer overrides plus manual text measurement (`squash`/`wrap`/`measure`).\n- Rendering: `render-node-to-output.ts` uses overrides for item positions and `Text` widths (including ancestor-derived widths for nested text), grid-aware screen-reader ordering; `render-background.ts`/`render-border.ts` use override sizes; `renderer.ts` grows `Output` height by the grid deficit so extra rows aren\u2019t clipped; `measure-element.ts`/`use-box-metrics.ts` return override metrics. Existing `gap`/`columnGap`/`rowGap` apply to tracks. No `repeat()`, named lines, or `grid-auto-flow`, per spec.\n\nVerified: fixed/`fr`/`auto`/`minmax` tracks, gaps, `gridColumn`/`gridRow` single + `\"start / end\"`, spans, auto rows, fixed rows, explicit heights with `fr` rows, text wrapping inside tracks. `tsc` clean, `xo` has only 2 `max-depth` warnings, existing AVA suites pass except 2 failures + 1 component test that also fail on `master` (pre-existing).",
+      "failures": [
+        {
+          "name": "[f2p] grid - minmax in gridTemplateRows",
+          "status": "failed",
+          "message": "name: AssertionError\nassertion: true\nvalues: \n  Value is not `true`:: false\nat: <anonymous> (test/grid-layout.tsx:412:4)"
+        },
+        {
+          "name": "[f2p] grid - minmax with fixed max",
+          "status": "failed",
+          "message": "name: AssertionError\nassertion: is\nvalues: \n  Difference (- actual, + expected):: - 5 + 15\nat: <anonymous> (test/grid-layout.tsx:397:4)"
+        }
+      ]
+    },
+    {
+      "arm": "off",
+      "task": "ink-grid-box-layout",
+      "trial": "5d1499ab0b27daafc310ab4a23866d61__WoBhZhF",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/001-ink-grid-box-layout-attempt-01/001-ink-grid-box-layout-attempt-01/5d1499ab0b27daafc310ab4a23866d61__WoBhZhF/result.json",
+      "reward": 0,
+      "f2p_total": 25,
+      "f2p_passed": 23,
+      "p2p_total": 49,
+      "p2p_passed": 49,
+      "f2p": 0.92,
+      "p2p": 1.0,
+      "partial": 0.972972972972973,
+      "uncached": 1528350,
+      "cache": 7400582,
+      "output": 88104,
+      "repriced_usd": 0.18525696399999997,
+      "provider_usd": 2.9884416199999992,
+      "agent_seconds": 1769.786434,
+      "total_seconds": 1821.086226,
+      "trace": {
+        "cells": 103,
+        "batch_cells": 14,
+        "visible_bytes": 161232,
+        "cell_errors": 4,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 0,
+        "truncated": 2,
+        "shell_calls": 63,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 0
+      },
+      "errors": [],
+      "final": "Grid layout implemented and committed on new branch `grid-layout` (from `master`).\n\n**Changes:**\n- `src/styles.ts`: `display` now accepts `\"grid\"` (mapped to Yoga flex, children positioned manually); added `gridTemplateColumns`, `gridTemplateRows`, `gridColumn` (`number | \"start / end\"`), `gridRow`.\n- `src/grid-layout.ts` (new): track parsing (fixed, `fr`, `auto`, `minmax(min, fixed|fr)` with paren-aware tokenizing), 1-based placement with `\"start / end\"` spans, sparse auto-placement, implicit auto rows/columns, `gap`/`columnGap`/`rowGap` support, `fr` distribution after minimums with integer rounding, auto rows when `gridTemplateRows` omitted, recursive nested-grid handling, border/padding-aware absolute positioning.\n- `src/ink.tsx`: `calculateLayout` now does `prepareGridsForLayout` \u2192 Yoga pass \u2192 `layoutAllGrids` \u2192 final Yoga pass.\n\n**Verification:** `tsc --noEmit` clean, `xo` clean (warnings only), manual `renderToString` checks for fixed/`fr`/`auto`/`minmax`, spanning, explicit `gridColumn`/`gridRow`, gaps, borders/padding, nested grids; existing `ava` failures are pre-existing on `master`.\n\nCommit `2561a45` on `grid-layout`, working tree clean.",
+      "failures": [
+        {
+          "name": "[f2p] grid - minmax in gridTemplateRows",
+          "status": "failed",
+          "message": "name: AssertionError\nassertion: true\nvalues: \n  Value is not `true`:: false\nat: <anonymous> (test/grid-layout.tsx:412:4)"
+        },
+        {
+          "name": "[f2p] grid - minmax with fixed max",
+          "status": "failed",
+          "message": "name: AssertionError\nassertion: is\nvalues: \n  Difference (- actual, + expected):: - 5 + 15\nat: <anonymous> (test/grid-layout.tsx:397:4)"
+        }
+      ]
+    },
+    {
+      "arm": "off",
+      "task": "ink-grid-box-layout",
+      "trial": "5d1499ab0b27daafc310ab4a23866d61__sNHdT7n",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/001-ink-grid-box-layout-attempt-01/001-ink-grid-box-layout-attempt-01/5d1499ab0b27daafc310ab4a23866d61__sNHdT7n/result.json",
+      "reward": 1,
+      "f2p_total": 25,
+      "f2p_passed": 25,
+      "p2p_total": 49,
+      "p2p_passed": 49,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 1012367,
+      "cache": 10832489,
+      "output": 74033,
+      "repriced_usd": 0.13770827800000002,
+      "provider_usd": 2.9910788900000003,
+      "agent_seconds": 1567.33536,
+      "total_seconds": 1621.869011,
+      "trace": {
+        "cells": 120,
+        "batch_cells": 12,
+        "visible_bytes": 339993,
+        "cell_errors": 3,
+        "hard_timeouts": 0,
+        "preflight_rejections": 3,
+        "reuse_cells": 0,
+        "truncated": 37,
+        "shell_calls": 50,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 2
+      },
+      "errors": [],
+      "final": "Done \u2014 implemented CSS grid layout on new branch `feat/grid-layout` and committed.\n\n**Commit:** `84de4a6 Add CSS grid layout support` (7 files, +906/-12)\n\nWhat was built (`src/grid.ts` + integration):\n- `display: \"grid\"` accepted (mapped to Yoga FLEX, custom measure).\n- `gridTemplateColumns` / `gridTemplateRows`: space-separated tracks (parens-aware split) supporting fixed numbers, `fr`, `auto`, `minmax(min, max)` with fixed min and fixed/`fr` max.\n- Omitted `gridTemplateRows` \u2192 implicit auto rows; omitted columns \u2192 single auto column; implicit auto tracks for overflow placements.\n- `minmax` with `fr` max: minimums satisfied first, remaining space distributed proportionally by `fr` weights (integer rounding with remainder to largest fractions).\n- Explicit placement via `gridColumn` / `gridRow` as 1-based number or `\"start / end\"`; auto-placement row-wise with occupancy grid (explicit-first, then DOM order).\n- `gap` / `columnGap` / `rowGap` applied to tracks and spanning (span width includes inner gaps).\n- Grid children detached from Yoga, laid out via nested `calculateLayout` calls (intrinsic \u2192 columns \u2192 heights-for-width \u2192 rows \u2192 exact cells), offsets stored as `internal_gridOffset` and used in `render-node-to-output`.\n- Post-layout `relayoutGrids` after root Yoga layout in `ink.tsx` and `render-to-string.ts`; dirty propagation for grid ancestors; `display:none` children skipped.\n\nVerified: fixed/`fr`/`auto`/`minmax`, gaps, spanning, explicit rows, fixed-height `fr` rows, padding/border, wrapping, `display:none`; `typecheck` passes, existing `ava` suite shows only pre-existing failures.",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "obsidian-linter-scoped-ignore-markers",
+      "trial": "5ffe854a4225a8a5b7cdd806c497a050__LpzGdyk",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/002-obsidian-linter-scoped-ignore-markers-attempt-01/002-obsidian-linter-scoped-ignore-markers-attempt-01/5ffe854a4225a8a5b7cdd806c497a050__LpzGdyk/result.json",
+      "reward": 1,
+      "f2p_total": 33,
+      "f2p_passed": 33,
+      "p2p_total": 1133,
+      "p2p_passed": 1133,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 1604533,
+      "cache": 8488318,
+      "output": 96311,
+      "repriced_usd": 0.19669213600000002,
+      "provider_usd": 3.2676812299999995,
+      "agent_seconds": 1154.729272,
+      "total_seconds": 1209.946667,
+      "trace": {
+        "cells": 93,
+        "batch_cells": 10,
+        "visible_bytes": 225838,
+        "cell_errors": 2,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 0,
+        "truncated": 22,
+        "shell_calls": 36,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 0
+      },
+      "errors": [],
+      "final": "Done on new branch `scoped-ignore-markers` (commit `190da37`).\n\n**Implementation:**\n- New `src/utils/linter-disable.ts`: standalone-line detection (`^[ \\t]*marker[ \\t]*$` for `<!--\u2026-->` / `%%\u2026%%` with permissive dashes), exclusion via YAML frontmatter + `Code`/`InlineCode`/`Math`/`InlineMath` positions, rule-list normalization (lower-case, dedupe, trim, ignore unknown, `[]` = no-effect vs `null` = all), `N` validation (`/^[0-9]+$/` + `>0`, clamp, no-following-line = no-effect), nested stack (`all{excluded}` + `specific{rules}`), `enable` with no list = pop, with list = remove from nearest scope that disables it (close empty specific), line-scoped `next-line`/`next-n-lines` as non-stack disables, marker lines always protected, line-preserving placeholders + restore.\n- `src/rules.ts:Rule.apply`: wraps with `applyRuleWithScopedProtection(alias, knownAliases from rulesDict)` and filters out old `customIgnore`.\n- `src/rules-runner.ts:runCustomRegexReplacement`: uses fake alias `__custom_regex__` so only all-scopes disable it, markers always protected.\n- `src/utils/mdast.ts:getAllCustomIgnoreSectionsInText`: rewritten to standalone + exclusion, only no-list (all) block + line-scoped all, nested stack, `text.length` EOF, reverse order.\n- Updated `__tests__/get-all-custom-ignore-sections-in-text.test.ts`: midline \u2192 0, EOF `length-1` \u2192 `length`, multi-match midline removed.\n\nAll 1177 tests pass.",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "obsidian-linter-scoped-ignore-markers",
+      "trial": "5ffe854a4225a8a5b7cdd806c497a050__eX42nFy",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/002-obsidian-linter-scoped-ignore-markers-attempt-01/002-obsidian-linter-scoped-ignore-markers-attempt-01/5ffe854a4225a8a5b7cdd806c497a050__eX42nFy/result.json",
+      "reward": 1,
+      "f2p_total": 33,
+      "f2p_passed": 33,
+      "p2p_total": 1133,
+      "p2p_passed": 1133,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 1851025,
+      "cache": 13602553,
+      "output": 103371,
+      "repriced_usd": 0.232981806,
+      "provider_usd": 4.348366230000001,
+      "agent_seconds": 2172.586657,
+      "total_seconds": 2225.502132,
+      "trace": {
+        "cells": 137,
+        "batch_cells": 0,
+        "visible_bytes": 322912,
+        "cell_errors": 2,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 25,
+        "truncated": 28,
+        "shell_calls": 57,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 2
+      },
+      "errors": [
+        "Network connection lost.",
+        "Network connection lost."
+      ],
+      "final": "Done. Implemented scoped, per-rule ignores in branch `feat/scoped-per-rule-ignores` (commit `032afac`).\n\n**New file `src/utils/linter-disable.ts`:**\n- Standalone-line detection for `<!-- ... -->` (allowing `<!-{2,}` / `-{2,}>`) and `%% ... %%`, only spaces/tabs outside.\n- Parses `linter-disable`, `linter-enable`, `linter-disable-next-line`, `linter-disable-next-n-lines: N` + optional comma-separated lists.\n- Excludes markers inside YAML (`yamlRegex`), `Code`, `InlineCode`, `Math`, `InlineMath` via `getPositions`.\n- Normalizes lists lower-cased, deduped, empty ignored; filters unknown via known-alias set; empty\u2192no-effect, no-list\u2192all.\n- Validates `N` as `^[0-9]+$` >0, clamps `M+1..M+N` to EOF, no-effect if no following line.\n- Global stack: `all{except}` + `specific{rules}`; `enable` no-list pops most recent; `enable` list removes each from nearest disabling scope, closing empty specifics. Supports disable-all + re-enable specific.\n- `protectLines` replaces protected lines with `{LINTERPROTECTEDn}` placeholders, runs rule, restores stripping `two-spaces` indicators (`  `, `<br>`, `<br/>`, `\\`).\n\n**Integration:**\n- `src/rules.ts:Rule.apply` wraps with `applyRuleWithProtectedLines` (marker lines always protected).\n- `src/rules-runner.ts:runCustomRegexReplacement` wraps with fake `__linter_all__` alias (all-disables + markers only).\n- `src/utils/mdast.ts:getAllCustomIgnoreSectionsInText` rewritten standalone-only, no-list `disable`/`enable` only, ignoring code/math/YAML contexts.\n\n**Tests:**\n- Updated 5 midline expectations in `get-all-custom-ignore-sections-in-text.test.ts` to standalone-only (0 / 1 instead of 1 / 2).\n- Full suite: 59 suites, 1177 tests pass. ESLint clean.\n",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "obsidian-linter-scoped-ignore-markers",
+      "trial": "5ffe854a4225a8a5b7cdd806c497a050__wKurXRJ",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/002-obsidian-linter-scoped-ignore-markers-attempt-01/002-obsidian-linter-scoped-ignore-markers-attempt-01/5ffe854a4225a8a5b7cdd806c497a050__wKurXRJ/result.json",
+      "reward": 1,
+      "f2p_total": 33,
+      "f2p_passed": 33,
+      "p2p_total": 1133,
+      "p2p_passed": 1133,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 2189164,
+      "cache": 13238572,
+      "output": 83648,
+      "repriced_usd": 0.26212314400000003,
+      "provider_usd": 4.532469320000001,
+      "agent_seconds": 1290.157278,
+      "total_seconds": 1340.135603,
+      "trace": {
+        "cells": 109,
+        "batch_cells": 10,
+        "visible_bytes": 413462,
+        "cell_errors": 3,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 1,
+        "truncated": 22,
+        "shell_calls": 42,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 0
+      },
+      "errors": [],
+      "final": "Done. Worked on new branch `scoped-ignore-markers` (from `master`, repo has no `main`) and committed everything.\n\n**Commit:** `62f72cd Add scoped per-rule ignore behavior using comment markers` \u2014 5 files, clean tree, 1177 tests pass, eslint clean.\n\n**Implementation:**\n- New `src/utils/linter-disable.ts`: standalone-line detection (`^[ \\t]*marker[ \\t]*$`) for HTML (`<!--...-->` with `<!-{2,}`/`-{2,}>` flexibility) and Obsidian (`%%...%%`), exclusion via YAML frontmatter (`yamlRegex`) + `Code`/`InlineCode`/`Math`/`InlineMath` positions, parsing of `linter-disable`/`linter-enable`/`linter-disable-next-line`/`linter-disable-next-n-lines: N`, case-insensitive deduped comma-split normalization with unknown filtering, `N=/^[0-9]+$/ && >0`, no-following-line no-effect + EOF clamp, stack semantics (`enable` no-list pops most recent; `enable` with list removes from nearest scope disabling each rule, closing empty rule-scopes, `all`+`except` for disable-all + re-enable-specific), line-scoped ranges, per-line placeholder protection preserving newlines (split/join restore to avoid `$` issues).\n- `src/rules.ts`: `Rule.apply` now uses `protectLinesForRule` (marker lines + disabled lines for that alias) and filters out `customIgnore` (replaced by scoped logic), so marker lines are never modified and per-rule isolation works.\n- `src/rules-runner.ts`: `runCustomRegexReplacement` wrapped with `protectLinesForCustomRegex` (all-scopes + markers only).\n- `src/utils/mdast.ts`: `getAllCustomIgnoreSectionsInText` now requires standalone + not in YAML/code/inline/math, fixing midline behavior.\n- Updated `__tests__/get-all-custom-ignore-sections-in-text.test.ts` midline expectations to 0 / standalone-only.\n\nVerified: disable-all/specific, next-line/next-n-lines, nesting, enable pop/remove, all+re-enable-specific, case/trailing-comma/duplicates/unknown/invalid-N, Obsidian markers, YAML/code/math/indented exclusion, marker preservation, clamping.",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "scriggo-method-declarations",
+      "trial": "6892464f5a019db9a70d766a3186c609__5kZLRn4",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/003-scriggo-method-declarations-attempt-01/003-scriggo-method-declarations-attempt-01/6892464f5a019db9a70d766a3186c609__5kZLRn4/result.json",
+      "reward": 1,
+      "f2p_total": 48,
+      "f2p_passed": 48,
+      "p2p_total": 1049,
+      "p2p_passed": 1049,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 3072371,
+      "cache": 27549907,
+      "output": 137447,
+      "repriced_usd": 0.38982631400000006,
+      "provider_usd": 7.876525570000001,
+      "agent_seconds": 2023.203983,
+      "total_seconds": 2149.064881,
+      "trace": {
+        "cells": 260,
+        "batch_cells": 15,
+        "visible_bytes": 609979,
+        "cell_errors": 3,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 0,
+        "truncated": 11,
+        "shell_calls": 192,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 1,
+        "compactions": 1
+      },
+      "errors": [],
+      "final": "Implemented Scriggo methods on branch `methods` (committed as `384b9122`).\n\nWhat was done:\n- **AST/Parser**: `ast.Func` gains `Receiver`; parser parses `func (t T)` / `func (t *T)` / `func (T)` / `func (*T)` receiver lists, rejects `...`, requires type.\n- **Types**: `definedType` now holds method table (`definedInfo`); `MethodByName`/`NumMethod`/`ScriggoMethod` for value vs `*T`; `AddMethod`/`SetMethodFunc`; `Implements` checks Scriggo method sets vs Go interfaces; proxy implements `GetScriggoValue`.\n- **Checker**: `checkMethodReceiver`/`checkMethodDecl`/`checkMethod`; package scope registers methods per-type (not globals); auto `&t` for pointer-only methods, `(*p)` deref for value-via-pointer; method expressions `T.M` / `(*T).M` return unbound funcs, `T.PtrMethod` errors \u201cneeds pointer receiver\u201d.\n- **Emitter**: methods emitted as mangled `T.M` funcs with receiver bound first; `T.M` / `(*T).M` via `LoadFunc`; concrete calls via bound `MethodValue`+`CallIndirect` with proxy wrapping; `changeRegister` and `&x`-to-interface wrap Scriggo into proxies.\n- **Runtime**: `OpMethodValue` detects `ScriggoProxy`, builds bound func that runs the Scriggo `Function` in a new VM (copy for value-via-pointer).\n\nVerified:\n- `T.Double`, `*T.Inc` with auto-address, unnamed receivers, struct/int/string/slice/map/array, per-type `Who`, `f:=T.Double` / `g:=(*T).Inc` as values, `T.Inc` compile error, `error` interface via value (`e.Error()=oops`) and `&x` pointer (`e.Error()=oops`), `T`-only-pointer correctly rejects `var e error=x`.\n- `go test ./...` passes.",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "scriggo-method-declarations",
+      "trial": "6892464f5a019db9a70d766a3186c609__FtaCdmZ",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/003-scriggo-method-declarations-attempt-01/003-scriggo-method-declarations-attempt-01/6892464f5a019db9a70d766a3186c609__FtaCdmZ/result.json",
+      "reward": 1,
+      "f2p_total": 48,
+      "f2p_passed": 48,
+      "p2p_total": 1049,
+      "p2p_passed": 1049,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 2722959,
+      "cache": 24675643,
+      "output": 141668,
+      "repriced_usd": 0.34998078600000004,
+      "provider_usd": 7.101585929999997,
+      "agent_seconds": 2081.094302,
+      "total_seconds": 2199.523208,
+      "trace": {
+        "cells": 234,
+        "batch_cells": 2,
+        "visible_bytes": 597938,
+        "cell_errors": 2,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 0,
+        "truncated": 49,
+        "shell_calls": 132,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 4,
+        "compactions": 1
+      },
+      "errors": [
+        "429: {\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta/muse-spark-1.3-contributor is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Meta\",\"is_byok\":false,\"provider_error_code\":\"rate_limit_exceeded\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\",\"retry_after_seconds\":60,\"retry_after_seconds_raw\":60,\"headers\":{\"Retry-After\":\"60\"}}}"
+      ],
+      "final": "Implemented Scriggo methods on branch `methods-impl` (committed as `1da89918`).\n\n**What was built:**\n- AST `Func.Receiver`, parser for `(r T)` / `(r *T)` named + unnamed (`(T)`, `(*T)`, `(_ T)`), clone/walk updated.\n- `definedType` method table kept hashable via global `map[sign]map[name]Method` (`sign *byte` preserves identity). `MethodByName/NumMethod/Method` respect value-set rules (`T` sees value-only, `*T` sees all). `ptrType` mirrors.\n- `Implements`: Scriggo `x` vs Go interface `y` compares signatures; enables `error` etc.\n- Checker `checker_methods.go`: validates local `T`/`*T` only (rejects non-local, alias, native, interface receivers, redeclared, field conflict), builds full `FuncOf(receiver+params)`.\n- Calls: `v.M()` direct `CallFunc` with receiver prepended; auto `&v` for addressable values with pointer receiver; `(*x).Mv` deref transform for pointer\u2192value.\n- Values: `v.M` via `OpMethodValue` \u2192 `makeScriggoBoundMethod` (new VM with receiver bound, Go-type `FuncOf` for `MakeFunc`, deref handling). Fixed `emitValueNotPredefined` bypass.\n- Expressions: `T.Mv` (`func(T)`) and `(*T).Mp` (`func(*T)`) load `Function`; `T.Mp` errors \u201cneeds pointer receiver\u201d. `(*T).Mv` adjusts to `func(*T)` + derefs first arg on direct calls.\n- Interface dispatch: Typify Scriggo\u2192interface wraps to `ScriggoProxy{V,T}`; `OpMethodValue` unwraps and returns bound wrapper. Fixed `&v`\u2192interface missing wrap.\n- Emitter: methods stored as `T.M`, `Func` linked into table, receiver bound as first param + indirect handling.\n\n**Verified:**\n- `go test ./...` passes.\n- Value/pointer, unnamed/blank, per-type `A.M`/`B.M`, struct/int/string/slice/map/array, `f:=v.M`, `T.M(v)`, `(*T).Mp(&v)`, `error` via value (`T{}`) and pointer (`&v`), pointer-only fails for value, `T.Mp` compile error, non-local/alias/redeclared/field/interface-receiver all rejected.",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "scriggo-method-declarations",
+      "trial": "6892464f5a019db9a70d766a3186c609__KGYu3uE",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/003-scriggo-method-declarations-attempt-01/003-scriggo-method-declarations-attempt-01/6892464f5a019db9a70d766a3186c609__KGYu3uE/result.json",
+      "reward": 1,
+      "f2p_total": 48,
+      "f2p_passed": 48,
+      "p2p_total": 1049,
+      "p2p_passed": 1049,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 2908719,
+      "cache": 36038374,
+      "output": 188164,
+      "repriced_usd": 0.400581448,
+      "provider_usd": 9.282078890000001,
+      "agent_seconds": 2604.343591,
+      "total_seconds": 2733.909162,
+      "trace": {
+        "cells": 326,
+        "batch_cells": 18,
+        "visible_bytes": 638066,
+        "cell_errors": 2,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 0,
+        "truncated": 80,
+        "shell_calls": 115,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 0,
+        "compactions": 1
+      },
+      "errors": [
+        "429: {\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta/muse-spark-1.3-contributor is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Meta\",\"is_byok\":false,\"provider_error_code\":\"rate_limit_exceeded\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\",\"retry_after_seconds\":60,\"retry_after_seconds_raw\":60,\"headers\":{\"Retry-After\":\"60\"}}}",
+        "429: {\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta/muse-spark-1.3-contributor is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Meta\",\"is_byok\":false,\"provider_error_code\":\"rate_limit_exceeded\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\",\"retry_after_seconds\":60,\"retry_after_seconds_raw\":60,\"headers\":{\"Retry-After\":\"60\"}}}"
+      ],
+      "final": "Implemented Scriggo methods on branch `methods` (committed as 49a0e353).\n\n**What works:**\n- `func (T) M` / `func (*T) M` with named (`(c Counter)`), unnamed (`(Counter)`), blank (`(_ T)`) receivers on all definable types (`int`, `struct`, `map`, `slice`, etc.), independent per-type tables, duplicate detection.\n- Auto `&` for addressable values (`c.Inc()` where `Inc` has pointer receiver).\n- Method expressions `T.Value` and `(*T).Ptr` as values / direct calls (`Counter.Value(c)`, `(*Counter).Inc(&c)`); `T.Ptr` correctly errors \u201cneeds pointer receiver\u201d.\n- Interface satisfaction via `error`/`Stringer`-like Go interfaces, including pointer-only (`*PErr` satisfies, `PErr` does not), with runtime dispatch through `OpMethodValue` proxy (`emptyInterfaceProxy` + `ScriggoMethodProvider`) and `OpAssert` handling.\n\n**Key changes:**\n- AST: `Func.Receiver`, parser, clone/walk.\n- `types/defined.go`: method table (`Add`/`Lookup`/`SetFunc`), `ScriggoMethodByName` for runtime, `Implements` via signature compare.\n- Checker: `declareScriggoMethod`/`checkMethod`, selector handling for values/expressions with auto-address-taking.\n- Emitter: `T.M` stored as `Type.Method`, direct `CallFunc` for concrete calls, `LoadFunc` for expressions, `Typify` wrapping for `*T`.\n- Runtime: `OpMethodValue` bound closure via `MakeFunc`, `scriggoImplements` for asserts.\n\nVerified: `go test ./...` passes; manual runs for value/pointer, struct mutation, multi-type independence, `error` interfaces all OK.",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "textual-richlog-follow-state",
+      "trial": "c797d90c439169b30f8cff3d240f47a8__YjfpQzt",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/004-textual-richlog-follow-state-attempt-01/004-textual-richlog-follow-state-attempt-01/c797d90c439169b30f8cff3d240f47a8__YjfpQzt/result.json",
+      "reward": 1,
+      "f2p_total": 20,
+      "f2p_passed": 20,
+      "p2p_total": 6,
+      "p2p_passed": 6,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 1226390,
+      "cache": 6917240,
+      "output": 67795,
+      "repriced_usd": 0.15003248000000002,
+      "provider_usd": 2.5430089000000007,
+      "agent_seconds": 812.67487,
+      "total_seconds": 844.597101,
+      "trace": {
+        "cells": 121,
+        "batch_cells": 8,
+        "visible_bytes": 200026,
+        "cell_errors": 3,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 0,
+        "truncated": 20,
+        "shell_calls": 69,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 5
+      },
+      "errors": [],
+      "final": "Done. Worked on new branch `fix-log-follow` from `main` and committed.\n\n**Log (`src/textual/widgets/_log.py`):**\n- Added `FollowChanged(widget, is_following_end, scroll_y, max_scroll_y)` with `control`, `is_following_end` property, `follow_end(animate=False)`, `_update_following()` + `watch_scroll_y()` calling `super()` to preserve viewport/scrollbar updates and posting only on boolean change.\n- `write`/`write_lines` capture `following` + `grabbed`; `scroll_end=True` forces, `False` prevents, `None` follows only if `auto_scroll and following and not grabbed`. Pruning returns count and when not scrolling adjusts `scroll_y -= removed` to keep viewport stable. `clear()` resets scroll and restores follow.\n\n**RichLog (`src/textual/widgets/_rich_log.py`):**\n- Same follow API/message/watch logic, fixing snap-back (`write` now checks follow instead of unconditional `scroll_end`).\n- Added `_entries` store + `_render_strips()` helper sharing expand/shrink/min_width/justify logic. `write` stores copy for reflow, handles follow/scroll + prune stability. `on_resize` handles deferred then `_reflow_expanded()`, `watch_min_width` forces reflow. Reflow re-renders only `width=None+expand` entries at current `scrollable_content_region.width`, preserves justification, rebuilds `lines`, prunes `max_lines`, updates `widest/virtual_size`, keeps follow/scroll stable. Deferred/explicit/resized/min_width cases all expand correctly.\n\n**Example (`examples/rich_log_follow_state.py`):**\n- `RichLogFollowStateApp` with `Log#log`, `RichLog#rich-log`, `RichLog#events`, Buttons `#follow-log/#follow-rich/#write-expanded/#append-log/#append-rich/#clear-events`. Follow buttons call `follow_end()`, `#write-expanded` writes `Text(..., justify=\"right\"), expand=True` to primary, appends write ordinary lines, clear clears events, both `on_*_follow_changed` record lines containing `FollowChanged`, guarded by `if __name__ == \"__main__\":`.\n\nCommit `9a78ac02e` on `fix-log-follow`, working tree clean.",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "textual-richlog-follow-state",
+      "trial": "c797d90c439169b30f8cff3d240f47a8__dieQtLq",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/004-textual-richlog-follow-state-attempt-01/004-textual-richlog-follow-state-attempt-01/c797d90c439169b30f8cff3d240f47a8__dieQtLq/result.json",
+      "reward": 1,
+      "f2p_total": 20,
+      "f2p_passed": 20,
+      "p2p_total": 6,
+      "p2p_passed": 6,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 1798032,
+      "cache": 12538940,
+      "output": 76476,
+      "repriced_usd": 0.22017628000000003,
+      "provider_usd": 4.0202648000000005,
+      "agent_seconds": 966.353282,
+      "total_seconds": 997.374648,
+      "trace": {
+        "cells": 124,
+        "batch_cells": 10,
+        "visible_bytes": 398878,
+        "cell_errors": 2,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 0,
+        "truncated": 44,
+        "shell_calls": 67,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 4
+      },
+      "errors": [],
+      "final": "Done. Worked on new branch `fix-log-follow-expand` from `main` and committed.\n\n**Log (`src/textual/widgets/_log.py`):**\n- Added `FollowChanged` (`widget, is_following_end, scroll_y, max_scroll_y` + `control`/`log` aliases), `is_following_end`, `follow_end(animate=False)`, `_set_following` (posts only on boolean change), and `watch_scroll_y` that calls `super()` (viewport + scrollbar) then updates follow.\n- `write`/`write_lines`: `scroll_end=True` forces scroll, `False` never, `None` uses `auto_scroll and is_following`. Respects scrollbar grab for auto case, updates `virtual_size` after prune, and when not following keeps viewport stable via `scroll_y -= remove_lines`.\n\n**RichLog (`src/textual/widgets/_rich_log.py`):**\n- Same follow API (`FollowChanged` with `control`/`rich_log`, `is_following_end`, `follow_end`, `watch_scroll_y`).\n- Fixed `adjust_cell_length` bug (was discarding return \u2192 left-justified `expand` stayed narrow) and `widest` to include `render_width`.\n- Added entry store (`_entries`) + `_render_content_to_strips`, `_compute_render_width`, `_prune_entries`, `_rebuild_expanded`, `_maybe_rebuild_expanded`, `watch_min_width`, extended `on_resize` (first size flushes deferred + records width, later resizes rebuild via `call_after_refresh`). Rebuild re-renders `expand` entries preserving justification, handles `max_lines` + scroll stability, scrolls to end only when following.\n- `write` now stable when not following, `clear` resets scroll + follow.\n\n**Example (`examples/rich_log_follow_state.py`):**\n- `RichLogFollowStateApp` with `Log#log`, `RichLog#rich`, `RichLog#events`, buttons `#follow-log`, `#follow-rich`, `#write-expanded`, `#append-log`, `#append-rich`, `#clear-events`. Follow buttons call `follow_end`, `#write-expanded` writes `Text(..., justify=\"center\"), expand=True` to `#rich`, append buttons write ordinary lines, clear clears `#events`, both `on_log_follow_changed` / `on_rich_log_follow_changed` write `FollowChanged ...` lines to `#events`, guarded `if __name__ == \"__main__\":`.\n\nVerified: follow stays `True` initially, `False` after scroll-up, writes stable, scroll-to-end restores, messages only on change, scrollbar/viewport update, `expand` full-width left/center/right for explicit/deferred/resize/`min_width`, pruning stable, example buttons/events work.",
+      "failures": []
+    },
+    {
+      "arm": "off",
+      "task": "textual-richlog-follow-state",
+      "trial": "c797d90c439169b30f8cff3d240f47a8__rx4S7E3",
+      "result": ".artifacts/e13-v3-checklist/checklist-off/004-textual-richlog-follow-state-attempt-01/004-textual-richlog-follow-state-attempt-01/c797d90c439169b30f8cff3d240f47a8__rx4S7E3/result.json",
+      "reward": 0,
+      "f2p_total": 20,
+      "f2p_passed": 19,
+      "p2p_total": 6,
+      "p2p_passed": 6,
+      "f2p": 0.95,
+      "p2p": 1.0,
+      "partial": 0.9615384615384616,
+      "uncached": 1622647,
+      "cache": 14947495,
+      "output": 88084,
+      "repriced_usd": 0.20977648999999998,
+      "provider_usd": 4.285449849999998,
+      "agent_seconds": 1220.835434,
+      "total_seconds": 1255.935073,
+      "trace": {
+        "cells": 150,
+        "batch_cells": 18,
+        "visible_bytes": 362009,
+        "cell_errors": 1,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 6,
+        "truncated": 30,
+        "shell_calls": 73,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 3
+      },
+      "errors": [
+        "429: {\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta/muse-spark-1.3-contributor is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Meta\",\"is_byok\":false,\"provider_error_code\":\"rate_limit_exceeded\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\",\"retry_after_seconds\":60,\"retry_after_seconds_raw\":60,\"headers\":{\"Retry-After\":\"60\"}}}"
+      ],
+      "final": "Work completed on new branch `richlog-follow-fix` and committed.\n\n**Log (`src/textual/widgets/_log.py`):**\n- Added `FollowChanged` dataclass with `widget, is_following_end, scroll_y, max_scroll_y` + `control`/`log` aliases, posting only on boolean change via `_update_following`.\n- Added `is_following_end` property, `follow_end(animate=False)`, `watch_scroll_y` (calls `super` to keep scrollbar/viewport updates) and `on_resize` to stay following.\n- `write`/`write_lines` now capture `was_following`, respect `auto_scroll`/`scroll_end` + `is_vertical_scrollbar_grabbed`; scroll only when following, otherwise keep `scroll_y` stable. `max_lines` pruning returns count and does `scroll_y -= removed` for stability, updates `virtual_size`.\n- `clear` resets scroll and follow state.\n\n**RichLog (`src/textual/widgets/_rich_log.py`):**\n- Same follow API (`FollowChanged` with `control`/`rich_log`, `is_following_end`, `follow_end`, `_update_following`, `watch_scroll_y` preserving super behavior).\n- Fixed `adjust_cell_length` bug (was discarded) to restore full-width rendering.\n- Added `_compute_render_width`/`_render_strips` helpers, `_expanded_entries` tracking for `expand=True` (width `None`), `_refresh_expanded` for resizes/`watch_min_width`, preserving justification. Deferred writes flush correctly, explicit writes use helpers, pruning adjusts entries/scroll for viewport stability.\n- `on_resize` handles first-size deferred flush + later expanded refresh + follow stay; `clear` clears expanded/scroll/follow.\n\n**Example (`examples/rich_log_follow_state.py`):**\n- `RichLogFollowStateApp` with `Log#log`, `RichLog#rich` (`min_width=10`), `RichLog#events`, buttons `#follow-log`, `#follow-rich`, `#write-expanded`, `#append-log`, `#append-rich`, `#clear-events`.\n- Follow buttons call `follow_end`, `#write-expanded` writes `Text(..., justify=\"right\"), expand=True` to `#rich`, appends write ordinary lines, clear clears events. `on_log_follow_changed`/`on_rich_log_follow_changed` write `FollowChanged ...` lines to `#events` (guarded against self-loop). Guarded with `if __name__ == \"__main__\":`.\n\nVerified: follow stays vs snaps, scroll-to-end restores, viewport stable on append/prune, scrollbar `position==scroll_y`, messages only on change, expand deferred/explicit/resize/min_width full-width justified.",
+      "failures": [
+        {
+          "name": "[f2p] tests.test_rich_log_follow_state.test_example_append_buttons_and_clear_events_work",
+          "status": "failed",
+          "message": "assert False\n +  where False = <function test_example_append_buttons_and_clear_events_work.<locals>.<lambda> at 0x7ffffcb99940>()\nasync def test_example_append_buttons_and_clear_events_work() -> None:\n        spec = spec_from_file_location(\"rich_log_follow_state_example\", EXAMPLE_PATH)\n        assert spec is not None\n        assert spec.loader is not None\n    \n        module = module_from_spec(spec)\n        sys.modules[spec.name] = module\n        try:\n            spec.loader.exec_module(module)\n            app = module.RichLogFollowStateApp()\n            async with app.run_test(size=(100, 28)) as pilot:\n                await pilot.pause()\n    \n                log = app.query_one(Log)\n                events = app.query_one(\"#events\", RichLog)\n                rich_logs = [rich_log for rich_log in app.query(RichLog) if rich_log.id != \"events\"]\n                assert rich_logs\n    \n                log_line_count = len(log.lines)\n                rich_line_counts = {id(rich_log): len(rich_log.lines) for rich_log in rich_logs}\n    \n                app.query_one(\"#append-log\", Button).press()\n                app.query_one(\"#append-rich\", Button).press()\n    \n                await _wait_for(\n                    pilot,\n                    lambda: len(log.lines) > log_line_count\n                    and any(len(rich_log.lines) > rich_line_counts[id(rich_log)] for rich_log in rich_logs),\n                )\n    \n>               await _wait_for(\n                    pilot,\n                    lambda: log.scrollable_content_region.height > 0\n                    and all(rich_log.scrollable_content_region.height > 0 for rich_log in rich_logs),\n                )\n\ntests/test_rich_log_follow_state.py:533: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\npilot = <Pilot app=RichLogFollowStateApp(title='RichLogFollowStateApp', classes={'-dark-mode'}, pseudo_classes={'focus', 'dark'})>\npredicate = <function test_example_append_buttons_and_clear_events_work.<locals>.<lambda> at 0x7ffffcb99940>\ntimeout = 3.0, step = 0.05\n\n    async def _wait_for(pilot, predicate, timeout: float = 3.0, step: float = 0.05) -> None:\n        remaining = timeout\n        while remaining > 0:\n            if predicate():\n                return\n            await pilot.pause(step)\n            remaining -= step\n>       assert predicate()\nE       assert False\nE        +  where False = <function test_example_append_buttons_and_clear_events_work.<locals>.<lambda> at 0x7ffffcb99940>()\n\ntests/test_rich_log_follow_state.py:26: AssertionError"
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "task": "ink-grid-box-layout",
+      "trial": "5d1499ab0b27daafc310ab4a23866d61__JLi5e95",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/001-ink-grid-box-layout-attempt-01/001-ink-grid-box-layout-attempt-01/5d1499ab0b27daafc310ab4a23866d61__JLi5e95/result.json",
+      "reward": 0,
+      "f2p_total": 25,
+      "f2p_passed": 23,
+      "p2p_total": 49,
+      "p2p_passed": 49,
+      "f2p": 0.92,
+      "p2p": 1.0,
+      "partial": 0.972972972972973,
+      "uncached": 1199634,
+      "cache": 12183440,
+      "output": 87318,
+      "repriced_usd": 0.16179388,
+      "provider_usd": 3.438274700000001,
+      "agent_seconds": 1910.069546,
+      "total_seconds": 1963.949156,
+      "trace": {
+        "cells": 143,
+        "batch_cells": 14,
+        "visible_bytes": 219405,
+        "cell_errors": 4,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 1,
+        "truncated": 36,
+        "shell_calls": 72,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 2
+      },
+      "errors": [],
+      "final": "Done. Implemented CSS grid layout on a new branch and committed.\n\n**Branch:** `grid-support` (from `master` \u2014 repo has no `main`, `master` is the default) \u2014 commit `881870b`.\n\n**Changes:**\n- `src/styles.ts`: `display` now accepts `\"grid\"` (Yoga-mapped to `FLEX`, only `\"none\"` hides); added `gridTemplateColumns`, `gridTemplateRows`, `gridColumn` (`number|string`), `gridRow`.\n- `src/grid.ts` (new): track parsing (fixed, `fr`, `auto`, `minmax(min, fixed|fr)` with paren-aware tokenizing), 1-based/`\"start / end\"` placement with auto-placement (row-major, explicit spans, implicit auto tracks), `gap`/`columnGap`/`rowGap` support, auto rows when omitted, `fr` distribution via largest-remainder after minimums, content measurement via Yoga (`undefined` for intrinsic, fixed width for constrained) with recursive nested-grid handling, integer rounding, spanning growth, padding/border awareness, two-phase layout (explicit Yoga heights \u2192 re-layout \u2192 position overrides via patched `getComputed*` with per-root restores to avoid use-after-free).\n- `src/ink.tsx` + `src/render-to-string.ts`: two-pass `calculateLayout` when grids present (`clear \u2192 layout \u2192 setupGridHeights \u2192 layout \u2192 applyGridOverrides`), plus `discardGridState` after free.\n\n**Verified:**\n- Fixed (`\"4 4\"` \u2192 `\"A   B\"`), `fr` (`\"1fr 1fr\"` width 10 \u2192 `\"A    B\"`), weights (`1fr 2fr`), gaps, `auto` (`\"HelloB\"`), `minmax(4,1fr)` (`\"A      B\"`), auto rows, explicit `gridColumn`/`gridRow`, spans, `rowGap`/`gap`, container padding/border, `display:none` exclusion, stretched (no width), wrapping (`\"HelloB\\nWorld\"`), nested grids, `fr` rows with explicit height.\n- Existing `display/gap/flex` (18 tests) and `width/overflow` (146 tests) pass; `tsc --noEmit` and `xo` clean.",
+      "failures": [
+        {
+          "name": "[f2p] grid - minmax in gridTemplateRows",
+          "status": "failed",
+          "message": "name: AssertionError\nassertion: true\nvalues: \n  Value is not `true`:: false\nat: <anonymous> (test/grid-layout.tsx:412:4)"
+        },
+        {
+          "name": "[f2p] grid - minmax with fixed max",
+          "status": "failed",
+          "message": "name: AssertionError\nassertion: is\nvalues: \n  Difference (- actual, + expected):: - 5 + 15\nat: <anonymous> (test/grid-layout.tsx:397:4)"
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "task": "ink-grid-box-layout",
+      "trial": "5d1499ab0b27daafc310ab4a23866d61__rayx9wM",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/001-ink-grid-box-layout-attempt-01/001-ink-grid-box-layout-attempt-01/5d1499ab0b27daafc310ab4a23866d61__rayx9wM/result.json",
+      "reward": 1,
+      "f2p_total": 25,
+      "f2p_passed": 25,
+      "p2p_total": 49,
+      "p2p_passed": 49,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 1384562,
+      "cache": 7187341,
+      "output": 87271,
+      "repriced_usd": 0.17028508200000003,
+      "provider_usd": 2.8143924600000014,
+      "agent_seconds": 1271.444225,
+      "total_seconds": 1323.966248,
+      "trace": {
+        "cells": 93,
+        "batch_cells": 10,
+        "visible_bytes": 190858,
+        "cell_errors": 3,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 0,
+        "truncated": 19,
+        "shell_calls": 42,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 0
+      },
+      "errors": [],
+      "final": "Implemented CSS grid layout for Ink on new branch `grid-layout` (from `master`) and committed.\n\n**Changes:**\n- `src/styles.ts`: `display` now accepts `\"grid\"` (mapped to Yoga `FLEX` internally); added `gridTemplateColumns`, `gridTemplateRows`, `gridColumn`, `gridRow` types.\n- `src/grid.ts` (new): parses track lists (fixed, `fr`, `auto`, `minmax(min, fixed|fr)` with space-aware tokenization), parses placements (1-based index or `\"start / end\"`), auto-placement with occupancy tracking (row-major, explicit spans, implicit rows/cols), integer `fr` distribution with remainder handling, `auto` sizing via intrinsic measurement (Yoga standalone + recursive grid preferred), `minmax(fr)` remaining distribution, `gap`/`columnGap`/`rowGap` support, recursive layout for nested grids, Yoga absolute positioning (`left = padding + offset`, `computed = border + left`) and explicit container heights.\n- `src/ink.tsx` + `src/render-to-string.ts`: use `performGridLayout` instead of bare Yoga `calculateLayout` (reset overrides, preliminary widths, top-level grid recursion, final layout).\n- `src/components/Text.tsx`: accepts `gridColumn`/`gridRow` for direct `Text` children.\n\nVerified:\n- Fixed, `fr`, `auto`, `minmax`, spanning (`1 / 3`), explicit placement, `gap`/`rowGap`/`columnGap`, auto rows, wrapping, padding/border, `display:none` skipping.\n- Existing `display`, `gap`, `flex`, `width-height` tests still pass; `tsc --noEmit` and `xo` clean (warnings only).\n\nCommit `8ddf588` on branch `grid-layout` includes all 5 files.",
+      "failures": []
+    },
+    {
+      "arm": "on",
+      "task": "ink-grid-box-layout",
+      "trial": "5d1499ab0b27daafc310ab4a23866d61__zTUm5bZ",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/001-ink-grid-box-layout-attempt-01/001-ink-grid-box-layout-attempt-01/5d1499ab0b27daafc310ab4a23866d61__zTUm5bZ/result.json",
+      "reward": 0,
+      "f2p_total": 25,
+      "f2p_passed": 23,
+      "p2p_total": 49,
+      "p2p_passed": 49,
+      "f2p": 0.92,
+      "p2p": 1.0,
+      "partial": 0.972972972972973,
+      "uncached": 1600097,
+      "cache": 12818048,
+      "output": 92535,
+      "repriced_usd": 0.204152796,
+      "provider_usd": 3.94111983,
+      "agent_seconds": 1553.948881,
+      "total_seconds": 1606.039119,
+      "trace": {
+        "cells": 127,
+        "batch_cells": 14,
+        "visible_bytes": 257155,
+        "cell_errors": 3,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 0,
+        "truncated": 43,
+        "shell_calls": 80,
+        "shell_timeouts": 1,
+        "diagnostic_notices": 6
+      },
+      "errors": [],
+      "final": "Done \u2014 implemented CSS grid layout on a new branch `feat/grid-layout` and committed.\n\n**Branch:** `feat/grid-layout` (from `master`), commit `e8ec3b2` \u201cAdd CSS grid layout support\u201d \u2014 6 files, +1696/-5.\n\n**What was built:**\n- `display` now accepts `\"grid\"` (`src/styles.ts`, mapped to Yoga flex + custom layout).\n- New `src/grid.ts`: parses `gridTemplateColumns`/`gridTemplateRows` (fixed, `fr`, `auto`, `minmax(min,max)` with fixed/`fr` max, paren-aware tokenizing), auto-placement with occupancy grid (row flow, spans, implicit rows/cols as `auto`), `fr` distribution after minimums, `gap`/`columnGap`/`rowGap` support.\n- `gridColumn`/`gridRow` accept `number` or `\"start / end\"`.\n- Layout via Yoga absolute positioning: `resetGridState` \u2192 preliminary Yoga calc (widths) \u2192 `layoutAllGrids` (tracks, cell sizes, nested grids, padding/border, text-wrap height measurement) \u2192 final Yoga calc. Works in both `src/ink.tsx` and `src/render-to-string.ts`.\n- `src/dom.ts`: `measureTextNode` handles `NaN` width for intrinsic measurement.\n- Screen-reader output uses newline separator for grids.\n\n**Verified:**\n- `npx tsc --noEmit` passes, `npx xo` passes (warnings only).\n- Existing layout tests pass (116 passed, e.g. `display`, `gap`, `flex-*`, `width-height`, `borders`, `padding`, `margin`).\n- Manual checks: fixed/`fr`/`auto`/`minmax(5,1fr)`/`minmax(5,10)`, implicit rows, `1 / 3` spans + row spans, single-index placement, `gap`/`columnGap`/`rowGap`, wrapping, padding/border, nested grids, `display:none` skipping.",
+      "failures": [
+        {
+          "name": "[f2p] grid - auto track sizing",
+          "status": "failed",
+          "message": "name: AssertionError\nassertion: is\nvalues: \n  Difference (- actual, + expected):: - 14 + 5\nat: <anonymous> (test/grid-layout.tsx:241:4)"
+        },
+        {
+          "name": "[f2p] grid - minmax with fixed max",
+          "status": "failed",
+          "message": "name: AssertionError\nassertion: is\nvalues: \n  Difference (- actual, + expected):: - 18 + 15\nat: <anonymous> (test/grid-layout.tsx:397:4)"
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "task": "obsidian-linter-scoped-ignore-markers",
+      "trial": "5ffe854a4225a8a5b7cdd806c497a050__XQSe8cF",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/002-obsidian-linter-scoped-ignore-markers-attempt-01/002-obsidian-linter-scoped-ignore-markers-attempt-01/5ffe854a4225a8a5b7cdd806c497a050__XQSe8cF/result.json",
+      "reward": 1,
+      "f2p_total": 33,
+      "f2p_passed": 33,
+      "p2p_total": 1133,
+      "p2p_passed": 1133,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 862200,
+      "cache": 5334585,
+      "output": 75084,
+      "repriced_usd": 0.11190597000000001,
+      "provider_usd": 1.9729595999999998,
+      "agent_seconds": 991.557891,
+      "total_seconds": 1040.073129,
+      "trace": {
+        "cells": 72,
+        "batch_cells": 7,
+        "visible_bytes": 214018,
+        "cell_errors": 2,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 3,
+        "truncated": 10,
+        "shell_calls": 34,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 2
+      },
+      "errors": [],
+      "final": "Implemented scoped per-rule ignores on new branch `scoped-per-rule-ignores` and committed.\n\n**New file `src/utils/scoped-disable.ts`:**\n- Recognizes `<!-- linter-disable \u2026 -->`, `<!-- linter-enable \u2026 -->`, `<!-- linter-disable-next-line \u2026 -->`, `<!-- linter-disable-next-n-lines: N \u2026 -->` and `%% \u2026 %%` equivalents only on standalone lines (`^[ \\t]*marker[ \\t]*$`, extra dashes allowed).\n- Ignores markers inside YAML frontmatter (`yamlRegex`), fenced/indented code (`Code`), inline code (`InlineCode`), math (`Math`+`InlineMath`) via `getPositions` overlap checks.\n- Rule-list normalization: split by `,`, trim, lowercase, dedupe, drop empties, drop unknown aliases. Empty raw \u2192 \u201call\u201d/pop; empty after normalization \u2192 no effect. `N` must match `^[0-9]+$` and `>0`, parsed as first `[^,\\s]+` token after `:`, remainder is rule list. No following line \u2192 no effect, past-EOF clamped.\n- Stack semantics: `disable-all` pushes `{all, excluded}`, `disable-rules` pushes `{rules}`, `enable-pop` pops, `enable-rules` removes each rule from nearest disabling scope (adding to `excluded` for `all`, deleting from `rules` and splicing empty scopes). `next-line`/`next-n-lines` recorded as `lineAll`/`lineRules` sets.\n- Protection via per-line unique alphanumeric placeholders (`LinterProtectedLine000001XyZ`) replacing marker lines (always) + disabled lines for that rule, running the rule, then restoring with `placeholder[ \\t\\r]*` case-insensitive replace. Preserves line count and marker content.\n\n**Integration:**\n- `src/rules.ts:Rule.apply` now wraps with `applyWithScopedProtection(..., Object.keys(rulesDict))`.\n- `src/rules/rule-builder.ts` no longer auto-includes `IgnoreTypes.customIgnore` (old midline behavior removed from linting; `getAllCustomIgnoreSectionsInText` kept unchanged so its direct tests still pass, but linting uses standalone-only logic).\n- `src/rules-runner.ts:runCustomRegexReplacement` now uses `applyCustomRegexProtection` (all-scopes + marker lines only).\n\nAll 1177 existing tests pass.",
+      "failures": []
+    },
+    {
+      "arm": "on",
+      "task": "obsidian-linter-scoped-ignore-markers",
+      "trial": "5ffe854a4225a8a5b7cdd806c497a050__ZSqpJNE",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/002-obsidian-linter-scoped-ignore-markers-attempt-01/002-obsidian-linter-scoped-ignore-markers-attempt-01/5ffe854a4225a8a5b7cdd806c497a050__ZSqpJNE/result.json",
+      "reward": 1,
+      "f2p_total": 33,
+      "f2p_passed": 33,
+      "p2p_total": 1133,
+      "p2p_passed": 1133,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 1787887,
+      "cache": 5743689,
+      "output": 62794,
+      "repriced_usd": 0.202834878,
+      "provider_usd": 2.868658890000001,
+      "agent_seconds": 1105.352728,
+      "total_seconds": 1160.668191,
+      "trace": {
+        "cells": 89,
+        "batch_cells": 0,
+        "visible_bytes": 236299,
+        "cell_errors": 4,
+        "hard_timeouts": 0,
+        "preflight_rejections": 2,
+        "reuse_cells": 0,
+        "truncated": 20,
+        "shell_calls": 45,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 0
+      },
+      "errors": [
+        "Network connection lost."
+      ],
+      "final": "Done. Implemented scoped per-rule ignores on branch `feat/scoped-per-rule-ignores` (from `master`) and committed.\n\n**New file `src/utils/linter-disable.ts`:**\n- Recognizes `linter-disable`, `linter-enable`, `linter-disable-next-line`, `linter-disable-next-n-lines: N` in both `<!-- ... -->` (flexible `<!-{2,}`/`-{2,}>`) and `%% ... %%` forms, only on standalone lines (`^[ \\t]*marker[ \\t]*$`).\n- Excludes markers inside YAML frontmatter (`yamlRegex`), fenced/indented code (`MDAstTypes.Code`), inline code, math/inline-math via mdast positions.\n- Normalizes rule lists case-insensitively, dedupes, ignores empty/trailing-comma entries and unknown aliases; empty-after-normalization \u2192 no effect, except no-list `disable`/`next-*` \u2192 `all`.\n- Validates `N` as `/^[0-9]+$/` and `>0`, clamps `next-N` to EOF, no effect if no following line.\n- Stack semantics for block scopes: `enable` no-list pops most recent; `enable` with list removes each rule from nearest scope disabling it (for `all` scopes via `reenabled` set, supporting disable-all + re-enable-specific), closing emptied rule-specific scopes.\n- `ignoreLinterDisables()` protects marker + disabled lines per-rule via line placeholders.\n\n**Integration:**\n- `src/rules.ts:Rule.apply` wraps with `ignoreLinterDisables(alias)` so all regular/before/after rules respect it; marker lines never modified.\n- `src/rules-runner.ts:runCustomRegexReplacement` wraps with `alias=null` (all-only + markers).\n- `src/utils/mdast.ts:getAllCustomIgnoreSectionsInText` now filters to standalone + non-excluded matches.\n\n**Tests:** Updated 5 outdated midline expectations in `get-all-custom-ignore-sections-in-text.test.ts` to `0/1` per standalone requirement. `npm test`: 59 suites, 1177 tests pass. `npm run lint` clean.",
+      "failures": []
+    },
+    {
+      "arm": "on",
+      "task": "obsidian-linter-scoped-ignore-markers",
+      "trial": "5ffe854a4225a8a5b7cdd806c497a050__pngpx5a",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/002-obsidian-linter-scoped-ignore-markers-attempt-01/002-obsidian-linter-scoped-ignore-markers-attempt-01/5ffe854a4225a8a5b7cdd806c497a050__pngpx5a/result.json",
+      "reward": 1,
+      "f2p_total": 33,
+      "f2p_passed": 33,
+      "p2p_total": 1133,
+      "p2p_passed": 1133,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 767659,
+      "cache": 4419129,
+      "output": 59534,
+      "repriced_usd": 0.09751095800000001,
+      "provider_usd": 1.6744726900000007,
+      "agent_seconds": 861.606019,
+      "total_seconds": 913.356425,
+      "trace": {
+        "cells": 72,
+        "batch_cells": 11,
+        "visible_bytes": 234120,
+        "cell_errors": 1,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 1,
+        "truncated": 10,
+        "shell_calls": 39,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 1
+      },
+      "errors": [],
+      "final": "Implemented scoped per-rule ignore behavior on branch `scoped-ignore` (from `master`) and committed.\n\n**New file `src/utils/scoped-disable.ts`:**\n- Recognizes `<!-- ... -->` and `%% ... %%` markers only on standalone lines (`^[ \\t]*marker[ \\t]*$`).\n- Excludes markers inside YAML frontmatter (`yamlRegex`), fenced/indented code, inline code, math/inline-math (via `getPositions`).\n- Parses `linter-disable`, `linter-enable`, `linter-disable-next-line`, `linter-disable-next-n-lines: N` case-insensitively, with rule lists split on `[,\\s]+`, lowercased, deduped, trailing/empty ignored, unknown aliases filtered against hardcoded 65-alias set; empty-after-normalization \u2192 no effect (except omitted list \u2192 all).\n- Validates `N` with `/^[0-9]+$/` and `>0`, clamps to EOF, no effect if no following line.\n- Stack semantics: `disable` pushes (all or specific), `enable` with no list pops most recent, `enable` with list removes each rule from nearest disabling scope (`all` scopes use `except` set to support disable-all + enable-specific), closing emptied specific scopes.\n- Line-scoped disables stored as line ranges, OR-ed with block scopes.\n- Marker lines (even no-effect) always protected; disabled lines protected per-alias (`getRangesToProtectForRule`) or per-all (`getRangesToProtectForAll` for custom regex) via unique `{LINTER_SCOPED_DISABLE_n}` placeholders preserving newlines.\n\n**Modified `src/rules.ts`:** `Rule.apply` now wraps with `protectScopeForRule` and filters out legacy `customIgnore` (kept helper unchanged so old unit tests still pass).\n\n**Modified `src/rules-runner.ts`:** `runCustomRegexReplacement` uses `protectScopeForAll` (all-disables + marker protection, specific disables don\u2019t affect custom regex).\n\nAll 1177 existing tests pass.",
+      "failures": []
+    },
+    {
+      "arm": "on",
+      "task": "scriggo-method-declarations",
+      "trial": "6892464f5a019db9a70d766a3186c609__9aH2ysZ",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/003-scriggo-method-declarations-attempt-01/003-scriggo-method-declarations-attempt-01/6892464f5a019db9a70d766a3186c609__9aH2ysZ/result.json",
+      "reward": 0,
+      "f2p_total": 48,
+      "f2p_passed": 42,
+      "p2p_total": 1049,
+      "p2p_passed": 741,
+      "f2p": 0.875,
+      "p2p": 0.7063870352716873,
+      "partial": 0.7137648131267093,
+      "uncached": 5080766,
+      "cache": 65150702,
+      "output": 229391,
+      "repriced_usd": 0.684256204,
+      "provider_usd": 16.168404020000008,
+      "agent_seconds": 3323.561535,
+      "total_seconds": 3444.919267,
+      "trace": {
+        "cells": 463,
+        "batch_cells": 15,
+        "visible_bytes": 738613,
+        "cell_errors": 5,
+        "hard_timeouts": 0,
+        "preflight_rejections": 3,
+        "reuse_cells": 0,
+        "truncated": 24,
+        "shell_calls": 272,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 13,
+        "compactions": 2
+      },
+      "errors": [],
+      "final": "Implemented Scriggo methods on `methods` branch and committed (`7ad67365`).\n\n**What works:**\n- `type T ...` + `func (m T) M()` / `func (m *T) M()` with named (`m`) and unnamed (`T`, `*T`) receivers, on int/string/struct/slice/map/array etc., independent per-type.\n- Calls auto-address (`x.Inc()` \u2192 `(*T).Inc(&x)`) and auto-deref (`p.Double()` \u2192 `T.Double(*p)`), mixed value+ptr, `p.Inc()`, `x.Double()`.\n- Method expressions `T.M(x)` / `(*T).Mp(&x)` as direct calls; `T.Mp` fails with `invalid method expression T.Mp (needs pointer receiver: (*T).Mp)`.\n- Interface: `T` with value `Error()` satisfies `error` and dispatches; `T` with ptr `Error()` does NOT satisfy (`cannot use x as error`), `&x` builds.\n\n**Fixes for regressions:**\n- `checkMethodValue` now uses `Func.IsValid()` (not `IsNative`) to skip Scriggo, preserving native `Me.Mv/Mp` and `Mei.M` interface tests.\n- `rewriteScriggoMethodCall` skips package receivers (`fmt.Println`) to avoid \u201cuse of package without selector\u201d.\n- `emitCallNode` handles `(*T).M` direct calls via `CallFunc` (not indirect), fixing `(*T).M` panic.\n\n**Tests:** `go test ./...` all `ok` (was failing `TestCheckerStatements`, `TestCheckerRemoveEnv`, `ExampleProgram_Run`, now fixed). `go vet` only pre-existing unkeyed warnings.\n\n**Known gaps:** `f := T.M; f(x)` as variable + pointer-interface runtime dispatch still panic with zero-Value; direct calls and value-interface dispatch work.",
+      "failures": [
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestCSSContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestCSSStringContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestCompositeStructLiterals",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestHTMLContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestImportPackageName",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestImportPackageName2",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue309",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue309/Add_right_position_to_'imported_and_not_used'_errors",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue403",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue403/Function_taking_an_array",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue403/Function_that_takes_a_struct_as_argument",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue403/Method_call_on_not-predefined_variable",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue403/Method_call_on_predefined_variable",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue523",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue855",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue881",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue967",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue967/Case_1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestIssue967/Case_2",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestJSContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestJSONContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestJSStringContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate",
+          "status": "failed",
+          "message": "=== RUN   TestMultiFileTemplate\n--- FAIL: TestMultiFileTemplate (0.05s)\npanic: reflect: call of reflect.Value.Interface on zero Value [recovered, repanicked]\n\ngoroutine 123 [running]:\ntesting.tRunner.func1.2({0x7f56a0, 0xc000510690})\n\t/usr/local/go/src/testing/testing.go:1872 +0x237\ntesting.tRunner.func1()\n\t/usr/local/go/src/testing/testing.go:1875 +0x35b\npanic({0x7f56a0?, 0xc000510690?})\n\t/usr/local/go/src/runtime/panic.go:783 +0x132\ngithub.com/open2b/scriggo/internal/runtime.(*VM).Run(0x0?, 0x80bf60?, 0x0?, {0x0?, 0xc0000abd90?, 0x41dbe5?})\n\t/app/internal/runtime/vm.go:161 +0xb3\ngithub.com/open2b/scriggo.(*Template).Run(0xc000421230, {0x8fe620, 0xc000421260}, 0x0, 0xc0000abe60)\n\t/app/templates.go:155 +0x18f\ngithub.com/open2b/scriggo/test/misc.TestMultiFileTemplate.func6(0xc00023ce00)\n\t/app/test/misc/multi_file_template_test.go:3327 +0x5d6\ntesting.tRunner(0xc00023ce00, 0xc000265b80)\n\t/usr/local/go/src/testing/testing.go:1934 +0xea\ncreated by testing.(*T).Run in goroutine 145\n\t/usr/local/go/src/testing/testing.go:1997 +0x465"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/A_partial_file_defines_a_macro,_which_should_not_be_accessible_from_the_file_that_renders_the_partial",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Accessing_global_variable_from_function_literal's_body",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Accessing_global_variable_from_function_literal's_body_-_nested",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Auto_imported_packages_-_Constants",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Auto_imported_packages_-_Type",
+          "status": "failed",
+          "message": "=== RUN   TestMultiFileTemplate/Auto_imported_packages_-_Type\n--- FAIL: TestMultiFileTemplate/Auto_imported_packages_-_Type (0.00s)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Byte_slices_are_rendered_as_they_are_in_context_HTML",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Can_access_to_unexported_struct_field_declared_in_the_same_file_-_defined_type",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Can_access_to_unexported_struct_field_declared_in_the_same_file_-_struct_literal",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Cannot_access_to_an_unexported_field_declared_in_another_file_(*struct)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Cannot_access_to_unexported_struct_fields_of_a_precompiled_value_(struct)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Cannot_show_byte_slices_in_text_context",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Convert_a_markdown_value_to_an_html_value",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Convert_a_markdown_value_to_an_html_value_-_Closure",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Convert_a_markdown_value_to_an_html_value_-_Indirect",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Cyclic_extends_is_not_allowed",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Default:_cannot_use_non-macro_in_call_form",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Default_declaration_with_macro",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Default_declaration_with_not_existent_macro_(3)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Default_short_show_with_render",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Default_show_with_double_render",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Default_show_with_render",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Default_with_invalid_left_expression",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Distraction_free_macro_declaration_(5)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Do_not_parse_short_show_statement",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Double_type_checking_of_render_expression",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/EOF_after_{%%",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Extends_-_Define_a_variable_(with_zero_value)_used_in_macro_definition",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Extends_-_Extending_a_file_that_calls_a_macro_defined_on_current_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Extends_-_Extending_a_file_which_contains_text_and_shows",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Extends_preceded_by_not_empty_text",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/File_imported_by_two_sources_-_test_compilation",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/For-else_--_else_executed_(multiline_statement)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/For-else_--_else_not_executed",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/For-else_channel_--_else_executed",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/For-else_on_string_--_else_not_executed",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Function_call",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Import/Macro_-_Importing_a_macro_defined_in_another_file,_where_a_function_calls_a_before-declared_function",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Import/Macro_-_Importing_a_macro_defined_in_another_file,_which_imports_a_third_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Importing_and_not_using_a_precompiled_package_should_not_return_error",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Init_function_called_more_than_once",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Internal_function_declaration_accessing_a_variable_declared_in_the_external_function_declaration",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Invalid_bytes_in_an_end_raw_statement",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Invalid_memory_address_or_nil_pointer_dereference",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Label_for",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Macro_called_as_native",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Macro_declarations_inside_macro_declarations",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Macro_definition_(no_arguments)_and_show-macro",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Macro_definition_(with_one_[]int_argument)_and_show-macro",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Macro_definition_(with_one_int_argument)_and_show-macro",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Macro_definition_(with_two_string_arguments)_and_show-macro",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Macro_definition_and_show-macro_variadic",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Missing_end_for_statement",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Missing_end_if_statement",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Missing_end_switch_statement",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Multi_line_statements_#2",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Multi_line_statements_#4",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Multi_line_statements_#8",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Multi_rows",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Multiline_statements_#5",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Multiple_extends_-_redeclaration_error",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Multiple_extends_-_using_'default'_in_extended_file_that_extends_another_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Multiple_extends_-_with_imports",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Not_only_spaces_in_a_file_that_extends",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Panic_after_importing_file_that_declares_a_variable_in_general_register_(1)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Panic_after_importing_file_that_declares_a_variable_in_general_register_(2)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Reading_a_variable_declared_in_main",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Removed_special_render_assignment_form",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Removed_special_render_declaration_form",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Render_-_File_renders_a_file_which_renders_another_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Render_-_File_with_a_render_expression_try_to_use_a_variable_declared_in_the_rendered_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Render_-_Render_file_that_uses_external_variable",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Render_in_an_distraction_free_markdown_macro_that_render_a_text_partial",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Shadowing_an_identifier_used_as_macro_result_parameter",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Show_a_Scriggo_defined_type_value",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Show_a_markdown_partial_in_an_HTML_context",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Show_markdown_in_HTML_context",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Show_of_a_previously_extended_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Show_string_macro_in_HTML_context",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Syntax_{{_f()_}}_where_'f'_returns_a_value_and_a_nil_error",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Taking_the_address_of_an_imported_variable",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Template_global_-_max",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Text_and_show",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Text_only",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/The_partial_file_must_see_the_global_variable_'v',_not_the_local_variable_'v'_of_the_file_that_renders_it",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Trying_to_access_a_precompiled_function_'SuperPrint'_that_is_not_available_in_the_package_'fmt'",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_'itea'_is_not_defined_outside_(implicit_type)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_assign_to_'itea'",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_assigning_from_using_body",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_cannot_use_'itea'_on_left_side_of_default",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_cannot_use_'itea'_on_left_side_of_default_-_package_level",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_cannot_use_'itea()'_on_left_side_of_default",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_error_if_'itea'_is_unused_(package_level)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_expression_statement",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_itea_on_right_side_of_default_('itea'_not_referenced,_content_of_'using'_must_not_be_evaluated)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_itea_on_right_side_of_default_(evaluated)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_itea_on_right_side_of_default_(evaluated,_package_level)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_macro_(without_parameters)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_nested_using_statements_(1)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_nested_using_statements_(2)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_package_level_var_declaration_",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_package_level_var_declaration_(2)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_package_level_var_declaration_(4)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_send_statement",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_show",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_-_show_(implicit_type)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/Using_a_function_declared_in_main",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/391",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/393",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/572_(1)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/655",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/660",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/679_(2)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/694",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/701",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/727_-_Function_literal_(2)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/727_-_Macro_(1)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/739_(import)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/741_-_non_pointer",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/768_(3)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/768_(4)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/768_(5)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/780",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/852_(1)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/852_(2)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/852_(6)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/855",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/857",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/https://github.com/open2b/scriggo/issues/888",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestMultiFileTemplate/import_with_'for'_-_referring_to_a_declaration_not_imported_by_'for'",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestOutError",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestProgramImport",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestProgramImport/\"main\"_importing_\"pkg\"",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestProgramImport/\"main\"_importing_\"pkg1\"_and_\"pkg2",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestProgramImport/\"main\"_importing_\"pkg1\"_importing_\"pkg2\"_(1)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestProgramImport/\"main\"_importing_\"pkg1\"_importing_\"pkg2\"_(dot_import)",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestProgramImport/\"main\"_importing_a_package_variable_from_\"pkg1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestProgramImport/Just_package_\"main\",_no_imports",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestQuotedAttrContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRecoveredOutError",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/\"3\"",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/\"a\"",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/\"a\"_+_\"b\"",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/-1_+_-2_*_6_/_(_6_-_1_-_(_5_*_3_)_+_2.0_)_*_(_1_+_2_)_*_3",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/-2147483648_*_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/-2147483648_+_-2147483648",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/-2147483648_/_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/-2147483649_*_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/-2147483649_/_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/-3",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/-3.50",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/0.0",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/1_+_2_*_3_+_1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2.0_*_3.1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2.0_/_3",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2.0_/_3.0",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2.2_*_3",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2147483647_*_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2147483647_+_2147483647",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2147483647_/_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2147483648_*_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2147483648_/_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2_*_3",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2_*_3.1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2_+_3",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2_-_3",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/2_/_3.0",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/3",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/3.0",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/3.50",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/3.56",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/3.560",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/5_==_5",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/9223372036854775807_*_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/9223372036854775807_/_-1",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/`a`",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/false",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/false_!=_false",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/false_!=_true",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/false_==_false",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/false_==_true",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/false_||_false",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/false_||_true",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/true",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/true_!=_false",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/true_!=_true",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/true_==_false",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/true_==_true",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/true_||_false",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderExpressions/true_||_true",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/a{#_comment_#}b",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{#_comment_#}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%___=_5_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a,_b,_c,_d_:=_1,_2,_3,_4_%}{%_if_(_a_==_1_&&_b_==_2_)_&&_(_c_==_3_&&_d_==_4_)_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a,_b,_c_:=_1,_2,_3_%}{%_if_(_a_==_1_&&_b_==_2_)_&&_c_==_3_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a,_b_:=_1,_2_%}{%_a,_b_=_b,_a_%}{%_if_a_==_2_&&_b_==_1_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a,_b_:=_1,_2_%}{%_if_a_==_1_&&_b_==_2_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_\"hi\"_%}{%_if_a_:=_2;_a_==_3_%}{%_else_if_a_:=_false;_a_%}{%_else_%}{{_a_}}{%_end_%},_{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12.3_%}{%_a_*=_2.1_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12.3_%}{%_a_+=_9.1_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12.3_%}{%_a_-=_3.7_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12.3_%}{%_a_/=_4.9_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12_%}{%_a_%=_5_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12_%}{%_a_*=_2_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12_%}{%_a_+=_9_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12_%}{%_a_-=_3_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_12_%}{%_a_/=_4_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_1_%}{%_b_:=_&a_%}{%_*b_=_5_%}{{_a_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_5_%}{%_if_true_%}{%_a_:=_7_%}{%_a_=_9_%}{{_a_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_5_%}{%_if_true_%}{%_a_:=_7_%}{{_a_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_5_%}{%_if_true_%}{%_a_=_7_%}{{_a_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_false_%}{%_if_a_=_true;_a_%}ok{%_else_%}no{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_a_:=_true_%}{%_if_a_=_false;_a_%}no{%_else_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_b_:=_map[interface{}]interface{}{nil:_true}_%}{%_if_a,_ok_:=_b[nil];_ok_%}ok{%_else_%}no{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for__,_c_:=_range_\"\"_%}{{_c_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for__,_c_:=_range_\"a\"_%}({{_c_}}){%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for__,_c_:=_range_\"a\u00c8c\"_%}({{_c_}}){%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for__,_i_:=_range_[]byte{_0,_1,_2_}_%}{{_i_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for__,_i_:=_range_[]interface{}{1,_2,_3,_4,_5}_%}{{_i_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for__,_i_:=_range_[]interface{}{1.3,_5.8,_2.5}_%}{{_i_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for_i_:=_0;_;_i++_%}{{_i_}}{%_if_i_==_4_%}{%_break_%}{%_end_%}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for_i_:=_0;_i_<_5;_i++_%}{{_i_}}{%_break_%}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for_i_:=_0;_i_<_5;_i++_%}{{_i_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for_k,_v_:=_range_map[interface{}]interface{}{}_%}{{_k_}}:{{_v_}},{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for_range_[]byte{_1,_2,_3_}_%}.{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for_range_[]interface{}{_`a`,_`b`,_`c`_}_%}.{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_for_range_[]interface{}{}_%}.{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_i_:=_0_%}{%_c_:=_true_%}{%_for_c_%}{%_i++_%}{{_i_}}{%_c_=_i_<_5_%}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_i_:=_0_%}{%_for_;_;_%}{%_i++_%}{{_i_}}{%_if_i_==_4_%}{%_break_%}{%_end_%},{%_end_%}_{{_i_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_i_:=_2_%}{%_switch_i++;_%}{%_case_true_%}{{_i_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_i_:=_5_%}{%_i++_%}{{_i_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_i_:=_5_%}{%_i--_%}{{_i_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_a_:=_false;_a_%}no{%_else_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_a_:=_true;_a_%}ok{%_else_%}no{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_false_%}no{%_else_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_false_%}{%_else_if_true_%}first_true{%_else_if_true_%}second_true{%_else_%}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(byte(255)).(byte);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(byte(5)).(byte);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(float32(5)).(float32);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(float32(5.5)).(float32);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(float64(5)).(float64);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(float64(5.5)).(float64);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(int(-2147483648)).(int);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(int(2147483647)).(int);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(int(5)).(int);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(int(5.0)).(int);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(rune(-2147483648)).(rune);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(rune(2147483647)).(rune);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_s,_ok_:=_interface{}(rune(5)).(rune);_ok_%}{{_s_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_true_%}ok{%_else_%}no{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_x_:=_10;_x_==_2_%}x_is_2{%_else_if_x_==_3_%}x_is_3{%_else_%}?{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_x_:=_2;_x_==_2_%}x_is_2{%_else_if_x_==_3_%}x_is_3{%_else_%}?{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_if_x_:=_3;_x_==_2_%}x_is_2{%_else_if_x_==_3_%}x_is_3{%_else_%}?{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_4_<_10_%}4_<_10,_{%_fallthrough_%}{%_case_4_==_10_%}4_==_10{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_7_<_10_%}7_<_10{%_default_%}other{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_7_>_10_%}7_>_10{%_default_%}other{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_false_%}no{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_true_%}abc{%_fallthrough_%}__{#_#}__{#_#}_{%_case_false_%}def{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_true_%}abc{%_fallthrough_%}{%_case_false_%}def{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_true_%}ab{%_break_%}c{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_true_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_true_%}ok{%_end_%}#01",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_case_true_%}{{_5_}}{%_end_%}ok",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_default_%}default{%_case_true_%}true{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_%}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_3_%}{%_case_3_%}three{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_4_+_5_%}{%_case_4_%}{%_case_9_%}nine{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_;_%}{%_case_true_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_;_true_%}{%_case_true_%}ok{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_a_:=_4;_%}{%_case_3_<_4_%}{{_a_}}{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_switch_x_:=_1;_x_+_1_%}{%_case_1_%}one{%_case_2_%}two{%_end_%}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_x_:=_10_%}{%_if_false_%}{%_else_if_true_%}{%_if_false_%}{%_else_if_true_%}x_is_{%_end_%}{%_else_if_false_%}{%_end_%}{{_10_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestRenderStatements/{%_x_:=_[]string{\"a\",\"c\",\"b\"}_%}{{_x[0]_}}{{_x[2]_}}{{_x[1]_}}",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestScriptContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestStructFieldSelector",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestUnquotedAttrContext",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.TestVars",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.Test_envCallPath",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.Test_envCallPath/File_extending_another_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.Test_envCallPath/File_importing_another_file,_which_defines_a_macro",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.Test_envCallPath/File_rendering_a_file_in_a_sub-directory",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.Test_envCallPath/File_rendering_another_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.Test_envCallPath/Just_one_file",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[p2p] github.com/open2b/scriggo/test/misc.Test_treeTransformer",
+          "status": "failed",
+          "message": "missing from report (test did not run or produced no result \u2014 see raw output)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify\n--- FAIL: TestScriggoMethodDeclVerify (0.05s)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify/method_expression_assigned_to_variable_then_called",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify/method_expression_assigned_to_variable_then_called\n    scriggo_method_decl_verify_test.go:1191: panic: reflect: call of reflect.Value.Interface on zero Value\n--- FAIL: TestScriggoMethodDeclVerify/method_expression_assigned_to_variable_then_called (0.00s)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify/method_expression_on_struct_with_return_value",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify/method_expression_on_struct_with_return_value\n    scriggo_method_decl_verify_test.go:1191: panic: reflect: call of reflect.Value.Interface on zero Value\n--- FAIL: TestScriggoMethodDeclVerify/method_expression_on_struct_with_return_value (0.00s)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify/method_expression_with_parameters",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify/method_expression_with_parameters\n    scriggo_method_decl_verify_test.go:1191: panic: reflect: call of reflect.Value.Interface on zero Value\n--- FAIL: TestScriggoMethodDeclVerify/method_expression_with_parameters (0.00s)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify/mixed_method_expressions_value_and_pointer_on_same_type",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify/mixed_method_expressions_value_and_pointer_on_same_type\n    scriggo_method_decl_verify_test.go:1191: panic: reflect: call of reflect.Value.Interface on zero Value\n--- FAIL: TestScriggoMethodDeclVerify/mixed_method_expressions_value_and_pointer_on_same_type (0.00s)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify/pointer_method_expression_with_star_type",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify/pointer_method_expression_with_star_type\n    scriggo_method_decl_verify_test.go:1191: panic: reflect: call of reflect.Value.Interface on zero Value\n--- FAIL: TestScriggoMethodDeclVerify/pointer_method_expression_with_star_type (0.00s)"
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "task": "scriggo-method-declarations",
+      "trial": "6892464f5a019db9a70d766a3186c609__TZwqMuH",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/003-scriggo-method-declarations-attempt-01/003-scriggo-method-declarations-attempt-01/6892464f5a019db9a70d766a3186c609__TZwqMuH/result.json",
+      "reward": 1,
+      "f2p_total": 48,
+      "f2p_passed": 48,
+      "p2p_total": 1049,
+      "p2p_passed": 1049,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 4559479,
+      "cache": 36737141,
+      "output": 174728,
+      "repriced_usd": 0.564367782,
+      "provider_usd": 10.908359610000005,
+      "agent_seconds": 2565.988347,
+      "total_seconds": 2689.328388,
+      "trace": {
+        "cells": 327,
+        "batch_cells": 2,
+        "visible_bytes": 717510,
+        "cell_errors": 5,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 28,
+        "truncated": 41,
+        "shell_calls": 209,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 2,
+        "compactions": 1
+      },
+      "errors": [
+        "429: {\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta/muse-spark-1.3-contributor is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Meta\",\"is_byok\":false,\"provider_error_code\":\"rate_limit_exceeded\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\",\"retry_after_seconds\":60,\"retry_after_seconds_raw\":60,\"headers\":{\"Retry-After\":\"60\"}}}",
+        "429: {\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta/muse-spark-1.3-contributor is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations\",\"provider_name\":\"Meta\",\"is_byok\":false,\"provider_error_code\":\"rate_limit_exceeded\",\"limit_source\":\"upstream_provider_shared_pool\",\"remedy_hint\":\"Retry shortly, add your own provider key (https://openrouter.ai/settings/integrations), or route to another provider with provider routing: https://openrouter.ai/docs/features/provider-routing\",\"retry_after_seconds\":60,\"retry_after_seconds_raw\":60,\"headers\":{\"Retry-After\":\"60\"}}}"
+      ],
+      "final": "Implemented method declarations on user-defined types, committed on branch `methods` (42336c48).\n\n**What works:**\n- `func (t T)` value and `func (t *T)` pointer receivers, named/unnamed (`_`/omitted), all definable types except interfaces (struct/array/slice/map/chan/func tested)\n- Auto-address-taking: `x.Inc()` where `x` addressable value and only pointer method works via `(&x).Inc` rewrite\n- Per-type method sets: `T.Foo` and `U.Foo` independent, duplicate `T.M` + `*T.M` rejected\n- Method expressions: `T.Value` and `(*T).Ptr` load via `T.M` func; `T.Ptr` with pointer receiver correctly errors \u201cneeds pointer receiver\u201d\n- Method values `x.M` bound via `OpMethodValue` \u2192 `reflect.MakeFunc` + nested VM, with deref/address adaptation and proxy wrapping for general-kind receivers\n- Interfaces: `types.Implements` checks Scriggo method sets (value excludes pointer, pointer includes both), so `T` with value `Error` satisfies `error` but `T` with pointer `Error` does not; `&x` direct to interface fixed via `&a` + `Typify` proxy wrapping in emitter\n\n**Files:** AST receiver (`ast/ast.go`, Clone/Walk), parser `func (recv) Name`, `types/` method sets + `Method/MethodByName` + `Implements` + proxy `GetScriggoMethod`, checker register/body + call rewrite `x.M\u2192T.M/(*T).M`, emitter `T.M` funcs + receiver params + `(*T).M` lookup + `SetMethodFunc`, runtime `ScriggoProxy` + bound wrappers.\n\nAll `go test ./...` pass.\n",
+      "failures": []
+    },
+    {
+      "arm": "on",
+      "task": "scriggo-method-declarations",
+      "trial": "6892464f5a019db9a70d766a3186c609__ggBn2jZ",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/003-scriggo-method-declarations-attempt-01/003-scriggo-method-declarations-attempt-01/6892464f5a019db9a70d766a3186c609__ggBn2jZ/result.json",
+      "reward": 0,
+      "f2p_total": 48,
+      "f2p_passed": 44,
+      "p2p_total": 1049,
+      "p2p_passed": 1049,
+      "f2p": 0.9166666666666666,
+      "p2p": 1.0,
+      "partial": 0.9963536918869644,
+      "uncached": 2600800,
+      "cache": 29150088,
+      "output": 163691,
+      "repriced_usd": 0.351118376,
+      "provider_usd": 7.789538079999998,
+      "agent_seconds": 2256.726721,
+      "total_seconds": 2375.165931,
+      "trace": {
+        "cells": 263,
+        "batch_cells": 21,
+        "visible_bytes": 552750,
+        "cell_errors": 4,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 0,
+        "truncated": 50,
+        "shell_calls": 189,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 2,
+        "compactions": 1
+      },
+      "errors": [],
+      "final": "Implemented Scriggo methods on `methods` branch and committed (`f8a97cb6`).\n\n**What works:**\n- `func (T) Foo` / `func (*T) Bar` with named `(t T)` and unnamed `(T)` receivers; `T` only has value methods, `*T` has both.\n- Auto `&v` for `v.Bar()` pointer calls on addressable values; `(*p).Foo` deref handling for value-via-pointer.\n- Per-type tables (`definedType` + `ptrType` sharing `methodTable`), same name independent across types; all definable kinds tested (int, struct, slice, map, array, func).\n- Expressions `T.Foo` / `(*T).Bar` as values/calls; `T.Bar` (pointer) correctly fails: `invalid method expression T.Bar (needs pointer receiver: (*T).Bar)`.\n- Go `error` satisfied by Scriggo value/pointer; `T{}` fails vs `&T{}` succeeds for pointer-only; `e.Error()` dispatch via new `scriggoMethodValue` bound funcs + `OpAssert` `Implements` fix + `&v`-to-interface `Typify` fix.\n\nAll `go test ./...` pass.",
+      "failures": [
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify\n--- FAIL: TestScriggoMethodDeclVerify (0.05s)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify/interface_satisfaction_error_interface",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify/interface_satisfaction_error_interface\n    scriggo_method_decl_verify_test.go:1219: unexpected output:\n        got:  \"error: \\n\"\n        want: \"error: something failed\\n\"\n--- FAIL: TestScriggoMethodDeclVerify/interface_satisfaction_error_interface (0.00s)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify/interface_satisfaction_multiple_calls_through_interface",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify/interface_satisfaction_multiple_calls_through_interface\n    scriggo_method_decl_verify_test.go:1219: unexpected output:\n        got:  \"\\n\\n\"\n        want: \"first\\nsecond\\n\"\n--- FAIL: TestScriggoMethodDeclVerify/interface_satisfaction_multiple_calls_through_interface (0.00s)"
+        },
+        {
+          "name": "[f2p] github.com/open2b/scriggo.TestScriggoMethodDeclVerify/interface_satisfaction_passed_to_function",
+          "status": "failed",
+          "message": "=== RUN   TestScriggoMethodDeclVerify/interface_satisfaction_passed_to_function\n    scriggo_method_decl_verify_test.go:1219: unexpected output:\n        got:  \"label:\\n\"\n        want: \"label:hello\\n\"\n--- FAIL: TestScriggoMethodDeclVerify/interface_satisfaction_passed_to_function (0.00s)"
+        }
+      ]
+    },
+    {
+      "arm": "on",
+      "task": "textual-richlog-follow-state",
+      "trial": "c797d90c439169b30f8cff3d240f47a8__3omtJAk",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/004-textual-richlog-follow-state-attempt-01/004-textual-richlog-follow-state-attempt-01/c797d90c439169b30f8cff3d240f47a8__3omtJAk/result.json",
+      "reward": 1,
+      "f2p_total": 20,
+      "f2p_passed": 20,
+      "p2p_total": 6,
+      "p2p_passed": 6,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 1521326,
+      "cache": 15152048,
+      "output": 94729,
+      "repriced_usd": 0.201382496,
+      "provider_usd": 4.24850338,
+      "agent_seconds": 1316.0769,
+      "total_seconds": 1347.290296,
+      "trace": {
+        "cells": 178,
+        "batch_cells": 11,
+        "visible_bytes": 255583,
+        "cell_errors": 8,
+        "hard_timeouts": 0,
+        "preflight_rejections": 5,
+        "reuse_cells": 5,
+        "truncated": 28,
+        "shell_calls": 113,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 5
+      },
+      "errors": [],
+      "final": "Done. Created branch `fix-log-follow-expand` from `main` and committed:\n\n- **Log / RichLog follow state**: `is_following_end: bool`, `follow_end(animate=False)`, nested `FollowChanged(widget, is_following_end, scroll_y, max_scroll_y)` with `control==widget`, posted only on boolean change via `watch_scroll_y` (calling `super()` to keep viewport/scrollbar updates). Writes follow only when `auto_scroll` + already following (explicit `scroll_end=True/False` overrides), scrolling to end restores follow. Pruning adjusts `scroll_y` to keep viewport stable; `clear()` restores follow.\n\n- **RichLog expand**: fixed discarded `adjust_cell_length` return, use `overflow=\"crop\"` for `expand=True` to preserve justification with current Rich, copy `Text` to avoid mutating caller, store `_history` and reflow expanded entries on `on_resize` / `watch_min_width`, updating `virtual_size` and scroll (follow \u2192 end, else stable).\n\n- **Example `examples/rich_log_follow_state.py`**: `RichLogFollowStateApp` with `Log#log`, `RichLog#rich-log` (`min_width=10`), `RichLog#events`, buttons `#follow-log/#follow-rich/#write-expanded/#append-log/#append-rich/#clear-events`; follow buttons call `follow_end`, `#write-expanded` writes `Text(..., justify=\"right\", expand=True)`, appends write ordinary lines, clear clears events, events log writes lines containing `FollowChanged` (filtered own), guarded `if __name__ == \"__main__\":`.\n\nVerified: follow stays `True` while writing at end, `False` after scroll-up with single `FollowChanged`, stable `scroll_y` on append/prune while unfollowed, restores on scroll-end/`follow_end`, expand full-width right/center for explicit/deferred and after width/`min_width` changes, snapshots preserved, `tests/test_log.py` + `test_widget.py` pass.",
+      "failures": []
+    },
+    {
+      "arm": "on",
+      "task": "textual-richlog-follow-state",
+      "trial": "c797d90c439169b30f8cff3d240f47a8__Fw2gcg2",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/004-textual-richlog-follow-state-attempt-01/004-textual-richlog-follow-state-attempt-01/c797d90c439169b30f8cff3d240f47a8__Fw2gcg2/result.json",
+      "reward": 1,
+      "f2p_total": 20,
+      "f2p_passed": 20,
+      "p2p_total": 6,
+      "p2p_passed": 6,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 731681,
+      "cache": 9213650,
+      "output": 71933,
+      "repriced_usd": 0.10598200000000002,
+      "provider_usd": 2.45701295,
+      "agent_seconds": 808.302682,
+      "total_seconds": 839.369635,
+      "trace": {
+        "cells": 113,
+        "batch_cells": 6,
+        "visible_bytes": 296308,
+        "cell_errors": 2,
+        "hard_timeouts": 0,
+        "preflight_rejections": 1,
+        "reuse_cells": 0,
+        "truncated": 13,
+        "shell_calls": 74,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 3
+      },
+      "errors": [],
+      "final": "Done. Worked on new branch `fix-log-follow` from `main` and committed.\n\n**Log (`src/textual/widgets/_log.py`):**\n- Added `FollowChanged` message with `widget`, `is_following_end`, `scroll_y`, `max_scroll_y` + `control` alias, posted only on boolean change via `_set_following`.\n- Added `is_following_end` property, `follow_end(animate=False)` (sets following with target `max_scroll_y` then `scroll_end`), and `watch_scroll_y` that calls `super()` (preserving viewport/scrollbar) then syncs follow state \u2014 scrolling to end restores follow.\n- `write`/`write_lines` now compute `should_scroll` from `auto_scroll` + `is_following_end` (+grabbed + explicit `scroll_end` override). When following they scroll and ensure `True`; when not they keep `scroll_y`, adjust `scroll_y -= removed` for `max_lines` pruning to keep viewport stable, and flip `True\u2192False` only when no longer at end. Fixed `virtual_size` update after prune and `_prune_max_lines` returns count.\n\n**RichLog (`src/textual/widgets/_rich_log.py`):**\n- Same follow API/behaviour as `Log`.\n- Added entry tracking (`_entries` with `content` copy, `width/expand/shrink`, `strips`, `render_width`) to preserve justification.\n- Factored `_compute_render_width` + `_render_strips` (using `scrollable_content_region.width` + `min_width`, `adjust_cell_length` for full-width justification). Deferred, explicit writes use them.\n- Added `_re_render_expanded()` rebuilding only `expand+width=None` entries, handling `max_lines` trimming, `virtual_size`, cache clear, and scroll stability (follow\u2192`scroll_end`, else clamp). Hooked to `on_resize` (all resizes, fixing hidden-width writes) and `watch_min_width`.\n- `clear()` clears entries; init ordering fixed for reactive watchers.\n\n**Example (`examples/rich_log_follow_state.py`):**\n- `RichLogFollowStateApp` with `Log#log`, `RichLog#rich`, `RichLog#events`, buttons `#follow-log`, `#follow-rich`, `#write-expanded`, `#append-log`, `#append-rich`, `#clear-events` in two `Horizontal` rows. Follow buttons call `follow_end()`, `#write-expanded` writes `Text(justify=\"right\", expand=True)` to primary RichLog, appends write ordinary lines, clear clears events. `on_log_follow_changed`/`on_rich_log_follow_changed` (filtering `events` to avoid recursion) write lines containing `FollowChanged` with ids/scroll values. Guarded with `if __name__ == \"__main__\":`.\n",
+      "failures": []
+    },
+    {
+      "arm": "on",
+      "task": "textual-richlog-follow-state",
+      "trial": "c797d90c439169b30f8cff3d240f47a8__yhptWfy",
+      "result": ".artifacts/e13-v3-checklist/checklist-on/004-textual-richlog-follow-state-attempt-01/004-textual-richlog-follow-state-attempt-01/c797d90c439169b30f8cff3d240f47a8__yhptWfy/result.json",
+      "reward": 1,
+      "f2p_total": 20,
+      "f2p_passed": 20,
+      "p2p_total": 6,
+      "p2p_passed": 6,
+      "f2p": 1.0,
+      "p2p": 1.0,
+      "partial": 1.0,
+      "uncached": 453530,
+      "cache": 15104696,
+      "output": 82046,
+      "repriced_usd": 0.09197159199999999,
+      "provider_usd": 3.1757888599999995,
+      "agent_seconds": 992.909978,
+      "total_seconds": 1023.851446,
+      "trace": {
+        "cells": 183,
+        "batch_cells": 11,
+        "visible_bytes": 243400,
+        "cell_errors": 5,
+        "hard_timeouts": 0,
+        "preflight_rejections": 4,
+        "reuse_cells": 8,
+        "truncated": 44,
+        "shell_calls": 113,
+        "shell_timeouts": 0,
+        "diagnostic_notices": 9
+      },
+      "errors": [],
+      "final": "Done. Created branch `fix-log-follow` from `main` and committed the fix.\n\n**Log (`src/textual/widgets/_log.py`):**\n- Added `FollowChanged` message (`widget`, `is_following_end`, `scroll_y`, `max_scroll_y` + `control` alias), `is_following_end` property, `follow_end(animate=False)`, `_set_following` helper posting only on boolean change, and `watch_scroll_y` that still updates scrollbar position and refreshes viewport while tracking `is_vertical_scroll_end`. `on_resize` restores follow when landing at end.\n- Writes (`write`/`write_lines`) capture `was_following`; explicit `scroll_end` overrides, otherwise `auto_scroll and was_following`. Honors scrollbar-grab, scrolls to end only when following, otherwise keeps viewport stable. `max_lines` pruning returns removed count, updates `virtual_size`, and does `scroll_y -= removed` when not scrolling. `clear` resets scroll and follow.\n\n**RichLog (`src/textual/widgets/_rich_log.py`):**\n- Same follow API/behavior as `Log` (fixes snap-back; appends/pruning stable).\n- Fixed expansion: `_render_strips` pads short strips with `extend_cell_length` (never truncates long lines), includes `render_width` in widest/virtual size, preserving justification. Stores full write history (copying `Text`) and `_re_render_history` rebuilds all entries on subsequent resizes and `min_width` changes, trimming to `max_lines`, clearing cache, and preserving follow (scroll to end if following else clamp). `watch_min_width` and extended `on_resize` trigger re-render; deferred writes still honored. `clear` clears history and resets follow.\n\n**Example (`examples/rich_log_follow_state.py`):**\n- `RichLogFollowStateApp` with `Log#log`, `RichLog#rich` (`min_width=10`), `RichLog#events`, buttons `#follow-log`, `#follow-rich`, `#write-expanded`, `#append-log`, `#append-rich`, `#clear-events` in `Horizontal` rows. Follow buttons call `follow_end`, `#write-expanded` writes right-justified `Text(..., expand=True)`, appends write ordinary lines, `#clear-events` clears events log. `on_log_follow_changed`/`on_rich_log_follow_changed` write `FollowChanged\u2026` lines to `#events`. Guarded with `if __name__ == \"__main__\":`.\n",
+      "failures": []
+    }
+  ],
+  "arms": {
+    "off": {
+      "n": 12,
+      "passes": 9,
+      "mean_f2p": 0.9825,
+      "mean_p2p": 1.0,
+      "median_agent_seconds": 1668.560897,
+      "median_total_seconds": 1721.4776185,
+      "uncached": 26237300,
+      "cache": 204483145,
+      "output": 1288240,
+      "repriced_usd": 3.29034429,
+      "provider_usd": 62.795698200000004,
+      "trace": {
+        "cells": 2008,
+        "batch_cells": 145,
+        "visible_bytes": 4553864,
+        "cell_errors": 30,
+        "preflight_rejections": 21,
+        "reuse_cells": 33,
+        "truncated": 381,
+        "shell_calls": 1003,
+        "shell_timeouts": 1,
+        "diagnostic_notices": 29,
+        "compactions": 3
+      }
+    },
+    "on": {
+      "n": 12,
+      "passes": 8,
+      "mean_f2p": 0.9693055555555555,
+      "mean_p2p": 0.9755322529393072,
+      "median_agent_seconds": 1293.7605625,
+      "median_total_seconds": 1335.628272,
+      "uncached": 22549621,
+      "cache": 218194557,
+      "output": 1281054,
+      "repriced_usd": 2.9475620140000003,
+      "provider_usd": 61.45748507000001,
+      "trace": {
+        "cells": 2123,
+        "batch_cells": 122,
+        "visible_bytes": 4156019,
+        "cell_errors": 46,
+        "preflight_rejections": 25,
+        "reuse_cells": 46,
+        "truncated": 338,
+        "shell_calls": 1282,
+        "diagnostic_notices": 45,
+        "shell_timeouts": 1,
+        "compactions": 4
+      }
+    }
+  },
+  "tasks": {
+    "ink-grid-box-layout": {
+      "off": {
+        "n": 3,
+        "passes": 1,
+        "mean_f2p": 0.9466666666666667,
+        "mean_p2p": 1.0,
+        "median_agent_seconds": 1769.786434,
+        "median_total_seconds": 1821.086226,
+        "uncached": 7241460,
+        "cache": 46486103,
+        "output": 305276,
+        "repriced_usd": 0.8781734060000002,
+        "provider_usd": 15.538267479999998,
+        "trace": {
+          "cells": 454,
+          "batch_cells": 54,
+          "visible_bytes": 784756,
+          "cell_errors": 10,
+          "preflight_rejections": 7,
+          "reuse_cells": 1,
+          "truncated": 75,
+          "shell_calls": 220,
+          "shell_timeouts": 1,
+          "diagnostic_notices": 10
+        }
+      },
+      "on": {
+        "n": 3,
+        "passes": 1,
+        "mean_f2p": 0.9466666666666667,
+        "mean_p2p": 1.0,
+        "median_agent_seconds": 1553.948881,
+        "median_total_seconds": 1606.039119,
+        "uncached": 4184293,
+        "cache": 32188829,
+        "output": 267124,
+        "repriced_usd": 0.536231758,
+        "provider_usd": 10.193786990000003,
+        "trace": {
+          "cells": 363,
+          "batch_cells": 38,
+          "visible_bytes": 667418,
+          "cell_errors": 10,
+          "preflight_rejections": 6,
+          "reuse_cells": 1,
+          "truncated": 98,
+          "shell_calls": 194,
+          "diagnostic_notices": 8,
+          "shell_timeouts": 1
+        }
+      }
+    },
+    "obsidian-linter-scoped-ignore-markers": {
+      "off": {
+        "n": 3,
+        "passes": 3,
+        "mean_f2p": 1.0,
+        "mean_p2p": 1.0,
+        "median_agent_seconds": 1290.157278,
+        "median_total_seconds": 1340.135603,
+        "uncached": 5644722,
+        "cache": 35329443,
+        "output": 283330,
+        "repriced_usd": 0.691797086,
+        "provider_usd": 12.148516780000001,
+        "trace": {
+          "cells": 339,
+          "batch_cells": 20,
+          "visible_bytes": 962212,
+          "cell_errors": 7,
+          "preflight_rejections": 6,
+          "truncated": 72,
+          "shell_calls": 135,
+          "reuse_cells": 26,
+          "diagnostic_notices": 2
+        }
+      },
+      "on": {
+        "n": 3,
+        "passes": 3,
+        "mean_f2p": 1.0,
+        "mean_p2p": 1.0,
+        "median_agent_seconds": 991.557891,
+        "median_total_seconds": 1040.073129,
+        "uncached": 3417746,
+        "cache": 15497403,
+        "output": 197412,
+        "repriced_usd": 0.412251806,
+        "provider_usd": 6.516091180000002,
+        "trace": {
+          "cells": 233,
+          "batch_cells": 18,
+          "visible_bytes": 684437,
+          "cell_errors": 7,
+          "preflight_rejections": 4,
+          "reuse_cells": 4,
+          "truncated": 40,
+          "shell_calls": 118,
+          "diagnostic_notices": 3
+        }
+      }
+    },
+    "scriggo-method-declarations": {
+      "off": {
+        "n": 3,
+        "passes": 3,
+        "mean_f2p": 1.0,
+        "mean_p2p": 1.0,
+        "median_agent_seconds": 2081.094302,
+        "median_total_seconds": 2199.523208,
+        "uncached": 8704049,
+        "cache": 88263924,
+        "output": 467279,
+        "repriced_usd": 1.1403885480000002,
+        "provider_usd": 24.260190389999998,
+        "trace": {
+          "cells": 820,
+          "batch_cells": 35,
+          "visible_bytes": 1845983,
+          "cell_errors": 7,
+          "preflight_rejections": 5,
+          "truncated": 140,
+          "shell_calls": 439,
+          "diagnostic_notices": 5,
+          "compactions": 3
+        }
+      },
+      "on": {
+        "n": 3,
+        "passes": 1,
+        "mean_f2p": 0.9305555555555556,
+        "mean_p2p": 0.9021290117572291,
+        "median_agent_seconds": 2565.988347,
+        "median_total_seconds": 2689.328388,
+        "uncached": 12241045,
+        "cache": 131037931,
+        "output": 567810,
+        "repriced_usd": 1.5997423620000002,
+        "provider_usd": 34.86630171000001,
+        "trace": {
+          "cells": 1053,
+          "batch_cells": 38,
+          "visible_bytes": 2008873,
+          "cell_errors": 14,
+          "preflight_rejections": 5,
+          "truncated": 115,
+          "shell_calls": 670,
+          "diagnostic_notices": 17,
+          "compactions": 4,
+          "reuse_cells": 28
+        }
+      }
+    },
+    "textual-richlog-follow-state": {
+      "off": {
+        "n": 3,
+        "passes": 2,
+        "mean_f2p": 0.9833333333333333,
+        "mean_p2p": 1.0,
+        "median_agent_seconds": 966.353282,
+        "median_total_seconds": 997.374648,
+        "uncached": 4647069,
+        "cache": 34403675,
+        "output": 232355,
+        "repriced_usd": 0.57998525,
+        "provider_usd": 10.848723549999999,
+        "trace": {
+          "cells": 395,
+          "batch_cells": 36,
+          "visible_bytes": 960913,
+          "cell_errors": 6,
+          "preflight_rejections": 3,
+          "truncated": 94,
+          "shell_calls": 209,
+          "diagnostic_notices": 12,
+          "reuse_cells": 6
+        }
+      },
+      "on": {
+        "n": 3,
+        "passes": 3,
+        "mean_f2p": 1.0,
+        "mean_p2p": 1.0,
+        "median_agent_seconds": 992.909978,
+        "median_total_seconds": 1023.851446,
+        "uncached": 2706537,
+        "cache": 39470394,
+        "output": 248708,
+        "repriced_usd": 0.39933608800000003,
+        "provider_usd": 9.881305189999999,
+        "trace": {
+          "cells": 474,
+          "batch_cells": 28,
+          "visible_bytes": 795291,
+          "cell_errors": 15,
+          "preflight_rejections": 10,
+          "reuse_cells": 13,
+          "truncated": 85,
+          "shell_calls": 300,
+          "diagnostic_notices": 17
+        }
+      }
+    }
+  }
+}
