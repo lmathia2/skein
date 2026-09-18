@@ -259,8 +259,67 @@ Implementation ownership, dependencies, and acceptance gates are in the
             - [ ] Reduce measured consumer note/prompt overhead without dropping
               completed evidence, freshness checks or required control; check finding
               dependency granularity and actual provider-cache behavior separately.
+              - [x] Anchor inner-loop steering at immutable delivery positions;
+                verify replay, publication, protected cuts and provider input prefixes.
+                Full suite: 1045 passed/two skipped; 50 Docker and 84 final focused
+                checks pass. Actual cache/cost remains the separately frozen live gate.
+              - [x] Close the anchored-steering diagnostic: all eight first-verified,
+                73 append-only within-epoch transitions; findings still costs 33.3%
+                more and has no identity-adjusted prior-source refetch reduction.
+              - [x] Clarify independent finding scope in PTC and note-schema guidance;
+                preserve genuine joint dependencies and reuse prior findings in place.
+                Test selective observation, changed siblings, bounded batched notes and
+                unchanged historical claims. Live authoring/efficiency is not qualified.
+              - [x] Measure finding-scope guidance: both producers author separate
+                source-scoped facts; both consumers reuse prior learning before answer.
+                Seven of eight episodes verify; blocked control prevents one clean pair,
+                and the other retains equal adjusted rereads with 62.7% higher cost.
+              - [x] Report proven pre-execution unavailable managed search as no-effect
+                and offer an available route, without weakening failed-shell uncertainty.
+              - [x] Disambiguate note-schema identity from current-note CAS version;
+                preserve rejected writes and replay semantics.
+              - [ ] Improve completed-artifact recovery after actual exception-induced
+                worker loss and distinguish it from unnecessary review revalidation.
+                - [x] Retain bounded, replayable historical read recovery handles in
+                  binding-loss messages. Test real exceptions, saved-result reuse,
+                  partial/changed/corrupt evidence, preserved heaps and unknown effects;
+                  verify the actual root prompt-to-artifact path without a recovery reread.
+                - [x] Expose completed reads from the failed cell itself, which have
+                  canonical artifacts but no earlier completed binding manifest. Derive
+                  from completed capability receipts, never from dirty heap state.
+                  Group retained invalidations so recent read handles can fit without
+                  raising entry/byte budgets; verify the real root completion path.
+                - [x] Measure live recovery-handle use after a recorded actual exception;
+                  retain unexercised failures and separate review-stage rereads/cost.
+                  Four seeded trials first-verify with all interventions exercised;
+                  direct handles/coverage avoid lookups. Messages cost 8.39% less,
+                  but both arms have zero avoidable source rereads; not qualification.
+                - [ ] Remove the observed saved-result-envelope decoding detour using
+                  existing recovery/JSON facilities; preserve complete paging and
+                  historical-versus-current source semantics.
+                  - [x] Add a shared guarded recipe to bounded recovery notices and
+                    existing artifact help; test actual prompt-to-recovery execution,
+                    incomplete/binary pages, partial source coverage and replay hashes.
+                  - [ ] Measure whether live models decode and compute in the same
+                    recovery cell; deterministic recipe execution is not model uptake.
             - [ ] Qualify model reuse rather than equating a retained worker or a
               scripted recovery check with reliable live memory.
+              - [x] Implement and preflight the new ordered-routing, SQL-eligibility
+                and revised-build-graph panel; charge acquisition and three delayed uses.
+              - [x] Close its frozen twelve-trial paired live screen and report every
+                source/answer window, repetition, terminal, exposure route and cost.
+                Ten verified, two call-limited; both arms 5/6 on different failed pairs.
+                Findings use 8% fewer calls but 4.56% more source reread lines and
+                3.51% more cost. Gate failed; cases consumed, no default promotion.
+              - [ ] Address observed PTC workspace-import/exec detours and review
+                reacquisition using existing execution and evidence-navigation paths;
+                measure on diagnostic cases before freezing another held-out panel.
+              - [x] Preserve known no-effect file precondition rejections through direct
+                tools, receipts and PTC; check guards before creating parent directories
+                and keep post-mutation failures unknown. Discovered by the new panel's
+                stale-write-guard negative, before any provider dispatch.
+              - [x] Distinguish missing files from existing empty files in both file
+                adapters, preserving hash guards and truthful mutation receipts.
 
 ## Project identity
 

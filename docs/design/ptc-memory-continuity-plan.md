@@ -2104,3 +2104,392 @@ repeated prompt bodies and post-cut cache receipts. Do not assume all omitted wo
 is safe or that a stable routing key proves effective caching. Require measured
 contract-preserving improvement before another frozen diagnostic, fresh diverse
 qualification or any DeepSWE/default promotion.
+
+#### Anchored inner-loop steering
+
+The closed `4609f62` consumer wires identify 22 same-epoch transitions that replace
+the previous last steering item with new assistant/tool work, then append steering
+again. Each reports only 2747 cached tokens despite stable routing keys. Append-only
+transitions reuse nearly the preceding input. The existing host-boundary fix retained
+the current question at review; this is a distinct inner-loop placement defect.
+The read-only audit is `.artifacts/steering-continuity-live-v1/cache-audit.md`.
+
+Record first exposure in the existing task event stream with immutable rendered
+bytes, native-history boundary/hash, source message IDs, invocation/root scope and
+program/content hashes. Replay exact bytes at the original position after queue
+acknowledgement; new arrivals append new exposures. Preserve newly exposed steering
+and the preceding unconsumed call/result during compaction. Keep normal compaction,
+required task control, all original criteria and independent verification. Queue
+acknowledgement and exposure are not evidence that an action completed. Publication
+or identity/content corruption must stop the request, not silently drop steering.
+
+After full regression, cached-Docker checks and a clean focused commit, freeze the
+same two reused prior cases at `.artifacts/anchored-steering-live-v1`, no_recall and
+findings, one repetition, Luna/max, concurrency at most six, same cached image.
+Keep every fixture, evaluator hash, question, answer/source/range/time gate and cap:
+24 calls/350k input/8192 output per request/900 seconds per episode, four trials/eight
+episodes at most, 192 calls/2.8M task-input tokens total, producer costs included.
+No selective retries, budget increases or broadened cohort. Require first-verification
+support and full accounting before interpreting cost/reread changes. Compare exact
+provider input prefixes within each epoch, actual cache receipts and necessary
+identity/changed-range reads. Remaining note bookkeeping and dependency granularity
+must not be hidden by a cache improvement. Fresh held-out and DeepSWE gates stay open.
+
+The anchored implementation passes 1045 full-suite checks with two skips, 116
+lifecycle checks and 50 cached-Docker checks. A final integrity tightening validates
+exposure hashes before scope filtering; 84 final focused checks include an added
+corrupt-anchor negative. Lint/compile pass and typing has zero errors with the
+existing export warning. The next run is only the frozen diagnostic above; no
+note-lifecycle, fixture, criterion, provider, budget or default change is bundled.
+
+#### Finding scope after the anchored-steering result
+
+The `15cea79` diagnostic closed with eight first-verifications, complete answer-source
+support/accounting, and all 73 within-epoch provider transitions append-only. Findings
+cost $0.09347522 versus control $0.07010133 (+33.3%). Prior-source refetch is 24/21
+lines; excluding three findings identity candidates yields equality. The earlier
+reduction did not reproduce. Full analysis stays at
+`.artifacts/anchored-steering-live-v1/analysis.md`; no live process remains.
+
+Both producers grouped six independent file facts into a joint finding. A consumer
+observed one policy version, leaving the whole entry correctly unobserved. The next
+bounded change is authoring guidance only: independently reusable entries, batch
+writes, every dependency retained for genuine joint conclusions, and reuse prior
+findings in their own scope rather than rereading to create local citations. Do not
+mechanically split prior text, widen admission or weaken current-source checks.
+Deterministic tests must show separate matching/unobserved/changed statuses, joint
+claims remaining unvalidated, immutable replay and the existing 8000-byte note cap.
+
+After full regression, cached-Docker checks and a clean commit, freeze a diagnostic
+at `.artifacts/finding-scope-live-v1`: the same reused prior_1/prior_2 cases,
+no_recall/findings, one repetition, Luna/max, concurrency at most six, the same cached
+image and unchanged driver/fixture hashes. Keep 24 calls/350k input/8192 output per
+request/900 seconds per episode; at most four trials/eight episodes, 192 calls and
+2.8M task-input tokens, charging all producers. No selective retries or larger limits.
+Inspect actual model-authored dependency groups, scope, note retries and all answer
+submissions before interpreting rereads, cache receipts or total cost. Review and
+exception-induced recovery remain visible, not excluded to improve the result.
+Another reused-case result cannot close fresh held-out or DeepSWE promotion gates.
+
+Pre-dispatch checks pass: 1047 full-suite tests/two skips, 62 focused tests, 50
+cached-Docker continuity/verification checks, Ruff/compile and zero typing errors
+(one pre-existing runtime export warning). Test artifacts use the
+`.artifacts/finding-scope-{regression,focused,docker-checks}` roots.
+
+That diagnostic closed at `7c662db`: seven of eight episodes first-verified; all
+answer submissions source-supported, but one control is blocked by an unavailable
+managed-search result recorded with unknown effect. Both findings producers use seven
+single-source entries and both consumers reuse prior learning before answering.
+Findings refetch six unchanged-prior lines (three identity candidates), down from
+24 historically; this is not a valid two-pair savings estimate. The sole complete
+pair has equal identity-adjusted refetch and 62.7% higher findings cost. All 67
+within-epoch prefixes remain append-only. Total cost $0.15265168, complete accounting,
+no retry and no live process remaining. Report: `.artifacts/finding-scope-live-v1/analysis.md`.
+
+Before another paid diagnostic, trace and correct two observed interface boundaries:
+explicit no-effect metadata for proven pre-execution unavailable managed-search
+responses (never a blanket failed-shell exemption), and schema identity separate
+from note CAS version (one model used schema version 5 as expected note version 1).
+Keep independent review, unknown-effect fences and byte/call limits. Actual worker
+loss recovery and review rereads remain separate work; fresh held-out qualification
+and DeepSWE expansion remain unearned.
+
+The two interface corrections are implemented in separate commits. Unavailable
+search backends and parser-rejected reserved commands now return explicit no-effect
+metadata at their originating pre-dispatch boundary; no automatic fallback executes.
+Post-dispatch backend errors and ordinary shell failures remain unknown. Actual PTC
+publication/duplicate-acknowledgement and root completion/failed-shell tests pass.
+The note contract now uses `schema_version=6` without a generic top-level `version`;
+note CAS revision semantics and no-effect conflict rejection are unchanged.
+
+Next address the actual worker-loss message rather than buying another run merely
+to retest these two interfaces. `_state_updates` currently reduces a lost source
+binding to name/selector/association_invalidated and discards its completed read
+reference; its `more` hint still points at live state inspection. Preserve an explicit
+historical recovery handle at that invalidation boundary, distinct from a live binding
+or current source. Reuse the task-authorized artifact loader and completed read
+metadata, retain bounded whole entries, and do not replay the failed cell. Test a
+real exception followed by artifact-backed calculation without a new fs.read, plus
+changed/missing ranges, descriptions without evidence, retained heaps, output-budget
+limits, task scope, replay and unresolved-effect negatives. Historical recovery must
+not support a claim that the failed computation completed. Keep this independently
+committed and tested before freezing its live diagnostic; review-stage reuse remains
+separate and no paid benchmark/default promotion is authorized.
+
+Combined interface checks pass: 1055 full-suite tests/two skips and 52 isolated
+cached-Docker checks, with 61 adapter/PTC, eight completion-fence and 62 memory/factory
+focused checks. Ruff/compile pass and typing has zero errors with the existing export
+warning. All processes are terminal. No new paid diagnostic has been started.
+
+#### Completed-read recovery after actual binding loss
+
+PTC now preserves an optional exact historical artifact-load expression when a
+supported binding is invalidated. Required invalidation notices precede optional
+whole recovery entries within the existing budget. The canonical terminal stores
+`ptc_state_updates@1` with replay inputs, watermark, hashes and selection policy.
+The message distinguishes a saved completed read from a live variable, current source
+truth and an unfinished calculation. It reuses the existing artifact broker; unknown
+effects cannot be reconciled by loading a read or by a subsequent correct answer.
+
+Seven actual worker lifecycle checks cover complete/partial captures, changed sources,
+corruption, unresolved effects, snapshot rollback and parse rejection. The real root
+workflow also executes a genuine exception, recovers through the handle present in
+the actual model request, writes from recovered bytes and verifies without another
+source read. These are scripted protocol checks, not live-model behavior. Two new
+test assumptions were corrected: this fixture uses `answer_evidence` (not the newer
+multi-answer report), and its 16 seeded partial reads must be separated from the one
+model-phase complete read. Neither correction changes production verification.
+
+Final verification passes 1064 full-suite tests/two skips, all 53 cached-Docker
+checks and four focused root checks. Artifacts are respectively
+`.artifacts/lost-binding-regression-final`, `.artifacts/lost-binding-docker-checks-final`
+and `.artifacts/lost-binding-verification-final2`; all processes are terminal.
+Lint/compile pass, typing has zero errors with the existing export warning. The
+earlier failing test reports are retained, not overwritten or relabeled.
+
+Before paid execution, cover the sibling acquisition boundary found by an actual
+worker probe: `captured = agent.fs.read(...); 1 / 0` preserves a completed read
+artifact but produces no direct handle because there is no previous completed
+binding manifest. `.artifacts/same-cell-recovery-probe/pytest.xml` confirms one
+completed read, one artifact, a discarded worker and empty state updates. Derive
+optional recovery entries from completed same-attempt capability receipts; never
+claim a dirty binding survived or that the failed calculation completed. Test missing,
+failed and unknown-effect variants as well as genuine completed-read recovery. An
+initial stdin probe could not spawn Python and is not evidence for this conclusion;
+the pytest probe executes the real worker and verifies the completed receipt.
+
+Next freeze a small actual-exception recovery diagnostic before another broad memory
+comparison. Require completed acquisition before a recorded, no-external-effect Python
+failure; audit the next model request for the direct recovery entry and every subsequent
+source/artifact read. A random run without a failure does not exercise this mechanism.
+Include complete and missing-range recovery plus changed-source and unknown-effect
+negatives; retain every failure and preparation cost. Do not mistake seeded diagnostic
+uptake for held-out reliability. Independent review rereads are a separate hypothesis,
+and both cost non-regression and fresh diverse qualification remain open.
+
+The same-cell recovery path now uses completed capability receipts via
+`ptc_state_updates@2`. The first root regression exposed a genuine projection issue:
+eight older invalidation rows consumed every entry slot, leaving only an older partial
+capture recoverable. The corrected view groups the retained binding invalidations,
+prioritizes recent completed reads, then admits older recovery handles as space permits.
+It does not raise the eight-entry/2048-byte ceiling or pretend an old binding contains
+new bytes. The root test recovers the complete capture and verifies without rereading.
+Receipt corruption, mismatched request identities, partial coverage, failed/missing
+reads and unknown effects have separate negative checks; all remain fail-closed or
+explicitly unavailable as appropriate.
+
+After the implementation checks and focused commit, freeze a four-trial seeded
+usability diagnostic: the existing missing-range development fixture, complete versus
+three-line capture in an explicitly supplied read-then-fail scratch cell, each with
+`emit_state_updates` on/off. Keep the memory representation, note seed, artifact
+capabilities, oracle, model and all other configuration equal. This tests the state
+message, not memory-on versus memory-off. Luna/max, at most six concurrent trials,
+12 model calls/200k task-input/8192 output tokens per request/900 seconds per trial;
+at most 48 calls and 800k task-input for the cohort. Freeze code and fixture hashes,
+retain every trial, count all provider work and stop on accounting/infrastructure faults.
+Verify that the supplied cell actually ran, the read completed before failure and
+the expected heap loss occurred. Missing intervention means unexercised, not a pass.
+Measure direct handle use, catalog/history fallback, necessary missing-range reads,
+avoidable rereads, answer-time evidence, first verification, review overhead and cost.
+No selective retries or hidden budget increases. Host-seeded preparation is explicitly
+outside the charged live phase: the diagnostic cannot qualify amortized preparation
+cost, held-out generalization or default promotion. Fresh unseeded, diverse paired
+continuations remain required after this usability gate.
+
+Same-cell recovery verification is complete: 1084 full-suite tests pass with two
+skips (`.artifacts/same-cell-recovery-regression`), all 54 cached-Docker checks pass
+(`.artifacts/same-cell-recovery-docker-checks`), and the focused contract/root suite
+passes 113 tests with one skip plus a separately added actual missing-read negative.
+Lint/compile pass; typing has zero errors with the pre-existing export warning.
+The failed crowding regressions remain retained. No paid usability diagnostic has
+started yet; its runner and machine-readable manifest must enforce the bounds above.
+
+The fixed diagnostic runner is `evals/recovery_messages.py`. Its preflight exercises
+the actual root workflow and serializes real request shapes: direct completed-capture
+recovery, necessary partial-range acquisition, off-arm rereads, a skipped-failure
+negative and a source-unsupported answer negative. Artifact acceptance does not count
+as probe exercise. Accounting/audit faults stop unstarted work while preserving settled
+usage and raw verifier results. All nine cached-Docker checks pass at
+`.artifacts/recovery-message-docker-preflight`; lint/compile and typing pass. Only eval
+code is added; the harness remains at the fully tested `f54ffd8` implementation.
+
+Freeze the first live output at `.artifacts/recovery-message-live-v1` with a clean
+committed tree, the four conditions above, Luna/max and cached image
+`sha256:c50fcbacd80c6e4b42e18fedf0f8f4bcb2c591ef9a04e4dba39e588e095d4b8e`.
+The manifest records the actual revision, driver/fixture hashes and complete paired
+configurations before dispatch. The only on/off configuration difference is
+`emit_state_updates`; all live model work, including the supplied failure, is charged.
+
+The live run closed at `0141ae1`, with all four interventions exercised once and all
+four first verifications/source-support checks passing. On/off totals: 11/12 calls,
+$0.01925322/$0.02101734, 149641/163898 input, 36755/35146 uncached input tokens.
+All 19 within-epoch request transitions preserve prefixes. No missing accounting,
+extra wire attempts or unresolved effects; total spend $0.04027056. All processes
+are terminal. The complete/on model directly loaded the supplied artifact; complete/off
+used lookup plus `read.recover`. Partial/on skipped lookup and read only the missing
+range. Both arms have zero avoidable rereads, so this is usability evidence, not a
+new reread-reduction claim. Full analysis: `.artifacts/recovery-message-live-v1/analysis.md`.
+
+The complete/on model first treated the JSON-encoded saved result as source text,
+then spent another cell parsing its envelope. Address that local representation/
+instruction ambiguity with existing facilities, not a new top-level tool or evidence
+store. The measured 8.39% cost reduction is one small seeded result, not cost stability.
+Fresh unseeded repeated-use, prior-run, natural-compaction and coding quality gates
+remain open; no default promotion or broad paid expansion follows from this pilot.
+
+#### Saved-read decoding guidance
+
+The implemented `ptc_state_updates@3` notice offers one shared guarded recipe beside
+historical recovery handles, also exposed by existing `artifacts.load` help. It
+resets its proposed output bindings, accepts only a complete first UTF-8 byte page,
+checks the saved result status, and retains the original envelope alongside source
+text. A fully loaded artifact may still hold only a partial source capture; loading
+it proves neither current freshness nor completion of the failed calculation.
+Incomplete/binary pages continue to use exact byte paging, not partial JSON parsing.
+The optional recipe fits within half the existing response ceiling and is omitted
+otherwise; canonical program/notice hashes make its exposure reproducible.
+
+The actual root-workflow regression now executes the recipe from the model-visible
+failure message, both for an earlier completed binding and a same-cell read before
+failure. It independently verifies the recovered answer with no recovery/review
+source read. Separate page/coverage cases exercise incomplete first pages, final
+nonzero-offset pages, base64, blocked loads, unsuccessful saved results and partial
+source captures, including stale pre-existing local variables. This is deterministic
+contract evidence, not proof that a live model will choose the recipe or save a call.
+Fresh unseeded paired evaluation and live uptake remain required.
+
+Verification closed with 1100 full-suite passes/two skips at
+`.artifacts/recovery-decode-regression`, 48 cached-Docker passes at
+`.artifacts/recovery-decode-docker-checks`, and 121 focused passes/one skip at
+`.artifacts/recovery-decode-contracts`. Lint/compile pass; typing reports zero
+errors and the pre-existing runtime export warning. All processes are terminal.
+No provider work has been purchased for this recipe version.
+
+#### Next fresh repeated-use panel (pre-dispatch design, not a live freeze)
+
+Use the existing root-workflow coordinator and independent multi-answer oracle.
+Add three genuinely new source problems, rather than renaming or changing constants
+in the previously dispatched fixtures:
+
+- Ordered routing rules: first-match priority, disabled rules and terminal rejection;
+  three delayed requests distinguish remembering individual rules from their order.
+- SQL eligibility: NULL-sensitive anti-joins and latest completed revisions across
+  two tables; delayed queries require the learned relationship, not a raw-value list.
+- Build dependency selection: shared transitive dependencies and disabled edges;
+  an authorized manifest change invalidates only dependent conclusions before the
+  third question, while unchanged captured modules remain reusable.
+
+All source acquisition, checkpoint authoring, acknowledgement, recovery and review
+are model-executed and charged. Compare `no_recall` against `findings`, retaining
+ordinary artifacts, safe restoration, read-index size, tools, oracle and budgets
+in both arms. Both receive identical task instructions; no host-supplied findings
+or recovery solution. Use three delayed questions per task and the existing explicit
+idle-worker-loss cuts. This panel does not stand in for natural compaction, actual
+exception recovery, prior-run ownership or broad coding qualification.
+
+Before any provider dispatch, implement and independently check source-derived
+answers, every answer's completed source/range/version requirements, changed-source
+guards, scope, and incorrect/early/unsupported submission negatives. Freeze the
+fixtures and clean driver/harness revision only after local and cached-Docker
+preflight. The proposed bounded panel is three cases, two arms, two fresh-state
+repetitions: twelve trials at 24 calls, 350k task-input tokens, 8192 output tokens
+per request and 900 seconds each, concurrency at most six (288 calls/4.2M input
+maximum). No selective retries, budget expansion or defaults.
+
+Retain every terminal and compare matched independently verified answer windows.
+Report source fetch overlap, artifact/shell and actual provider-visible repeat
+exposure separately; incomplete route mapping stays unknown. Require no critical
+safety/evidence failures or paired correctness regression, at least 25% less
+avoidable same-version content duplication, and no aggregate positive cost increase
+including preparation. A zero-duplication control cannot establish savings; a
+failed gate remains a failed gate. Preserve these cases as consumed after dispatch;
+subsequent tuned reruns are diagnostic, never newly held out. The remaining lifecycle
+and real-coding gates are still required before claiming the overall goal achieved.
+
+#### Transfer panel implementation and live freeze
+
+`evals/transfer_continuity.py` adds exactly `qualification_ordered_rules`,
+`qualification_sql_eligibility`, and `qualification_build_graph` to the existing
+qualification registry. Ordered routing distinguishes shadowing from specificity;
+the SQL view chooses completed revisions before its NULL-sensitive anti-join;
+the build graph requires transitive deduplication and a guarded flag revision.
+The existing coordinator owns all cuts and answer windows. No new tool, runner,
+recovery authority, seeded finding or increased budget is introduced. Both arms'
+configuration differs only in working notes, prior recall and model-visible memory
+program activation; ordinary PTC recovery messages/artifacts remain shared.
+
+Fifteen panel tests exercise source-derived calculations and the actual root
+workflow, including missing initial evidence, early answers, scope changes, missing
+revised reads, stale write guards and stale calculations from otherwise completed
+sources. A stale guard exposed a real no-effect classification bug; the initial
+Docker failure remains at `.artifacts/transfer-docker-preflight`. The separate
+`8bda3bf` fix preserves typed precondition rejections and defers parent creation
+until after guards. Post-mutation failures remain unknown. All 33 panel/file-conflict
+checks pass in cached Docker at `.artifacts/transfer-guard-docker-checks`; all 61
+combined focused checks pass locally. The 35 prior fixture hashes are unchanged.
+
+After the post-fix full regression and clean evaluation commit, freeze the live
+output at `.artifacts/transfer-v22-live-r2`. Run the three new cases in the order
+above, interleaved `no_recall`/`findings`, two fresh-state repetitions, Luna/max,
+concurrency six and cached command image
+`sha256:c50fcbacd80c6e4b42e18fedf0f8f4bcb2c591ef9a04e4dba39e588e095d4b8e`.
+This is twelve trials, 36 required answer windows, at most 288 calls and 4.2M task-input
+tokens; retain the declared per-trial/output/wall limits. Manifest v22 includes
+the new fixture driver hash; clean revision and all fixture hashes are recorded
+before any provider work. `.artifacts/transfer-v22-dry` is a development snapshot,
+not that live freeze. No mutable source or prompt changes during dispatch.
+
+Use the existing stop-on-infrastructure/accounting/false-acceptance gate; every
+already-running trial stays bounded and its outcome is retained. Require all
+interventions exercised, all three answers correct and supported at submission,
+and no unknown effects for a clean trial. Record corrections/early unsupported
+submissions separately even if the final artifact later verifies. Do not discard
+stopped/budget-limited cases to manufacture cost or reread gains. Apply the earlier
+25% duplication-reduction and non-regressing cost/correctness gates; this small
+panel alone cannot qualify natural compaction, prior-run reuse or real coding.
+
+Before dispatch, a sibling missing-empty-file probe failed in both adapters:
+absence was treated as content equality, incorrectly bypassing a mismatched guard.
+Existing-file identity is now required for the idempotency shortcut. Local/remote
+tests cover actual empty-file creation, repeated idempotent reuse and rejected
+missing-path guards with no directory mutation. Original evidence remains at
+`.artifacts/missing-empty-guard-probe`; this does not change the selected fixtures,
+answers or live budgets. The earlier post-conflict full suite passed, but the final
+post-empty-file suite at `.artifacts/transfer-final-regression` must also close before
+the clean live freeze. Retain the first failed full regression separately at
+`.artifacts/transfer-regression`. No provider work has started during these corrections.
+
+The final pre-dispatch gate closed: 1137 full-suite passes/two skips, 35 isolated
+Docker checks and 67 focused checks; lint/compile pass, typing has zero errors and
+the existing export warning. Exact final artifacts are
+`.artifacts/transfer-final-regression` and `.artifacts/transfer-final-docker-checks`.
+Runtime revision `83a37af` is fixed; the live manifest records the following clean
+documentation-inclusive revision. All prior failures remain retained. Dispatch only
+the twelve trials already specified, with no prompt/source changes or selective retries.
+
+#### Transfer panel closure: gate failed
+
+All twelve trials at `85a36ab` are terminal; report and per-trial receipts are at
+`.artifacts/transfer-v22-live-r2/analysis.md`. Ten independently verified, two reached
+the call limit before verification despite correct source-supported files. All 36
+answers have required completed source coverage and correct values. Findings and
+control each verify 5/6 on different failed pairs: do not erase the paired regression.
+Calls improve 125 to 115, but source reread lines worsen 526 to 550 and aggregate cost
+rises $0.20981411 to $0.21717200. All 192 observed within-epoch wire transitions are
+append-only, with no accounting gaps or unknown effects. Total cost $0.42698611.
+
+The source-emission mapping is a lower bound with formatting-dependent coverage;
+custom JSON and Python dict wrappers in these traces are not decoded. Its apparent
+264-to-104 reduction does not establish the required duplication gain. Any expanded
+mapping must be independently versioned and rescored for both arms without replacing
+the frozen results. Cost, source rereads and paired completion already fail the gate.
+
+Next shared harness work is grounded in actual submitted cells: review navigation
+already contains learned SQL/routing findings and recovery handles, yet the model
+starts source exploration again; generic result bindings are overwritten between
+source and answer reads. Routing also attempts blocked exec/dunder operations and
+imports workspace code into the computation worker, causing avoidable recovery work.
+Use existing PTC help, retained source mappings and review control before adding a
+new view. Keep targeted checks, source freshness, effect fencing and independent
+verification intact. Any tuned reuse of this panel is diagnostic only. Remaining
+natural-compaction, prior-run and real-coding gates are unchanged; no promotion.

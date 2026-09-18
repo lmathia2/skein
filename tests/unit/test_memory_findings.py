@@ -33,7 +33,8 @@ def test_note_schema_matches_write_validation_and_is_bounded_read_only(tmp_path)
     before = service.ledger.read("task")
     response = service.execute("memory note schema")
     assert response["status"] == "ok" and response["effect"] == "none"
-    assert response["version"] == 4
+    assert response["schema_version"] == 6
+    assert "version" not in response  # No task-note CAS revision in this read-only contract.
     assert response["input_schema"] == WorkingNoteInput.model_json_schema()
     assert response["budget_bytes"] == 8000
     contract = {k: v for k, v in response.items() if k not in {"status", "effect", "contract_sha256"}}
@@ -46,6 +47,9 @@ def test_note_schema_matches_write_validation_and_is_bounded_read_only(tmp_path)
         rejected = write(service, entries)
         assert rejected["status"] == "unavailable" and rejected["effect"] == "none"
         assert service.note_read()["version"] == 0
+    wrong_version = write(service, [entry], version=response["schema_version"], operation="wrong-version")
+    assert wrong_version == {"status": "conflict", "current_version": 0, "effect": "none"}
+    assert service.ledger.read("task") == before
     accepted = write(service, [entry])
     assert accepted["status"] == "ok"
     assert service.execute("memory note schema") == response  # no task content in schema
@@ -272,6 +276,56 @@ def test_prior_working_set_tracks_consumer_versions_without_selecting_consumer_n
     observe("restored", "b" * 64)
     assert consumer.runtime.compute(request).data["findings"][0]["consumer_versions"]["status"] == "matching_observations"
     # This view never reconciles the failed command or proves the consumer learned missing lines.
+
+
+def test_independent_finding_dependencies_survive_sibling_changes_without_validating_joint_claim(tmp_path):
+    source, _, _ = service_at(tmp_path, task="producer")
+    reads = []
+    entries = []
+    # One batched checkpoint can retain independent facts without a larger budget.
+    for index in range(7):
+        uri = "artifact://sha256/" + hashlib.sha256(f"artifact-{index}".encode()).hexdigest()
+        read = {"path": f"rules/{index}.toml", "sha256": hashlib.sha256(f"source-{index}".encode()).hexdigest(),
+                "offset": 1, "returned_lines": 12}
+        source.ledger.append(task_id="producer", source="harness", source_id=f"rule-{index}",
+                             kind="capability.completed", payload={"operation": "fs.read", "status": "ok",
+                             "result_artifact_uri": uri, "read_evidence": read})
+        reads.append(read)
+        entries.append({"id": f"rule_{index}", "kind": "observation", "text": f"Rule {index} learned fact",
+                        "evidence_refs": [uri], "related_paths": [read["path"]]})
+    joint = {"id": "joint", "kind": "observation", "text": "Conclusion requires both rules 0 and 1",
+             "evidence_refs": [entry["evidence_refs"][0] for entry in entries[:2]],
+             "related_paths": [read["path"] for read in reads[:2]]}
+    assert write(source, [*entries, joint])["status"] == "ok"
+    original = source.note_read()
+    assert len(canonical_json(source.ledger.read("producer")[-1].payload).encode()) <= 8000
+    consumer = ContextProgramService(source.ledger, "consumer", authorized_tasks=("producer",), working_notes=True)
+    request = ViewRequest(task_id="consumer", program="working_set", source_tasks=("producer",))
+
+    def selected():
+        return {row["finding"]["id"]: row for row in consumer.runtime.compute(request).data["findings"]}
+
+    def observe(index, digest):
+        source.ledger.append(task_id="consumer", source="harness", source_id=f"identity-{index}-{digest}",
+                             kind="capability.completed", payload={"operation": "fs.read", "status": "ok",
+                             "read_evidence": {**reads[index], "sha256": digest, "returned_lines": 1}})
+
+    observe(0, reads[0]["sha256"])
+    rows = selected()
+    assert rows["rule_0"]["consumer_versions"]["status"] == "matching_observations"
+    assert rows["rule_1"]["consumer_versions"]["status"] == "unobserved"
+    assert rows["joint"]["consumer_versions"]["status"] == "unobserved"
+    observe(1, "f" * 64)
+    rows = selected()
+    assert rows["rule_0"]["consumer_versions"]["status"] == "matching_observations"
+    assert rows["rule_1"]["consumer_versions"]["status"] == "changed_since_capture"
+    assert rows["joint"]["consumer_versions"]["status"] == "changed_since_capture"
+    focused = consumer.runtime.compute(request.model_copy(update={"focus": (reads[0]["path"],), "limit": 2}))
+    assert {row["finding"]["id"] for row in focused.data["findings"]} == {"rule_0", "joint"}
+    assert focused == consumer.runtime.compute(request.model_copy(update={"focus": (reads[0]["path"],), "limit": 2}))
+    assert source.note_read() == original  # No automatic splitting or rewriting of historical claims.
+    assert all(row["authority"] == "advisory" for row in rows.values())
+    assert len(rows["joint"]["source_dependencies"]) == 2
 
 
 def test_prior_reuse_recovers_exact_source_note_without_admitting_foreign_citations(tmp_path):

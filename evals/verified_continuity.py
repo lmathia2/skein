@@ -451,7 +451,7 @@ def main() -> None:
                 | {case: repeated_fixture(case) for case in REPEATED_CASES}
                 | {case: validation_fixture(case) for case in VALIDATION_CASES}
                 | {case: qualification_fixture(case) for case in QUALIFICATION_CASES})
-    manifest = {"version": "verified-continuity-v21", "model": MODEL, "reasoning": "max",
+    manifest = {"version": "verified-continuity-v22", "model": MODEL, "reasoning": "max",
         "cases": args.cases, "arms": args.arms, "concurrency": args.concurrency, "repetitions": args.repetitions,
         "max_model_calls": max(fixtures[c].get("max_model_calls", MAX_CALLS) + fixtures[c].get("producer", {}).get("max_model_calls", 0) for c in args.cases),
         "input_budget": max(fixtures[c].get("input_budget", INPUT_BUDGET) + fixtures[c].get("producer", {}).get("input_budget", 0) for c in args.cases), "max_output_tokens": 8192,
@@ -481,7 +481,7 @@ def main() -> None:
         "git_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "git_diff_sha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD"])).hexdigest(),
         "driver_sha256": {name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-                          for name in ("verified_continuity.py", "continuity.py", "continuity_cases.py", "continuity_oracle.py", "memory_audit.py", "prior_evidence.py", "prior_continuity.py", "learned_continuity.py", "heldout_continuity.py", "staged_continuity.py", "repeated_continuity.py", "validation_continuity.py", "qualification_continuity.py")},
+                          for name in ("verified_continuity.py", "continuity.py", "continuity_cases.py", "continuity_oracle.py", "memory_audit.py", "prior_evidence.py", "prior_continuity.py", "learned_continuity.py", "heldout_continuity.py", "staged_continuity.py", "repeated_continuity.py", "validation_continuity.py", "qualification_continuity.py", "transfer_continuity.py")},
         "limitations": ["learned_*, heldout_*, staged_*, reuse_* and qualification_* charge model acquisition/checkpoint/acknowledgement; other cases use seeded findings", "Forced checkpoint, not natural pressure",
                         "Shell commands isolated in Docker; PTC retains its existing guarded local worker", "No automatic promotion or paid expansion"]}
     _atomic_write(args.output / "manifest.json", json.dumps(manifest, indent=2))

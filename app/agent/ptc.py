@@ -6,6 +6,7 @@ import ast
 import asyncio
 import base64
 import hashlib
+import inspect
 import json
 import re
 import shlex
@@ -41,6 +42,7 @@ from harness.ptc.notebook import (
     reduce_notebook,
 )
 from harness.ptc.repl import PersistentPythonWorker, default_help_catalog
+from harness.ptc.repl.worker import READ_RESULT_RECIPE
 from harness.verification.contracts import is_reusable_validation_command
 
 from .config import HarnessSettings
@@ -86,7 +88,54 @@ def _replay_policy(code: str) -> str:
     return "safe"
 
 
-def _state_updates(previous: list[dict[str, Any]], current: list[dict[str, Any]], max_bytes: int) -> list[dict[str, Any]]:
+def _read_reference(task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    evidence = ReadEvidence.model_validate(payload["read_evidence"])
+    uri = payload["result_artifact_uri"]
+    if not isinstance(uri, str) or not re.fullmatch(r"artifact://sha256/[0-9a-f]{64}", uri):
+        raise ValueError("completed read has an invalid artifact identity")
+    coverage = payload["source_coverage"]
+    if not isinstance(coverage, dict) or coverage != evidence.source_coverage(coverage.get("total_lines")):
+        raise ValueError("completed read has inconsistent source coverage")
+    return {"task_id": task_id, "operation_id": payload["operation_id"], "artifact_uri": uri,
+            **evidence.model_dump(), "source_coverage": coverage}
+
+
+def _completed_attempt_reads(events: list[HarnessEvent], task_id: str, attempt_id: str) -> list[dict[str, Any]]:
+    """Recover completed nested reads, never the failed cell's dirty bindings."""
+    requests: dict[str, HarnessEvent] = {}
+    completed: set[str] = set()
+    reads = []
+    for event in events:
+        payload = event.payload
+        if event.task_id != task_id or payload.get("attempt_id") != attempt_id:
+            continue
+        if payload.get("operation") != "fs.read":
+            continue
+        if event.kind not in {EventKind.CAPABILITY_REQUESTED, EventKind.CAPABILITY_COMPLETED}:
+            continue
+        operation_id = payload.get("operation_id")
+        if not isinstance(operation_id, str) or not operation_id:
+            raise ValueError("read receipt has no operation identity")
+        if event.kind == EventKind.CAPABILITY_REQUESTED:
+            if operation_id in requests:
+                raise ValueError("duplicate read request identity")
+            requests[operation_id] = event
+        elif event.kind == EventKind.CAPABILITY_COMPLETED and payload.get("status") == "ok" and payload.get("read_evidence"):
+            request = requests.get(operation_id)
+            if operation_id in completed or request is None or request.sequence >= event.sequence or any(
+                request.payload.get(key) != payload.get(key)
+                for key in ("cell_id", "notebook_id", "arguments_sha256")
+            ):
+                raise ValueError("completed read has no matching request in this attempt")
+            completed.add(operation_id)
+            if payload.get("effect") not in {"none", "observed"}:
+                continue
+            reads.append({"source_event_id": event.event_id, "historical_read": _read_reference(task_id, payload)})
+    return reads
+
+
+def _state_updates(previous: list[dict[str, Any]], current: list[dict[str, Any]], max_bytes: int,
+                   completed_reads: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Expose only changed supported descriptions; missing catalog entries aren't live."""
     def key(item: dict[str, Any]) -> str:
         return canonical_json([item.get("name"), item.get("selector", [])])
@@ -107,7 +156,68 @@ def _state_updates(previous: list[dict[str, Any]], current: list[dict[str, Any]]
             item = {"name": old["name"], "selector": old.get("selector", []), "availability": "association_invalidated"}
         if len(updates) < 8 and len(canonical_json([*updates, item]).encode()) <= max_bytes:
             updates.append(item)
+    # Reserve invalidation notices first; optional recovery must not displace them.
+    if completed_reads:
+        invalidated = [item for item in updates if item.get("availability") == "association_invalidated"]
+        if invalidated:
+            grouped = [{"availability": "association_invalidated", "bindings": [
+                {"name": item["name"], "selector": item["selector"]} for item in invalidated
+            ]}, *[item for item in updates if item not in invalidated]]
+            if len(canonical_json(grouped).encode()) <= max_bytes:
+                updates = grouped
+        candidates = [*reversed(completed_reads), *[
+            {"historical_read": before[key(item)]["read_reference"]}
+            for item in invalidated if before[key(item)].get("read_reference")
+        ]]
+        addressed = set()
+        for read in candidates:
+            reference = read["historical_read"]
+            uri = reference.get("artifact_uri")
+            if not isinstance(uri, str) or not re.fullmatch(r"artifact://sha256/[0-9a-f]{64}", uri) or uri in addressed:
+                continue
+            recovered = {**read, "availability": "historical_read_only",
+                         "recover_expression": f"agent.artifacts.load({uri!r})",
+                         "recovery_kind": "historical_result_envelope_not_live_state"}
+            if len(updates) < 8 and len(canonical_json([*updates, recovered]).encode()) <= max_bytes:
+                updates.append(recovered)
+                addressed.add(uri)
+        return updates
+    for index, item in enumerate(updates):
+        if item.get("availability") != "association_invalidated":
+            continue
+        reference = before[key(item)].get("read_reference")
+        uri = reference.get("artifact_uri") if isinstance(reference, dict) else None
+        if not isinstance(uri, str) or not re.fullmatch(r"artifact://sha256/[0-9a-f]{64}", uri):
+            continue  # Older/unaddressed descriptions cannot acquire a recovery handle.
+        recovered = {**item, "historical_read": reference,
+                     "recover_expression": f"agent.artifacts.load({uri!r})",
+                     "recovery_kind": "historical_result_envelope_not_live_state"}
+        proposed = [*updates[:index], recovered, *updates[index + 1:]]
+        if len(canonical_json(proposed).encode()) <= max_bytes:
+            updates = proposed
     return updates
+
+
+def _state_update_notice(updates: list[dict[str, Any]], kernel_epoch: str, cell_id: str,
+                         max_bytes: int, state_lost: bool) -> dict[str, Any]:
+    historical = any(item.get("historical_read") for item in updates)
+    notice = {"program": "ptc_state_updates@3", "kernel_epoch": kernel_epoch,
+              "cell_id": cell_id, "entries": updates,
+              "more": ("agent.artifacts.list(); agent.help('artifacts.load', details=True)"
+                       if historical or state_lost else "agent.state.list(); agent.state.describe(name, preview=True)")}
+    if historical:
+        decoded = {**notice, "decode_completed_read": {
+            "assign": "page = <entry.recover_expression>",
+            "then_python": READ_RESULT_RECIPE,
+            "contract": "page.data.text contains JSON bytes, NOT source text. Decode and compute in the same cell; do not print the wrapper. If source_text is None, handle non-ok status or finish exact byte paging (see help). saved_result retains original source coverage; recovery is not freshness or failed-cell completion.",
+        }}
+        if len(canonical_json(decoded).encode()) <= max_bytes:
+            notice = decoded
+    return notice
+
+
+_STATE_UPDATES_PROGRAM_HASH = hashlib.sha256((READ_RESULT_RECIPE + "".join(inspect.getsource(function) for function in (
+    _read_reference, _completed_attempt_reads, _state_updates, _state_update_notice))).encode()).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,12 +524,7 @@ def build_notebook_session(
                 idempotency_key=f"capability:{operation_id}:terminal",
             )
             if "read_evidence" in payload and result_artifact_uri is not None:
-                result = {**result, "read_reference": {
-                    "task_id": self.task_id, "operation_id": operation_id,
-                    "artifact_uri": result_artifact_uri,
-                    **payload["read_evidence"],
-                    "source_coverage": payload["source_coverage"],
-                }}
+                result = {**result, "read_reference": _read_reference(self.task_id, payload)}
             return result
 
         def _call(
@@ -1048,18 +1153,37 @@ def build_notebook_session(
             terminal_payload["display"] = display_data
         elif result.value_repr is not None:
             terminal_payload["display"] = {"text/plain": redactor.redact_text(result.value_repr)}
-        prior_state = next((event.payload.get("state", {}).get("manifest", [])
-                            for event in reversed(active_event_store.read(task_id))
-                            if event.kind == EventKind.REPL_CELL_COMPLETED
-                            and event.payload.get("kernel_epoch") == kernel_epoch), [])
+        state_events = active_event_store.read(task_id)
+        prior_state_event = next((event for event in reversed(state_events)
+                                  if event.kind == EventKind.REPL_CELL_COMPLETED
+                                  and event.payload.get("kernel_epoch") == kernel_epoch), None)
+        prior_state = prior_state_event.payload.get("state", {}).get("manifest", []) if prior_state_event else []
         current_state = terminal_payload["state"]["manifest"]
         if result.failure_stage in {"parse", "source_validation"}:
             current_state = prior_state
         elif result.status != "ok" and not state_preserved:
             current_state = []
+        completed_reads = (_completed_attempt_reads(state_events, task_id, attempt_id)
+                           if result.status != "ok" and execution_started is not False else [])
         updates = _state_updates(prior_state, current_state,
-                                 min(2048, active_ptc_config.max_output_bytes // 4))
+                                 min(2048, active_ptc_config.max_output_bytes // 4), completed_reads)
+        state_notice = _state_update_notice(updates, kernel_epoch, cell_id,
+                                            active_ptc_config.max_output_bytes // 2,
+                                            result.status != "ok" and not state_preserved)
         terminal_payload["state_updates"] = updates
+        terminal_payload["state_updates_view"] = {
+            "program": "ptc_state_updates@3", "program_hash": _STATE_UPDATES_PROGRAM_HASH,
+            "source_watermark": state_events[-1].sequence if state_events else 0,
+            "prior_state_event_id": prior_state_event.event_id if prior_state_event else None,
+            "current_state_policy": "prior" if execution_started is False else
+                                    "empty" if result.status != "ok" and not state_preserved else "manifest",
+            "completed_read_event_ids": [read["source_event_id"] for read in completed_reads],
+            "input_hash": hashlib.sha256(canonical_json([prior_state, current_state, completed_reads]).encode()).hexdigest(),
+            "content_hash": hashlib.sha256(canonical_json(updates).encode()).hexdigest(),
+            "notice_hash": hashlib.sha256(canonical_json(state_notice).encode()).hexdigest(),
+            "recipe_notice_max_bytes": active_ptc_config.max_output_bytes // 2,
+            "max_bytes": min(2048, active_ptc_config.max_output_bytes // 4),
+        }
         terminal_payload["execution_started"] = execution_started
         if result.error_type is not None:
             terminal_payload["exception"] = redactor.redact({
@@ -1126,6 +1250,12 @@ def build_notebook_session(
                 "Existing bindings are unchanged; a same-name value is NOT the result of this rejected cell. "
                 "Fix and resubmit the intended operation before using its result.\n" + visible
             )
+        elif result.status != "ok" and not state_preserved:
+            visible = (
+                "Live bindings were discarded. Recover applicable completed read artifacts below; "
+                "they do not restore a failed calculation, prove current freshness, or reconcile unknown effects. "
+                "Do not replay effectful cells to rebuild variables.\n" + visible
+            )
         bounded = bound_output(
             visible,
             max_chars=active_ptc_config.max_output_bytes,
@@ -1144,10 +1274,7 @@ def build_notebook_session(
             model_text = preview.text + notice
             bounded = preview
         if updates and active_ptc_config.emit_state_updates:
-            notice = "\nState updates (advisory; sources historical):\n" + canonical_json({
-                "kernel_epoch": kernel_epoch, "cell_id": cell_id, "entries": updates,
-                "more": "agent.state.list(); agent.state.describe(name, preview=True)",
-            })
+            notice = "\nState updates (advisory; sources historical):\n" + canonical_json(state_notice)
             available = max(0, active_ptc_config.max_output_bytes - len(notice.encode()))
             if len(model_text.encode()) > available:
                 uri = put_artifact(settings.state_root / "artifacts" / "sha256", visible.encode())

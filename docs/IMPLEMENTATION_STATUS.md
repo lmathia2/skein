@@ -667,3 +667,233 @@ uncached input. Total diagnostic cost is $0.20307545. Full results and limitatio
 `.artifacts/steering-continuity-live-v1/analysis.md`. No trial remains running.
 Measure bookkeeping, prompt/cache overhead and finding dependency granularity
 before another frozen diagnostic; diverse held-out and DeepSWE gates remain open.
+
+The subsequent wire audit found an inner-loop prefix defect: all 22 inspected
+within-epoch steering displacements had static-only cache hits (2747 tokens), while
+append-only transitions reused nearly the preceding input. The correction records
+first steering exposure at a native-history boundary and reconstructs exact bytes in
+place, including after acknowledgement and plugin restart. Canonical exposure
+events carry scope, source/prefix/program/content hashes and a watermark. New steering
+and its preceding unconsumed tool result remain protected from cuts. Complete
+required steering is still retained in host packets; no criterion, oracle, note
+protocol or budget is relaxed. Deterministic prefix preservation is not yet a live
+cache/cost claim. Audit: `.artifacts/steering-continuity-live-v1/cache-audit.md`.
+
+Anchored-steering verification: 1045 full-suite passes/two skips at
+`.artifacts/anchored-steering-regression`, 116 lifecycle checks at
+`.artifacts/anchored-steering-focused`, and 50 cached-Docker checks at
+`.artifacts/anchored-steering-docker-checks`. The final integrity tightening checks
+exposure hashes before scope filtering, so a corrupted anchor cannot hide a message;
+84 focused checks including that additional negative pass at
+`.artifacts/anchored-steering-final-checks`. Lint/compile pass; typing has no errors
+and the existing export warning. No note lifecycle or evaluation criterion changed.
+
+The anchored-steering diagnostic at `15cea79` completed all eight episodes on first
+independent verification, with every answer submission source-supported and full
+accounting. All 73 within-epoch provider transitions preserve the previous input as
+an exact prefix; zero steering displacements remain. Findings costs $0.09347522
+versus control $0.07010133 (+33.3%). Unchanged prior-source refetch is 24 versus 21
+lines; excluding three identity candidates makes them equal, not improved. The
+earlier reread benefit did not reproduce. These are two reused cases, not held-out
+qualification. Detailed action/cache analysis: `.artifacts/anchored-steering-live-v1/analysis.md`.
+
+Both producers bundled six independent policy facts into one finding, whose joint
+applicability correctly remained unobserved after checking only one policy. The next
+instruction/schema correction recommends independently reusable entries in one write,
+while retaining all dependencies for genuine cross-source conclusions. It also makes
+prior reuse-in-place explicit in PTC guidance, avoiding local citation manufacture.
+Note-schema guidance is version 5; admission, note bytes, views, historical claims and
+verification are unchanged. Deterministic selective-source checks pass; live authoring
+and efficiency remain unproven. Actual exception-induced worker loss and unnecessary
+review rereads remain separate follow-ups, not attributed to ordinary compaction.
+
+Finding-scope verification passes 1047 full-suite tests with two skips at
+`.artifacts/finding-scope-regression`, 62 focused checks at
+`.artifacts/finding-scope-focused`, and 50 cached-Docker checks at
+`.artifacts/finding-scope-docker-checks`. Ruff/compile pass; typing has zero errors
+and the existing runtime export warning. This qualifies the unchanged-contract
+diagnostic, not live memory reliability or default promotion.
+
+The `7c662db` finding-scope diagnostic completed all eight episodes: seven pass first
+verification and one value-correct control remains blocked on an unresolved managed
+search effect. Every answer submission has declared completed-source support; the
+blocked control is not counted as accepted. Both producers now author seven separate
+single-source findings, and both findings consumers reuse prior learning before the
+first answer. Findings prior-source refetch is six lines, three identity candidates,
+versus 24 in its preceding run. Only the changed-policy pair has matching verified
+terminals: identity-adjusted prior refetch is equal and findings costs 62.7% more.
+No efficiency/reliability gate closes. Total diagnostic cost $0.15265168; all 67
+within-epoch wire transitions preserve prefixes. Full evidence and limitations:
+`.artifacts/finding-scope-live-v1/analysis.md`. No live process remains.
+
+Two next interface corrections are grounded in that run: a proven pre-execution
+unavailable managed-search response lacks explicit no-effect metadata, causing the
+broker's conservative unknown fallback; and a model confuses schema `version=5`
+with current note `version=1`, causing a safely rejected CAS write. Repair those
+response contracts without relaxing unknown-effect reconciliation or note versions.
+
+Managed search now reports `effect=none` only when the backend is absent or the
+reserved command is rejected by its parser, before backend/sandbox dispatch. The
+unavailable response suggests bounded sandbox rg/grep when available or a known-path
+managed read; it does not execute a fallback. Post-dispatch backend failures and
+ordinary failed shell commands retain conservative uncertainty. Actual PTC tests
+preserve the effect through canonical publication and duplicate acknowledgement;
+root-workflow regressions accept supported completion after a no-effect rejection
+and still refuse completion with unknown shell effects. This does not rewrite the
+previous blocked live trial or qualify a new live cohort.
+
+The on-demand note contract now uses `schema_version=6` and no top-level `version`.
+Committed note/read receipts keep their existing `version` used for CAS writes;
+schema identity is not a note revision. Stable PTC guidance and schema commit rules
+state that distinction. The read-only schema remains bounded and deterministic;
+using its identifier as an expected note version still returns a no-effect conflict.
+All 62 focused memory/factory checks pass. No note payload, historical revision,
+admission rule, independent verifier or budget changed.
+
+Combined interface verification passes 1055 full-suite tests with two skips at
+`.artifacts/interface-contracts-regression`, 52 isolated Docker checks at
+`.artifacts/interface-contracts-docker-checks`, 61 adapter/PTC checks at
+`.artifacts/search-rejection-final-focused`, eight explicit completion-fence checks
+at `.artifacts/search-rejection-verification`, and 62 memory/factory checks at
+`.artifacts/note-schema-identity-focused`. Lint/compile pass; typing has zero errors
+and the existing runtime export warning. The initial new replay test wrongly expected
+an effect field on duplicate acknowledgement; the corrected test checks the unchanged
+canonical effect and no redispatch. No production replay behavior was changed to
+satisfy it. All test processes are terminal; no new paid run or promotion.
+
+PTC now retains historical completed-read recovery handles in bounded binding-loss
+updates (`ptc_state_updates@1`). The existing artifact loader supplies exact saved
+result envelopes, not live variables or proof of an unfinished calculation. Canonical
+view metadata permits deterministic reconstruction; required invalidation notices
+take priority over optional recovery details. Failed/unknown operations remain fenced,
+partial source coverage stays partial, and source freshness is not inferred from a
+successful historical load. Snapshot rollback and identity provenance remain distinct.
+Seven worker lifecycle checks and the scripted root verification path pass; the latter
+recovers after a real exception without any recovery/review source read. Final checks:
+1064 passed/two skipped at `.artifacts/lost-binding-regression-final`, 53 cached-Docker
+checks at `.artifacts/lost-binding-docker-checks-final`, and four explicit root checks
+at `.artifacts/lost-binding-verification-final2`. Lint/compile pass; typing has zero
+errors and the existing runtime export warning. The original full run retained a
+report-field assertion failure; focused correction also separated seeded read counts.
+No production behavior was changed to satisfy those test assumptions. Live uptake,
+cost and fresh held-out reliability remain unqualified; no paid run or default change.
+
+A subsequent real-worker probe identifies the next boundary: a read completed in
+the same cell that later raises retains its result artifact, but has no earlier
+completed binding manifest and exposes no direct recovery entry. The probe at
+`.artifacts/same-cell-recovery-probe/pytest.xml` observes one completed read, one
+artifact, a discarded heap and empty updates. The current fix covers earlier
+completed bindings, not this case. The follow-up must derive recovery from completed
+capability receipts without admitting dirty heap values or incomplete operations.
+
+The sibling boundary is now implemented as `ptc_state_updates@2`. Completed same-attempt
+read receipts supply historical recovery entries independently of dirty binding state.
+Request/terminal identity, task/attempt scope, source coverage and artifact identity
+are checked; missing/failed/pending or unknown-effect reads are not promoted. The real
+root regression initially exposed eight older invalidations crowding out the complete
+new read. Grouping those invalidations preserves their identities and gives recent
+completed evidence priority within the unchanged eight-entry/2048-byte ceiling.
+The scripted model now recovers and independently verifies with no extra source read.
+Focused checks pass (113 tests/one skip plus the actual missing-read negative);
+full regression passes 1084 tests/two skips at `.artifacts/same-cell-recovery-regression`,
+and all 54 cached-Docker checks pass at `.artifacts/same-cell-recovery-docker-checks`.
+Lint/compile pass; typing has zero errors and the existing export warning. All checks
+are terminal, and the earlier crowding failures remain in their original reports.
+Live qualification and cost improvement remain unproven; no new paid run has started.
+
+The four-trial seeded recovery-message diagnostic subsequently closed at `0141ae1`:
+all four actual read-then-fail interventions were exercised, all first verifications
+passed, and every answer had completed source support. Messages on used 11 calls and
+$0.01925322 versus off's 12 calls/$0.02101734 (8.39% less in this small run).
+Both arms had zero avoidable source rereads; partial captures required the same ten
+new source lines. The complete/on model used the exact artifact handle, while its
+control used `reads.lookup` and `read.recover`. Partial/on skipped the control's
+lookup and acquired the missing range directly. All 19 within-epoch prefixes were
+append-only, with complete accounting and no unknown effects. Total cost $0.04027056.
+No live process remains. Report: `.artifacts/recovery-message-live-v1/analysis.md`.
+
+The complete/on model spent an extra cell treating the saved JSON result envelope as
+source text before correctly decoding it. That is a concrete remaining usability
+issue, not lost evidence. This pilot establishes recovery-handle use and correct
+coverage handling, not fresh held-out reliability, amortized preparation savings or
+new reread reduction. Defaults and DeepSWE expansion remain held.
+
+The saved-result decoding ambiguity now has explicit guidance: `ptc_state_updates@3`
+adds one bounded shared recipe next to historical recovery handles, also available
+through existing artifact help. It checks complete offset-zero UTF-8 byte coverage,
+retains the successful saved result's source metadata, and clears proposed outputs
+before handling unavailable or partial pages. It does not automatically read source,
+decode arbitrary partial artifacts, restore a failed calculation, or establish
+current freshness. Its program/notice hashes and budget are recorded for replay.
+Actual root-workflow checks consume the emitted recipe and independently verify
+without recovery/review source reads. The focused suite passes 121 tests/one skip;
+all 48 cached-Docker root/recovery checks pass. Full regression passes 1100 tests
+with two skips at `.artifacts/recovery-decode-regression`; isolated checks are at
+`.artifacts/recovery-decode-docker-checks`. Lint/compile pass and typing has zero
+errors with the existing runtime export warning. Every test process is terminal.
+Live uptake and efficiency are not yet measured for this version. The next fresh repeated-use panel is specified in
+the continuity plan but still requires fixture implementation and preflight; no
+new paid jobs or default changes accompany this implementation.
+
+Preflighting the new unseeded transfer panel exposed a real file-tool boundary bug:
+a stale hash guard rejected the write but lost no-effect metadata, leaving failed
+managed/PTC receipts unresolved. The shared envelope now preserves typed precondition
+rejections as `effect=none`, still with error status. Local parent creation follows
+the guard so a failed missing-path write cannot create directories. Both local and
+Harbor preconditions are checked; failures after actual mutation retain unknown
+effects and completion fences. No new auto-retry, success reinterpretation or
+historical receipt rewrite. The original failing Docker report is retained at
+`.artifacts/transfer-docker-preflight`; the live panel remains undispatched.
+
+The transfer panel is implemented through the existing qualification registry and
+root coordinator: ordered routing, SQL eligibility, and a revised dependency graph,
+with three independently source/value/window-gated answers each. Acquisition and
+checkpointing are unseeded and charged. Tests derive answers from recovered source
+bytes and cover early/unsupported answers, unauthorized source changes, missing
+revised captures, stale write guards and stale calculations. The current 15 panel
+checks and 18 file-conflict checks pass in cached Docker at
+`.artifacts/transfer-guard-docker-checks`; 61 combined focused checks pass locally.
+The 35 previous fixture hashes are unchanged; only three fresh cases are added.
+The v22 dry manifest is not a clean live freeze. Production remains at `8bda3bf`;
+the final full regression and separately committed evaluation freeze precede dispatch.
+
+A sibling precondition probe found that both adapters equated a missing path with
+empty content, falsely reporting already-applied even for a mismatched hash guard.
+Both now require existing-file evidence before the idempotent equality shortcut.
+Empty-file creation is a real mutation, repeated matching writes remain idempotent,
+and rejected missing-path guards do not create directories. The two original failures
+remain at `.artifacts/missing-empty-guard-probe`; focused local/remote checks pass.
+This is a tool-receipt correctness fix, not measured live memory improvement. A
+read-only audit of the earlier v18 campaign's 44 managed-tools databases found zero
+FileConflictError result receipts, so these fixes are not presented as explanations
+for that campaign's earlier performance. Final post-fix regression remains the
+pre-dispatch gate for the unchanged twelve-trial panel.
+
+Final preflight is complete: 1137 full-suite passes/two skips at
+`.artifacts/transfer-final-regression`, all 35 isolated panel/precondition checks at
+`.artifacts/transfer-final-docker-checks`, and 67 focused passes. Lint/compile pass;
+typing has zero errors and the existing runtime export warning. All test processes
+are terminal. The live twelve-trial freeze is authorized to proceed with runtime
+`83a37af`, unchanged fresh fixture hashes, Luna/max and concurrency six; the live
+manifest records its exact documentation-inclusive clean revision before dispatch.
+
+The twelve-trial transfer screen has now closed at clean revision `85a36ab`:
+`.artifacts/transfer-v22-live-r2/analysis.md`. Ten independently verified; two correct,
+source-supported final files exhausted the call limit before verification and remain
+unaccepted. All 36 submitted answers had completed required source coverage and
+correct values, with no unknown effects/accounting gaps and 192 append-only
+within-epoch provider transitions. Findings/control each verify 5/6, but on different
+failed pairs. Findings reduce calls 125 to 115 while increasing source reread lines
+526 to 550 and cost $0.20981411 to $0.21717200. Total spend $0.42698611; gate failed.
+No live job remains, and these cases are consumed rather than reusable holdouts.
+
+SQL findings answer all six delayed questions without pre-final source rereads, then
+reread 107 lines afterward. Actual review packets contain the learned findings and
+source handles; routing additionally has a live binding access path. Review still
+reacquires sources. Routing exposes blocked exec/dunder calls and an attempted
+workspace import into the separate worker, causing a real exception and further
+reacquisition. Existing navigation must be reused rather than duplicated. The frozen
+source-emission counter misses custom JSON and Python repr source wrappers, so its
+264-to-104 mapped duplicate-line change is not proof of lower total exposure.
+PTC execution guidance and review evidence reuse remain unqualified follow-ups;
+defaults, natural-compaction/prior-run claims and DeepSWE expansion stay held.

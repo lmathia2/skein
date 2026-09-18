@@ -304,10 +304,66 @@ delivered instructions as required control. Review uses completed evidence for o
 prerequisites while following the current request; it does not infer a state transition
 or rewrite acceptance criteria by parsing user prose. Original scope and independent
 checks remain authoritative. See `delivered_steering@1` in the context ADR.
+Inner-loop delivery now records an immutable exposure at its first native-history
+boundary (`steering_delivery@1`). Request reconstruction preserves that position
+after acknowledgement instead of repeatedly moving the message to the suffix.
+An exposure is not an execution receipt. Newly delivered steering and a preceding
+unconsumed tool result cannot be compacted away before the model sees them. Failed
+publication or inconsistent replay stops dispatch without consuming the queue item.
 One server process owns a state root; current SQLite/process-local locks do not claim
 distributed coordination.
 
 ## Implemented boundary
+
+PTC binding invalidation preserves an optional historical completed-read handle in
+the new cell result (`ptc_state_updates@1`). It never treats the old variable as live,
+replays the failed cell, or restores its unfinished calculation. Recovery uses the
+existing task-authorized, hash-checked artifact loader and retains original source
+version/range coverage; a complete artifact page does not imply a complete source.
+Unknown effects still block execution and completion. Actual exception-induced heap
+loss has explicit recovery guidance; parse rejection retains existing bindings.
+Snapshot rollback may preserve copied values while invalidating their object-identity
+provenance, so a historical handle is not itself proof of heap loss.
+
+Reads may complete before a later calculation fails in the same cell. Their durable
+capability receipts remain recoverable under `ptc_state_updates@2`, even though no
+successful cell manifest ever contained the binding. The failed heap is never the
+source of that recovery metadata. The usual artifact authorization, original source
+coverage, freshness requirements and unresolved-effect fences still apply. Required
+binding invalidations can be grouped to leave room for the recent completed reads.
+
+The `ptc_state_updates@3` recovery message and artifact help share a guarded Python
+example for decoding a saved completed-read envelope. `artifacts.load` still pages
+exact immutable bytes; it does not automatically decode source, restore bindings,
+or read the current workspace. The example requires a complete first UTF-8 page
+and successful saved result, preserves the original coverage metadata, and clears
+its output bindings before checking an unavailable or partial page. Larger/binary
+artifacts still require exact byte assembly using the existing loader contract.
+This is model-side guidance, not reconciliation or permission to use stale evidence.
+
+Unavailable managed-search backends and invalid reserved-search syntax are known
+pre-dispatch rejections. Their originating adapter records `effect=none`; the shared
+PTC broker preserves it in the immutable result artifact and capability event.
+No backend or sandbox operation ran. Unavailable search advertises bounded existing
+alternatives without executing them. Backend exceptions after dispatch and ordinary
+shell failures are not exempted from uncertainty, and later correct answers or
+workspace inspections do not clear an older unknown effect. Duplicate cell
+acknowledgement does not rerun the rejected operation or become a new result receipt.
+
+File precondition conflicts now carry `effect=none` through the shared coding-tool
+envelope, failed managed receipt, persisted artifact and nested PTC outcome.
+`FileConflictError` is a trusted adapter contract: it is raised only before workspace
+mutation, not a label inferred from error text. Both local and Harbor file adapters
+check hash/absence/edit preconditions before dispatching a write. Local parent
+directory creation now follows those checks, so a rejected missing-path write cannot
+quietly create directories. The result remains an error, never a successful write;
+unknown I/O/post-mutation failures remain fenced. This adds no automatic retry or
+reconciliation. A new attempt may acquire current evidence and submit a fresh guard.
+Idempotent content equality also requires an observed existing file: absence is not
+an empty file. Both adapters now create an absent empty file as a real mutation,
+reject a mismatched hash guard even when requested content is empty, and report
+already-applied only for an existing matching file. The existing idempotency policy
+for matching content is otherwise unchanged.
 
 - Real invocation-bound checkpoints and same-machine recovery validation exist.
 - Safe-auto recovery is opt-in and covered by deterministic subprocess scenarios.

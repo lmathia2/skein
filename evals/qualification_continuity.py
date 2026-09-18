@@ -5,13 +5,16 @@ import hashlib
 import json
 from typing import Any
 
+from evals.transfer_continuity import TRANSFER_CASES, transfer_fixture
 from harness.evidence.memory.models import ReadEvidence
 
 QUALIFICATION_CASES = tuple(f"qualification_{family}_{variant}"
-                            for family in ("routes", "partial", "changed", "conflict", "validation", "prior") for variant in (1, 2))
+                            for family in ("routes", "partial", "changed", "conflict", "validation", "prior") for variant in (1, 2)) + TRANSFER_CASES
 
 
 def qualification_fixture(case: str) -> dict[str, Any]:
+    if case in TRANSFER_CASES:
+        return transfer_fixture(case)
     if case not in QUALIFICATION_CASES:
         raise ValueError("unknown qualification fixture")
     _, family, number = case.split("_")

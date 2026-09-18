@@ -318,18 +318,22 @@ def test_virtual_search_routes_before_policy_and_shell_dispatch(
     assert sandbox.requests == []
 
 
+@pytest.mark.parametrize("command", ["search health", "search grep --pattern pricing --path pricing.py",
+                                     "search find --pattern '*.py'", "search grep --pattern x | echo unsafe"])
 def test_virtual_search_is_unavailable_for_non_authoritative_sandbox(
     tmp_path: Path,
     monkeypatch,
+    command,
 ) -> None:
     monkeypatch.setenv("SKEIN_STATE_DIR", str(tmp_path / "state"))
     sandbox = _RecordingSandbox(tmp_path)
     tools = create_adk_tools(tmp_path, sandbox=sandbox)
 
-    result = tools.bash("search health")
+    result = tools.bash(command)
 
     assert result["status"] == "error"
-    assert "non-authoritative remote workspace" in result["model_text"]
+    assert result["effect"] == "none"
+    assert result["ui_details"]["backend"] in {"unavailable", "not-dispatched"}
     assert sandbox.requests == []
 
 

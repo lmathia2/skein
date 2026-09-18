@@ -17,7 +17,8 @@ from .output import bound_output
 
 def _error(exc: Exception) -> ToolEnvelope:
     status = ToolStatus.BLOCKED if isinstance(exc, WorkspaceViolationError) else ToolStatus.ERROR
-    return ToolEnvelope(status=status, model_text=f"{type(exc).__name__}: {exc}")
+    return ToolEnvelope(status=status, model_text=f"{type(exc).__name__}: {exc}",
+                        effect="none" if isinstance(exc, FileConflictError) else None)
 
 
 def execute_read(

@@ -21,7 +21,7 @@ class WorkspaceViolationError(ValueError):
 
 
 class FileConflictError(RuntimeError):
-    pass
+    """A completed precondition rejection, raised before any workspace mutation."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +157,6 @@ class LocalWorkspaceEnvironment:
         expected_absent: bool = False,
     ) -> FileMutationResult:
         target = self.resolve(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
         before = target.read_bytes() if target.exists() else b""
         before_hash = sha256_bytes(before) if target.exists() else None
         after_hash = sha256_bytes(content)
@@ -174,7 +173,7 @@ class LocalWorkspaceEnvironment:
                 )
             raise FileConflictError(f"Expected new file but path already exists: {path}")
         if expected_sha256 is not None and before_hash != expected_sha256:
-            if before == content:
+            if before_hash is not None and before == content:
                 return FileMutationResult(
                     path=self.relative_path(target),
                     changed=False,
@@ -186,7 +185,7 @@ class LocalWorkspaceEnvironment:
             raise FileConflictError(
                 f"File hash changed for {path}: expected {expected_sha256}, found {before_hash}"
             )
-        if before == content:
+        if before_hash is not None and before == content:
             return FileMutationResult(
                 path=self.relative_path(target),
                 changed=False,
@@ -196,6 +195,7 @@ class LocalWorkspaceEnvironment:
                 already_applied=True,
             )
 
+        target.parent.mkdir(parents=True, exist_ok=True)
         handle, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
         temporary = Path(temporary_name)
         try:

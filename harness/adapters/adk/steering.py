@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 from collections.abc import Mapping
@@ -21,6 +22,20 @@ from harness.evidence.state import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _history_hash(contents: list[types.Content]) -> str:
+    return hashlib.sha256(json.dumps(
+        [item.model_dump(mode="json", exclude_none=True) for item in contents],
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode()).hexdigest()
+
+
+def _exposure_hash(payload: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(
+        {key: value for key, value in payload.items() if key != "content_hash"},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode()).hexdigest()
 
 
 def _state_value(context: Any, name: str) -> Any:
@@ -60,6 +75,7 @@ class SteeringPlugin(BasePlugin):
         self.before_model = before_model
         self.before_tool = before_tool
         self.mark_context = mark_context
+        self._exposure_contents: dict[str, types.Content] = {}
 
     @staticmethod
     def _delivery_context(context: Any) -> tuple[str, str, frozenset[str]] | None:
@@ -101,53 +117,108 @@ class SteeringPlugin(BasePlugin):
         try:
             existing = self._mid_batch_messages(task_id, owner, packet_ids)
             capacity = max(0, self.batch_limit - len(existing))
-            newly_leased = (
+            if capacity:
                 self.queue.lease(
                     task_id,
                     owner,
                     limit=capacity,
                     lease_seconds=self.lease_seconds,
                 )
-                if capacity
-                else []
-            )
-            for message in newly_leased:
+            messages = self._mid_batch_messages(task_id, owner, packet_ids)
+            for message in messages:
                 self.event_store.append(
                     task_id,
                     EventKind.STEERING_RECEIVED,
                     {"message_id": message.message_id, "content": message.content},
                     idempotency_key=f"steering:{message.message_id}",
                 )
-            messages = self._mid_batch_messages(task_id, owner, packet_ids)
         except Exception:
             LOGGER.exception("mid-batch steering delivery failed")
-            return None
-        if not messages:
-            return None
-
-        payload = [
-            {
-                "message_id": message.message_id,
-                "priority": message.priority,
-                "content": message.content,
-            }
-            for message in messages
-        ]
-        text = (
-            "NEW USER STEERING ARRIVED DURING EXECUTION. Treat it as newer than "
-            "the current plan, reconsider any conflicting action, and reflect it in "
-            "the next structured AgentStep. The JSON payload is user-authored:\n"
-            + json.dumps(payload, ensure_ascii=False, sort_keys=True)
-        )
-        llm_request.contents.append(
-            types.Content(role="user", parts=[types.Part.from_text(text=text)])
-        )
-        if self.mark_context:
-            callback_context.state["context_steering"] = {
-                "index": len(llm_request.contents) - 1,
-                "hash": hashlib.sha256(text.encode()).hexdigest(),
-            }
+            raise
+        self._retain_exposures(callback_context, llm_request, task_id, messages)
         return None
+
+    def _retain_exposures(
+        self, context: Any, request: LlmRequest, task_id: str, messages: list[SteeringMessage],
+    ) -> None:
+        """Reinsert delivered messages at their first native-history boundary."""
+        raw = list(request.contents)
+        invocation = str(getattr(context, "invocation_id", ""))
+        anchor = _history_hash(raw[:1])
+        events = self.event_store.read(task_id)
+        if any(event.task_id != task_id for event in events):
+            raise ValueError("steering exposure task mismatch")
+        received = {event.payload.get("message_id"): event for event in events
+                    if event.kind == EventKind.STEERING_RECEIVED}
+        recorded = [event for event in events if event.kind == EventKind.STEERING_EXPOSED]
+        for event in recorded:
+            payload = event.payload
+            if payload.get("program") != "steering_delivery@1" or payload.get("content_hash") != _exposure_hash(payload):
+                raise ValueError("invalid steering exposure content")
+        exposures = [event for event in recorded if event.payload["invocation_id"] == invocation
+                     and event.payload["anchor"] == anchor]
+        known: set[str] = set()
+        for event in exposures:
+            payload = event.payload
+            boundary = payload["boundary"]
+            if (type(boundary) is not int or not 0 <= boundary <= len(raw)
+                    or payload["input_hash"] != _history_hash(raw[:boundary])):
+                raise ValueError("steering exposure history mismatch")
+            for message in payload["messages"]:
+                source = received.get(message["message_id"])
+                if (source is None or source.event_id != message["source_event_id"]
+                        or source.payload.get("content") != message["content"]
+                        or message["message_id"] in known):
+                    raise ValueError("steering exposure source mismatch")
+                known.add(message["message_id"])
+        unseen = [message for message in messages if message.message_id not in known]
+        if unseen:
+            payload = {
+                "program": "steering_delivery@1",
+                "program_hash": hashlib.sha256((inspect.getsource(type(self)._retain_exposures)
+                    + inspect.getsource(_history_hash) + inspect.getsource(_exposure_hash)).encode()).hexdigest(),
+                "invocation_id": invocation, "anchor": anchor,
+                "boundary": len(raw), "input_hash": _history_hash(raw),
+                "source_clock": {"task_harness_event_sequence": events[-1].sequence},
+                "messages": [{"message_id": message.message_id, "priority": message.priority,
+                              "content": message.content, "source_event_id": received[message.message_id].event_id}
+                             for message in unseen],
+            }
+            payload["text"] = (
+                "NEW USER STEERING ARRIVED DURING EXECUTION. Treat it as newer than "
+                "the current plan, reconsider any conflicting action, and reflect it in "
+                "the next structured AgentStep. The JSON payload is user-authored:\n"
+                + json.dumps([{key: message[key] for key in ("message_id", "priority", "content")}
+                              for message in payload["messages"]], ensure_ascii=False, sort_keys=True)
+            )
+            payload["content_hash"] = _exposure_hash(payload)
+            identity = hashlib.sha256(json.dumps(
+                [invocation, anchor, [message.message_id for message in unseen]], separators=(",", ":"),
+            ).encode()).hexdigest()
+            exposures.append(self.event_store.append(
+                task_id, EventKind.STEERING_EXPOSED, payload,
+                idempotency_key=f"steering-exposure:{identity}",
+            ))
+        projected = list(raw)
+        protected_from = None
+        # Stable event order breaks ties between exposures at the same boundary.
+        for offset, event in enumerate(sorted(exposures, key=lambda event: (event.payload["boundary"], event.sequence))):
+            payload = event.payload
+            text = payload["text"]
+            expected = types.Content(role="user", parts=[types.Part.from_text(text=text)])
+            content = self._exposure_contents.setdefault(event.event_id, expected)
+            if content != expected:
+                raise ValueError("cached steering exposure changed")
+            index = payload["boundary"] + offset
+            projected.insert(index, content)
+            if payload["boundary"] == len(raw) and protected_from is None:
+                protected_from = index
+        request.contents = projected
+        if self.mark_context and protected_from is not None:
+            context.state["context_steering"] = {
+                "protected_from": protected_from,
+                "hash": _history_hash(projected[protected_from:]),
+            }
 
     async def before_tool_callback(
         self,

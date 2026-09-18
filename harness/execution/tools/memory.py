@@ -157,7 +157,7 @@ class ContextProgramService:
         if self.mode != "active" or not self.working_notes:
             return {"status": "denied", "reason": "working notes disabled", "effect": "none"}
         contract = {
-            "version": 4, "input_schema": WorkingNoteInput.model_json_schema(),
+            "schema_version": 6, "input_schema": WorkingNoteInput.model_json_schema(),
             "command": "memory note write --text TEXT --expected-version N --operation-id ID [--evidence IDS] [--entries JSON]",
             "encoding": "Quote TEXT and JSON with shlex.quote. --evidence is comma-separated public event IDs; --entries is a JSON array, not the whole input object.",
             "budget_bytes": min(self.max_result_bytes // 2, 8000),
@@ -169,10 +169,12 @@ class ContextProgramService:
                 "recovery": "latest note read and, when enabled, exact committed event command",
             },
             "commit_rules": [
+                "schema_version identifies this API contract, never a note revision or --expected-version. Obtain the current note version from supplied note metadata, a successful write receipt, or note read when needed.",
                 "Use the newest observed note version from metadata or a successful receipt. Read only for needed content/version or a conflict; an identical retry can return an older committed version.",
                 "Writes merge by ID; revise the same finding under its existing ID, not a parallel *_current entry. New IDs represent distinct findings; omitted entries remain. At most 64 merged entries; update IDs must be unique.",
                 "Finding text must be nonblank and at most 2000 UTF-8 bytes. Each link list must be unique; links must be nonempty and at most 4096 UTF-8 bytes each.",
                 "An observation requires evidence_refs. Evidence must be exposed public task evidence: event IDs or read_reference artifact URIs; --evidence accepts event IDs only.",
+                "Batch independently reusable facts as separate entries with only their supporting evidence and paths. All dependencies of one entry are validated together; keep genuinely cross-source conclusions together with every required dependency. Do not mechanically split claims or drop evidence to obtain matching status.",
                 "Prior findings are reused in place, not copied into this note. Their working_set reuse.source_note_command recovers the exact authorized source note. Checkpoint only new current-task learning; foreign IDs are not local evidence.",
                 "supersedes/conflicts_with must name existing or same-update finding IDs, never self. Supersession chains need separate revisions; superseded findings cannot be disputed.",
                 "The byte budget covers the complete canonical note after merging, redaction, and attached source dependencies, not just input text. Oversize rejection retains the last checkpoint.",

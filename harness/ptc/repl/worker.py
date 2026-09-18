@@ -247,6 +247,16 @@ class _RemoteOperation:
 _PRELOADED_MODULES = ("json", "math", "re")
 _RESERVED_NAMES = frozenset({"agent", *_PRELOADED_MODULES})
 _MAX_HELP_BYTES = 16_000
+
+# JSON is preloaded. This example decodes only one complete UTF-8 artifact page;
+# it does not turn a partially captured source into a whole-file observation.
+READ_RESULT_RECIPE = """saved_result = source_text = None
+if page.get('status') == 'ok':
+    data = page['data']
+    if data['offset'] == 0 and data['complete'] and data['encoding'] == 'utf-8':
+        saved = json.loads(data['text'])
+        if isinstance(saved, dict) and saved.get('status') == 'ok':
+            saved_result, source_text = saved, saved['data']['text']"""
 _AGENT_HELP = {
     "fs.read": "agent.fs.read(path, offset=1, limit=400)",
     "fs.write": ("agent.fs.write(path, content, expected_sha256=None, expected_absent=False)"),
@@ -315,6 +325,8 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
                  "complete": "bool (end of artifact, not whole coverage if offset > 0)",
                  "next_offset": "next byte offset or null"},
         "recovery": "Combine exact page bytes before UTF-8/JSON parsing. A completed fs.read artifact is a saved result envelope: check its status, then data.text and source metadata. Historical only.",
+        "completed_read_recipe": READ_RESULT_RECIPE,
+        "recipe_contract": "Assign page = agent.artifacts.load(uri). page.data.text contains JSON bytes, NOT source text. Run the recipe in the same cell; select only task-relevant source fields. source_text=None means decoding was not established: handle non-ok status first; otherwise finish exact byte paging, including base64 decoding where needed. saved_result retains original source coverage; decoding never establishes current freshness.",
         "rejection": "Invalid arguments or denied access return error/blocked with effect=none. Recover exact authorized URIs via agent.artifacts.list(); never guess hashes. Corruption or unknown effects still require fail-closed handling.",
     },
     "artifacts.list": {"data": {"artifacts": "list of task-authorized uri entries; published entries also carry name/description"}},

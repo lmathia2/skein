@@ -130,12 +130,12 @@ class HarborWorkspaceEnvironment:
                 return self._unchanged(target, before_hash, after_hash, "already contained")
             raise FileConflictError(f"Expected new file but path already exists: {path}")
         if expected_sha256 is not None and before_hash != expected_sha256:
-            if before == content:
+            if before_hash is not None and before == content:
                 return self._unchanged(target, before_hash, after_hash, "already contained")
             raise FileConflictError(
                 f"File hash changed for {path}: expected {expected_sha256}, found {before_hash}"
             )
-        if before == content:
+        if before_hash is not None and before == content:
             return self._unchanged(target, before_hash, after_hash, "no change")
 
         descriptor, temporary = tempfile.mkstemp(prefix="skein-harbor-write-")

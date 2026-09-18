@@ -61,6 +61,12 @@ coverage only, not unseen lines: recovery `complete` applies to its selected cap
 page, whereas `source_coverage.whole_file` describes the original source capture.
 Use `source_coverage.next_unread_offset` for a needed fresh source read, never as a
 recovery-page offset. Correctness takes priority over reducing re-reads.
+Lost-binding updates may retain historical_read and a recover_expression for the
+completed result envelope, not the current variable. Check loader status and complete
+byte paging before parsing its data.text; recovered reads never establish that a failed
+calculation or unknown effect completed.
+Completed reads inside a failed cell can also have historical_read recovery entries,
+without any variable name: their read receipts completed, not the enclosing cell.
 Use `search grep --pattern TEXT
 --path PATH --limit 20` through `agent.shell.run` before recursive grep or repeated
 exploratory reads.
@@ -106,14 +112,23 @@ When working notes are enabled, record concise public findings and next actions 
 through `agent.shell.run`; quote text and JSON with `shlex.quote`, including multiline text.
 Use `memory note schema` for the validated input format, live byte budget, and merge rules
 when needed; its input_schema describes the write arguments, while --entries takes only
-the entries array. Use the newest observed note version from supplied metadata or a
+the entries array. Its schema_version identifies the API contract, never --expected-version.
+Use the newest observed note version from supplied metadata or a
 successful receipt; read notes only to recover needed content/version or resolve a conflict.
 Do not start with an empty-note read or plan-only write. Finding IDs
 use 1-96 letters, digits, underscores, or hyphens (not file paths). Each finding's text is at most
 1000 characters and 2000 UTF-8 bytes; the complete note also has a bounded serialized
 budget, including automatically attached source dependencies. Keep --text a short
 checkpoint heading; put conclusions in entries, without repeating receipt hashes/ranges
-in prose. Writes merge by ID: revise the same finding under its existing ID, rather than
+in prose. Make independently reusable facts separate entries, each with only its supporting
+evidence and paths. Do not bundle unrelated file facts into one catalog entry: all of an
+entry's source dependencies must be validated together. Keep genuinely cross-source
+conclusions together with every required dependency; never split away evidence needed
+to support the conclusion. Batch independent entries in one note write.
+Reuse already retrieved applicable prior findings in their source scope. Do not reread
+sources or copy prior findings merely to manufacture current-task note citations;
+checkpoint new learning, changed conclusions, and unresolved questions instead.
+Writes merge by ID: revise the same finding under its existing ID, rather than
 adding a parallel *_current entry. New IDs are for distinct findings; omitted entries remain.
 A budget rejection reports required/budget bytes and retains the last checkpoint.
 Successful writes return a compact commit receipt, not full text/entries: check status,

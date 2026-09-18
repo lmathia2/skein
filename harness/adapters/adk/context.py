@@ -310,6 +310,18 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
     return serialized(advisory)
 
 
+def _unconsumed_cut_limit(contents: list[types.Content], protected_from: int | None) -> int:
+    end = len(contents) if protected_from is None else protected_from
+    if type(end) is not int or not 0 <= end <= len(contents):
+        raise ValueError("invalid protected context boundary")
+    prefix = contents[:end]
+    cuts = _complete_cuts(prefix)
+    # Fresh steering can follow a tool result that has not reached the model yet.
+    if prefix and any(part.function_response for part in prefix[-1].parts or ()):
+        return cuts[-2]
+    return end
+
+
 def select_context_cut(
     contents: list[types.Content],
     *,
@@ -319,13 +331,13 @@ def select_context_cut(
     config: ContextConfig,
     available_tokens: int | None = None,
     previous_header: types.Content | None = None,
+    protected_from: int | None = None,
 ) -> int:
     """Purely select a bounded complete-interaction suffix boundary."""
     cuts = _complete_cuts(contents)
-    selected = len(contents)
-    # A just-returned result has not been consumed by the model. Keep its call too.
-    if any(part.function_response for part in contents[-1].parts or ()):
-        selected = cuts[-2]
+    selected = _unconsumed_cut_limit(contents, protected_from)
+    if selected < prior_cut:
+        raise ValueError("protected context precedes the published cut")
     if config.reconstruction == "handoff_tail":
         for candidate in cuts:
             if candidate <= prior_cut or candidate > selected:
@@ -624,14 +636,13 @@ class ContextWindowPlugin(BasePlugin):
         invocation = str(getattr(callback_context, "invocation_id", ""))
         raw = list(llm_request.contents)
         transient: list[types.Content] = []
+        protected_from = None
         marker = callback_context.state.get("context_steering")
         if marker:
-            index = marker["index"]
-            marked = raw[index]
-            marked_text = "".join(part.text or "" for part in marked.parts or ())
-            if hashlib.sha256(marked_text.encode()).hexdigest() != marker["hash"]:
-                raise ValueError("transient steering identity does not match request")
-            transient.append(raw.pop(index))
+            protected_from = marker["protected_from"]
+            if (type(protected_from) is not int or not 0 <= protected_from < len(raw)
+                    or hashlib.sha256(_serialized(raw[protected_from:]).encode()).hexdigest() != marker["hash"]):
+                raise ValueError("protected steering identity does not match request")
         if not raw:
             return
         self._capture(task_id, invocation, raw)
@@ -670,9 +681,8 @@ class ContextWindowPlugin(BasePlugin):
         committed = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED]
         handoff = render_handoff(self.redactor.redact(details), max_tokens=self.config.compaction_tokens)
         active_handoff = str(previous.get("summary") or handoff)
-        # Newest intent first; full text remains in canonical history. Never
-        # head/tail-splice old instructions around the newest correction.
-        steering = [str(event.payload.get("content", "")) for event in reversed(events)
+        # Preserve delivery order, with newer corrections after earlier instructions.
+        steering = [str(event.payload.get("content", "")) for event in events
                     if event.kind == EventKind.STEERING_RECEIVED]
         control = build_work_packet(
             task,
@@ -754,9 +764,7 @@ class ContextWindowPlugin(BasePlugin):
         if not note_available and (over_soft_limit or over_hard_limit) and (
             not previous or (self.config.window_management and should_compact)
         ):
-            possible_cut = _complete_cuts(raw)[-2] if any(
-                part.function_response for part in raw[-1].parts or ()
-            ) else len(raw)
+            possible_cut = _unconsumed_cut_limit(raw, protected_from)
             if possible_cut > cut and not (
                 self.config.window_management and over_hard_limit
             ) and not callback_context.state.get(checkpoint_key):
@@ -804,6 +812,7 @@ class ContextWindowPlugin(BasePlugin):
                 config=self.config,
                 available_tokens=self.config.max_context_tokens - request_overhead - reserved_output,
                 previous_header=types.Content.model_validate(previous["header"]) if previous.get("header") else None,
+                protected_from=protected_from,
             )
             if new_cut == cut:
                 # The newest tool result is indivisible and not consumed yet.
@@ -838,6 +847,7 @@ class ContextWindowPlugin(BasePlugin):
                                                           inspect.getsource(_evidence_manifest) +
                                                           inspect.getsource(unresolved_execution) +
                                                           inspect.getsource(select_context_cut) +
+                                                          inspect.getsource(_unconsumed_cut_limit) +
                                                           inspect.getsource(type(self))).encode()).hexdigest(),
                  "working_set": {key: value for key, value in details.get("working_set", {}).items() if key != "data"},
                  "tokens_before": projected_provider_tokens,

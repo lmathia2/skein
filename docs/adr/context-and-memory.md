@@ -114,6 +114,32 @@ an older constraint. Recent-event excerpts exclude its duplicate. No new store,
 model tool, queue acknowledgement rule or per-inner-call refresh is introduced.
 The appended packet and its existing request capture preserve the snapshot.
 
+Inner-loop steering has a separate immutable exposure boundary. `steering_delivery@1`
+records exact rendered bytes, source message/event IDs, native-history position and
+prefix hash, invocation/root anchor, source clock, program hash and content hash in
+`context.steering_exposed` before dispatch. Later requests insert those same bytes at
+the recorded position, including after queue acknowledgement or plugin reconstruction.
+They no longer move a transient copy after each newly generated assistant/tool turn.
+Cached Content objects are disposable, integrity-checked projections of those events;
+they are not a second history store. Recent-event excerpts omit the duplicate.
+
+Fresh steering remains protected from a cut until the next native response exists.
+If it follows an unconsumed tool result, that entire call/result interaction remains
+protected too. Consumed steering enters canonical public context history and can be
+covered by a normal compaction epoch; required steering in the compacted control
+packet follows delivery order, with newer corrections last. No message prose or
+queue acknowledgement proves execution or authorizes bypassing verification.
+Publication, source identity, captured-prefix and content corruption fail before
+request mutation; retry can publish the same still-owned exposure. The existing
+packet/window/task budgets remain in force.
+
+The closed steering diagnostic's consumer wires show 22 within-epoch transitions
+that displaced the previous last steering item; every one reported only 2747 cached
+tokens. Append-only transitions reused nearly the preceding input. This is a concrete
+request-prefix defect, not proof of a provider bug or a guaranteed cost saving.
+Actual serialized-request prefix tests and protected-cut/replay regressions precede
+live cache/cost qualification. Note bookkeeping and finding granularity are separate.
+
 Delivery is not execution or semantic supersession. Newer instructions govern
 conflicts; other original requirements remain. Review audits completed prerequisites
 from execution evidence instead of reenacting a preparation/acknowledgement just
@@ -757,6 +783,66 @@ matching versions and receives automatic metadata before submitting an answer, b
 has not retrieved the required prior content: independent verification still rejects
 it. Existing completed-retrieval, source/range, ownership and answer-time gates remain
 unchanged. Live efficiency and diverse held-out reliability remain unqualified.
+
+### Independently reusable finding scope
+
+The on-demand note-input contract identifies itself with `schema_version=6`, not a
+generic top-level `version`. Note reads and successful writes retain `version` as
+their committed revision; only an observed note revision can supply the next CAS
+expectation. No compatibility alias repeats the ambiguous schema label. Schema
+queries remain static, read-only, hashed and bounded, and do not expose task-note
+state. Stale or mistaken CAS writes remain rejected without mutation. This corrects
+the live schema-5/note-1 confusion without weakening revision or replay semantics.
+
+Finding-authoring guidance now prefers separate entries for independently reusable
+facts, submitted in one batched note write. A catalog of unrelated file facts should
+not force validation of every catalog source before one fact can be reused. Genuine
+cross-source conclusions still retain every dependency and must not be mechanically
+split or declared applicable from a subset. Existing histories are never rewritten.
+This is note-schema guidance version 5 plus stable PTC instruction, not a new
+semantic validator or relaxed evidence admission. Prior findings remain source-scoped;
+local notes need not manufacture citations by rereading already retrieved prior facts.
+Live reliability/cost benefits remain unproven: the `15cea79` diagnostic repaired
+provider-prefix displacement but did not reproduce prior-source reread reduction.
+
+### Historical recovery in binding updates
+
+The implemented `ptc_state_updates@1` projection now retains optional historical
+read metadata and an exact artifact-load expression when a supported binding loses
+its association. Base invalidation notices are reserved before whole recovery entries;
+the existing eight-entry/2048-byte ceiling and whole-response output bound remain.
+The canonical terminal event records program/source hash, prior state event identity,
+source watermark, current-state selection policy, input/content hashes and byte budget.
+Replay derives the same entries from captured manifests. This adds neither source
+acquisition nor authority to accept a historical finding as current evidence. Live
+model uptake and reread/cost benefits remain unqualified.
+
+`ptc_state_updates@2` additionally derives historical reads from completed nested
+capability receipts in a failed attempt. It requires a same-task/attempt matching
+read request, successful terminal metadata, a known read effect, valid artifact
+identity and consistent source coverage. Pending, failed, unaddressed and foreign
+reads do not become recovery entries; contradictory captured identity fails closed.
+The projection records completed read event IDs and includes them in its hashed
+replay inputs. Canonical read-reference construction is shared with the broker.
+
+When those reads exist, base invalidation notices are grouped without dropping their
+binding identities, then the newest completed reads precede optional older recovery
+handles. This prevents eight separate invalidations from consuming all eight entry
+slots. Neither the entry nor byte limit increases. A historical read entry has no
+live variable name or selector; the enclosing failed cell is not relabeled completed.
+
+`ptc_state_updates@3` adds one shared, optional saved-read decoding recipe beside
+historical handles. It uses the existing artifact loader and preloaded JSON module,
+not a new source or recovery capability. Only an offset-zero, complete UTF-8 byte
+page is decoded; non-ok or unfinished pages leave the proposed source value unset.
+The original result envelope retains source coverage, which may still be partial.
+The recipe is also available through existing artifact help. It is omitted when
+the extended notice exceeds half the existing response budget; required entries
+and the whole-response bound remain unchanged. The canonical view includes the
+recipe in its program hash and records the reproduced notice hash and byte budget.
+Model execution of this example is advisory, not host evidence acquisition or
+proof that the containing failed cell completed. Live decoding efficiency remains
+unqualified until separately measured.
 
 ## Rejected alternatives
 

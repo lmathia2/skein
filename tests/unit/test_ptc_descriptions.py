@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from harness.ptc.repl.worker import _execute_cell, _StateProxy, _value_fingerprint
 
 
@@ -8,6 +10,97 @@ def source_result():
             "read_reference": {"artifact_uri": "artifact://sha256/" + "a" * 64,
                                "path": "src/main.py", "sha256": "b" * 64,
                                "offset": 40, "returned_lines": 1}}
+
+
+@pytest.mark.parametrize("case", ["complete", "partial_source", "incomplete_page", "last_page", "base64", "blocked", "failed_result"])
+def test_recovery_recipe_decodes_only_complete_bytes_and_preserves_source_coverage(case):
+    from app.agent.ptc import _state_update_notice
+    from harness.ptc.repl import default_help_catalog
+    from harness.ptc.repl.worker import READ_RESULT_RECIPE
+
+    saved = {"status": "error" if case == "failed_result" else "ok",
+             "data": {"text": "header only" if case == "partial_source" else "source body",
+                      "complete": case != "partial_source", "offset": 1, "returned_lines": 1}}
+    page = {"status": "blocked" if case == "blocked" else "ok", "data": {
+        "offset": 4 if case == "last_page" else 0, "complete": case != "incomplete_page",
+        "encoding": "base64" if case == "base64" else "utf-8", "text": json.dumps(saved)}}
+    if case in {"incomplete_page", "last_page", "base64"}:
+        page["data"]["text"] = "not parseable JSON"
+    namespace = {"page": page, "json": json, "saved_result": {"stale": True}, "source_text": "stale source"}
+    exec(READ_RESULT_RECIPE, namespace)
+    if case in {"complete", "partial_source"}:
+        assert namespace["saved_result"] == saved
+        assert namespace["source_text"] == saved["data"]["text"]
+        assert namespace["saved_result"]["data"]["complete"] is (case == "complete")
+    else:
+        assert namespace["saved_result"] is None and namespace["source_text"] is None
+    assert default_help_catalog()["artifacts.load"]["result"]["completed_read_recipe"] == READ_RESULT_RECIPE
+    updates = [{"historical_read": source_result()["read_reference"]}]
+    notice = _state_update_notice(updates, "epoch", "cell", 8192, True)
+    assert notice["entries"] is updates
+    assert notice["decode_completed_read"]["then_python"] == READ_RESULT_RECIPE
+    small = _state_update_notice(updates, "epoch", "cell", 512, True)
+    assert "decode_completed_read" not in small and small["entries"] is updates
+    assert "decode_completed_read" not in _state_update_notice([], "epoch", "cell", 8192, False)
+
+
+@pytest.mark.parametrize("case", ["complete", "pending", "failed", "status_error", "unmapped", "foreign_task",
+                                 "foreign_attempt", "unknown_effect", "missing_request", "mismatch", "duplicate",
+                                 "bad_uri", "bad_coverage"])
+def test_same_attempt_recovery_requires_completed_scoped_read_receipts(case):
+    from app.agent.ptc import _completed_attempt_reads, _state_updates
+    from harness.evidence.ledger.models import canonical_json
+    from harness.evidence.memory.models import ReadEvidence
+    from harness.evidence.state.events import HarnessEvent
+
+    evidence = ReadEvidence(path="rates.toml", sha256="a" * 64, offset=1, returned_lines=1)
+    common = {"attempt_id": "attempt", "cell_id": "cell", "notebook_id": "notebook",
+              "operation_id": "attempt:1", "operation": "fs.read", "arguments_sha256": "b" * 64}
+    payload = {**common, "status": "ok", "effect": "observed", "read_evidence": evidence.model_dump(),
+               "result_artifact_uri": "artifact://sha256/" + "c" * 64,
+               "source_coverage": evidence.source_coverage(3)}
+    task = "foreign" if case == "foreign_task" else "task"
+    if case == "foreign_attempt":
+        common["attempt_id"] = payload["attempt_id"] = "other"
+    if case == "status_error":
+        payload["status"] = "error"
+    if case == "unknown_effect":
+        payload["effect"] = "unknown"
+    if case == "unmapped":
+        payload.pop("read_evidence")
+    if case == "mismatch":
+        payload["arguments_sha256"] = "d" * 64
+    if case == "bad_uri":
+        payload["result_artifact_uri"] = "file:///foreign"
+    if case == "bad_coverage":
+        payload["source_coverage"]["whole_file"] = True
+    request = HarnessEvent(task_id=task, sequence=1, kind="capability.requested", payload=common)
+    terminal = HarnessEvent(task_id=task, sequence=2, kind="capability.failed" if case == "failed" else
+                            "capability.completed", payload=payload)
+    events = [request] if case == "pending" else [terminal] if case == "missing_request" else [request, terminal]
+    if case == "duplicate":
+        events.append(terminal.model_copy(update={"sequence": 3, "event_id": "duplicate"}))
+    if case in {"missing_request", "mismatch", "duplicate", "bad_uri", "bad_coverage"}:
+        with pytest.raises(ValueError):
+            _completed_attempt_reads(events, "task", "attempt")
+        return
+    reads = _completed_attempt_reads(events, "task", "attempt")
+    if case != "complete":
+        assert reads == []
+        return
+    assert reads[0]["source_event_id"] == terminal.event_id
+    assert reads[0]["historical_read"]["source_coverage"]["whole_file"] is False
+    updates = _state_updates([], [], 2048, reads * 2)
+    assert len(updates) == 1 and "name" not in updates[0] and "read_reference" not in updates[0]
+    assert updates[0]["availability"] == "historical_read_only"
+    assert len(canonical_json(updates).encode()) <= 2048
+    assert _state_updates([], [], 40, reads) == []
+    before = [{"name": f"old_{i}", "description": "old finding"} for i in range(8)]
+    reserved = _state_updates(before, [], 2048, reads)
+    assert len(reserved) == 2 and reserved[0]["availability"] == "association_invalidated"
+    assert reserved[0]["bindings"] == [{"name": row["name"], "selector": []} for row in before]
+    assert reserved[1]["historical_read"] == reads[0]["historical_read"]
+    assert _state_updates(before, [], 600, reads)[0]["bindings"] == reserved[0]["bindings"]
 
 
 def test_descriptions_and_sources_track_alias_mutation_and_reassignment():
@@ -64,8 +157,12 @@ def test_catalog_discovers_attested_container_values_without_annotations_or_read
     current = state.list()
     assert [row["access_expression"] for row in current if row.get("read_reference")] == ["reads[1]['other']"]
     from app.agent.ptc import _state_updates
-    assert _state_updates(catalog, current, 2048) == [
-        {"name": "reads", "selector": [0], "availability": "association_invalidated"}]
+    updates = _state_updates(catalog, current, 2048)
+    assert len(updates) == 1
+    assert updates[0]["name"] == "reads" and updates[0]["selector"] == [0]
+    assert updates[0]["availability"] == "association_invalidated"
+    assert updates[0]["historical_read"] == first["read_reference"]
+    assert "read_reference" not in updates[0] and "access_expression" not in updates[0]
     namespace["reads"].clear()
     assert not any(row.get("read_reference") for row in state.list())
     # A new epoch cannot reconstruct live attestations from self-described values.
@@ -157,3 +254,23 @@ def test_cell_updates_are_changed_only_bounded_and_invalidate_lost_associations(
     many = [{**first, "name": f"source{i}"} for i in range(30)]
     updates = _state_updates([], many, 256)
     assert len(canonical_json(updates).encode()) <= 256 and len(updates) < 8
+
+
+def test_historical_recovery_never_displaces_invalidation_or_invents_source_coverage():
+    from app.agent.ptc import _state_updates
+    from harness.evidence.ledger.models import canonical_json
+
+    reference = source_result()["read_reference"]
+    previous = [{"name": f"source{i}", "read_reference": reference} for i in range(3)]
+    previous.append({"name": "description_only", "description": "Unattested purpose"})
+    minimal = _state_updates(previous, [], 400)
+    assert len(minimal) == 4 and all("historical_read" not in row for row in minimal)
+    rich = _state_updates(previous, [], 2048)
+    assert len(rich) == 4 and len(canonical_json(rich).encode()) <= 2048
+    assert rich == _state_updates(previous, [], 2048)
+    recovered = [row for row in rich if row.get("historical_read")]
+    assert recovered and all(row["historical_read"] == reference for row in recovered)
+    assert all(row["historical_read"]["returned_lines"] == 1 for row in recovered)
+    assert all("description" not in row and "read_reference" not in row for row in rich)
+    assert next(row for row in rich if row["name"] == "description_only").keys() == {"name", "selector", "availability"}
+    assert _state_updates(previous, previous, 2048) == []

@@ -985,6 +985,171 @@ async def test_python_help_exposes_registered_capability_and_project_commands(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["unavailable", "invalid", "backend_failure"])
+async def test_search_rejection_effects_survive_ptc_publication_and_replay(tmp_path, case):
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(tmp_path / "state" / "events")
+    dispatches = []
+
+    def execute(request):
+        raise AssertionError("managed search must not dispatch the sandbox")
+
+    def health():
+        dispatches.append("backend")
+        raise RuntimeError("backend failed after dispatch")
+
+    tools = create_adk_tools(tmp_path, state_root=tmp_path / "state", task_scope="task",
+                             sandbox=cast(Any, SimpleNamespace(execute=execute)),
+                             search_backend=cast(Any, SimpleNamespace(health=health)) if case == "backend_failure" else None)
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
+        cast(BaseLlm, "test-model"), tools=tools, ptc_config=config.notebook_ptc, event_store=events,
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    command = "search grep --pattern x | echo unsafe" if case == "invalid" else "search health"
+    code = f"result = agent.shell.run({command!r})\nassert result['status'] == 'error'\nprint(result['model_text'])"
+    context = SimpleNamespace(state={"task_id": "task"}, invocation_id="inv", function_call_id="search")
+    try:
+        result = await worker.execute_code(code, tool_context=context)
+        assert result["effect"] == ("unknown" if case == "backend_failure" else "none")
+        failures = [e for e in events.read("task") if e.kind == EventKind.CAPABILITY_FAILED]
+        assert len(failures) == 1 and failures[0].payload["effect"] == result["effect"]
+        if case == "backend_failure":
+            assert {"cell", "capability"} <= {r["kind"] for r in unresolved_execution(events.read("task"))}
+        else:
+            assert not unresolved_execution(events.read("task"))
+            replay = await worker.execute_code(code, tool_context=context)
+            assert replay["replayed"]  # Duplicate acknowledgement is not a new execution result.
+            assert not unresolved_execution(events.read("task"))
+            assert len([e for e in events.read("task") if e.kind == EventKind.CAPABILITY_FAILED]) == 1
+        assert dispatches == (["backend"] if case == "backend_failure" else [])
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case,same_cell", [(case, False) for case in
+    ["complete", "partial", "changed", "corrupt", "unknown_effect", "snapshot", "parse"]] +
+    [(case, True) for case in ["complete", "partial", "changed", "corrupt", "unknown_effect", "missing"]])
+async def test_lost_binding_recovers_completed_artifact_not_failed_calculation(tmp_path, case, same_cell):
+    from app.agent.ptc import _completed_attempt_reads, _state_update_notice, _state_updates
+    from harness.evidence.ledger.models import canonical_json
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    original = "base = 31\nunit = 7\n"
+    (workspace / "rates.toml").write_text(original)
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    ptc_config = config.notebook_ptc.model_copy(update={"state": "snapshot"}) if case == "snapshot" else config.notebook_ptc
+    events = JsonlEventStore(state_root / "events")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=workspace, state_root=state_root, task_id="task")),
+        cast(BaseLlm, "test-model"), ptc_config=ptc_config, event_store=events,
+        capabilities={"fixture.fail": lambda _: {"status": "error", "effect": "unknown"}},
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        read_code = f"rates = agent.fs.read({'missing.toml' if case == 'missing' else 'rates.toml'!r}, limit={1 if case == 'partial' else 400})"
+        if not same_cell:
+            captured = await worker.execute_code(read_code)
+            assert captured["status"] == "ok"
+        code = "if :" if case == "parse" else (
+            "agent.mcp.call('fixture.fail', {})\n" if case == "unknown_effect" else ""
+        ) + "unfinished_result = 999\n1 / 0"
+        if same_cell:
+            code = read_code + "\n" + code
+        context = SimpleNamespace(state={"task_id": "task"}, invocation_id="inv", function_call_id="failed")
+        failed = await worker.execute_code(code, tool_context=context)
+        assert failed["status"] == "error"
+        terminal = next(e for e in reversed(events.read("task")) if e.kind == EventKind.REPL_CELL_FAILED)
+        metadata = terminal.payload["state_updates_view"]
+        prior = next((e for e in events.read("task") if e.event_id == metadata["prior_state_event_id"]), None)
+        previous = prior.payload["state"]["manifest"] if prior else []
+        current = (previous if metadata["current_state_policy"] == "prior" else []
+                   if metadata["current_state_policy"] == "empty" else terminal.payload["state"]["manifest"])
+        completed = _completed_attempt_reads([e for e in events.read("task") if e.sequence <= metadata["source_watermark"]],
+                                            "task", terminal.payload["attempt_id"])
+        assert metadata["completed_read_event_ids"] == [row["source_event_id"] for row in completed]
+        updates = _state_updates(previous, current, metadata["max_bytes"], completed)
+        assert updates == terminal.payload["state_updates"]
+        assert metadata["input_hash"] == hashlib.sha256(canonical_json([previous, current, completed]).encode()).hexdigest()
+        assert metadata["content_hash"] == hashlib.sha256(canonical_json(updates).encode()).hexdigest()
+        notice = _state_update_notice(updates, terminal.payload["kernel_epoch"], terminal.payload["cell_id"],
+                                      metadata["recipe_notice_max_bytes"], not failed["state_preserved"])
+        assert metadata["notice_hash"] == hashlib.sha256(canonical_json(notice).encode()).hexdigest()
+        assert metadata["source_watermark"] < terminal.sequence
+        if case == "missing":
+            assert not completed and not updates and failed["effect"] == "none"
+            assert not any(e.payload.get("read_evidence") for e in events.read("task"))
+            return
+        if case in {"parse", "snapshot"}:
+            assert failed["state_preserved"] and failed["kernel"]["live"]
+            if case == "parse":
+                assert not any(row.get("historical_read") for row in updates)
+            # Snapshot rollback can preserve copied values while invalidating
+            # object-identity attestations. Recovery remains historical, not live.
+            assert all("read_reference" not in row for row in updates if row.get("historical_read"))
+            assert (await worker.execute_code("assert rates['data']['text'] == 'base = 31\\nunit = 7\\n'"))["status"] == "ok"
+            return
+        assert not failed["state_preserved"] and not failed["kernel"]["live"]
+        row = next(row for row in updates if row.get("historical_read", {}).get("path") == "rates.toml")
+        reference = row["historical_read"]
+        assert row["availability"] == ("historical_read_only" if same_cell else "association_invalidated")
+        if same_cell:
+            assert "name" not in row and "selector" not in row
+            assert row["source_event_id"] in metadata["completed_read_event_ids"]
+        assert "read_reference" not in row and "access_expression" not in row
+        assert reference["path"] == "rates.toml"
+        assert reference["artifact_uri"] in failed["model_text"]
+        assert "recover_expression" in failed["model_text"] and len(failed["model_text"].encode()) <= ptc_config.max_output_bytes
+        replay = await worker.execute_code(code, tool_context=context)
+        assert replay["status"] == "blocked" and replay["reconciliation_required"]
+        if case == "unknown_effect":
+            assert {"capability", "cell"} <= {row["kind"] for row in unresolved_execution(events.read("task"))}
+            recovery = await worker.execute_code(row["recover_expression"])
+            assert recovery["status"] == "blocked" and recovery["reconciliation_required"]
+            return
+        if case == "changed":
+            (workspace / "rates.toml").write_text("base = 99\nunit = 7\n")
+        elif case == "corrupt":
+            (state_root / "artifacts" / "sha256" / reference["artifact_uri"].rsplit("/", 1)[-1]).write_text("corrupt")
+        recovery = await worker.execute_code(
+            "import json, tomllib\n"
+            "try:\n    agent.state.describe('unfinished_result')\n"
+            "except KeyError:\n    pass\n"
+            "else:\n    raise AssertionError('failed calculation leaked')\n"
+            f"page = {row['recover_expression']}\n"
+            "assert page['status'] == 'ok' and page['data']['complete']\n"
+            "saved = json.loads(page['data']['text'])\nassert saved['status'] == 'ok'\n"
+            "facts = tomllib.loads(saved['data']['text'])\nassert facts['base'] == 31\n"
+            + ("assert 'unit' not in facts\nassert not saved['data']['complete']\n" if case == "partial"
+               else "computed = facts['base'] + 2 * facts['unit']\nassert computed == 45\n")
+        )
+        if case == "corrupt":
+            assert recovery["status"] == "error" and recovery["effect"] == "unknown"
+            assert unresolved_execution(events.read("task"))
+            return
+        assert recovery["status"] == "ok", recovery
+        reads = [e for e in events.read("task") if e.payload.get("read_evidence")]
+        assert len(reads) == 1  # Recovery did not reread the workspace or complete the failed calculation.
+        if case == "changed":
+            current_read = await worker.execute_code(
+                "fresh = agent.fs.read('rates.toml', limit=1)\n"
+                "assert fresh['data']['sha256'] != saved['data']['sha256']\n"
+                "assert '99' in fresh['data']['text']"
+            )
+            assert current_read["status"] == "ok", current_read
+        assert not unresolved_execution(events.read("task"))
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
 async def test_nested_result_remains_in_python_state_until_explicitly_selected(
     tmp_path: Path,
 ) -> None:

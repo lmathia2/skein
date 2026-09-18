@@ -22,6 +22,7 @@ class EventKind(StrEnum):
     TOOL_ARTIFACT_RECORDED = "tool.artifact_recorded"
     ARTIFACT_PUBLISHED = "artifact.published"
     STEERING_RECEIVED = "steering.received"
+    STEERING_EXPOSED = "context.steering_exposed"
     COMPACTION_CREATED = "compaction.created"
     EVIDENCE_NAVIGATION_CREATED = "context.evidence_navigation_created"
     PRIOR_APPLICABILITY_CREATED = "context.prior_applicability_created"

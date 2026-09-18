@@ -73,6 +73,23 @@ class _TimeoutEnvironment(_Environment):
         raise RuntimeError(f"Command timed out after {timeout_sec} seconds")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('remote', [False, True])
+async def test_empty_file_creation_is_a_real_mutation_before_idempotent_reuse(tmp_path, remote):
+    from harness.execution.environment import LocalWorkspaceEnvironment
+
+    environment = (HarborWorkspaceEnvironment(_Environment(), _AsyncBridge(asyncio.get_running_loop()), tmp_path.as_posix())
+                   if remote else LocalWorkspaceEnvironment(tmp_path))
+    for expected_absent, name in ((True, 'guarded'), (False, 'unguarded')):
+        path = f'{name}/empty.txt'
+        first = await asyncio.to_thread(environment.atomic_write, path, b'', expected_absent=expected_absent)
+        assert first.changed and not first.already_applied and first.before_sha256 is None
+        assert (tmp_path / path).is_file() and (tmp_path / path).read_bytes() == b''
+        repeated = await asyncio.to_thread(environment.atomic_write, path, b'', expected_absent=expected_absent)
+        assert repeated.already_applied and not repeated.changed
+        assert repeated.before_sha256 == repeated.after_sha256 == first.after_sha256
+
+
 def test_harbor_sandbox_normalizes_pier_command_timeout(tmp_path: Path) -> None:
     async def exercise() -> None:
         environment = _TimeoutEnvironment()

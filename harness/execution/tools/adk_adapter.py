@@ -549,7 +549,10 @@ class _ManagedTools:
         if backend is None:
             return {
                 "status": "error",
-                "model_text": self.search_unavailable_reason or "FFF search is unavailable",
+                "effect": "none",  # Rejected before backend or sandbox dispatch.
+                "model_text": (self.search_unavailable_reason or "FFF search is unavailable")
+                + ". No search ran. Use a bounded rg/grep query through bash if available, "
+                "or a managed read of a known path; do not retry this unavailable search backend.",
                 "ui_details": {
                     "virtual_operation": f"search.{command.operation}",
                     "backend": "unavailable",
@@ -627,6 +630,7 @@ class _ManagedTools:
         except SearchCommandParseError as exc:
             return {
                 "status": "error",
+                "effect": "none",  # Parsing never dispatches a backend or shell operation.
                 "model_text": f"Invalid virtual search command: {exc}",
                 "ui_details": {
                     "virtual_operation": "search.invalid",

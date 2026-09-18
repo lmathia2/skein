@@ -26,12 +26,19 @@ async def test_owned_prior_tasks_use_completed_applicable_evidence_with_full_cos
     calls = {}
     applicability = []
     reviews = []
+    previous_inputs = {}
 
     async def model(self, request, stream=False):
         producer = not calls or id(self) == next(iter(calls))
         index = calls.get(id(self), 0)
         calls[id(self)] = index + 1
         body = build_openrouter_request_body(request, model=self.model, reasoning_effort="max")
+        previous_input = previous_inputs.get(id(self))
+        if previous_input and body["input"][0] == previous_input[0]:
+            # A cut changes the first item. Within an epoch even steering must
+            # retain its delivery position, not move behind newly generated work.
+            assert body["input"][:len(previous_input)] == previous_input
+        previous_inputs[id(self)] = body["input"]
         for item in body["input"]:
             for content in item.get("content", []):
                 text = content.get("text", "")

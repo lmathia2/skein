@@ -381,6 +381,27 @@ def test_recent_tail_budget_is_independent_of_header_budget() -> None:
     assert estimate_tokens(_serialized([header, recent])) > config.work_packet_tokens
 
 
+@pytest.mark.parametrize("reconstruction", ("fresh", "handoff_tail"))
+def test_fresh_steering_and_preceding_unconsumed_result_survive_cut(reconstruction) -> None:
+    old = text("old " * 5000)
+    call = types.Content(role="model", parts=[types.Part.from_function_call(name="read", args={})])
+    result = types.Content(role="user", parts=[types.Part.from_function_response(name="read", response={"value": 42})])
+    steering = text("New correction; do not lose this instruction")
+    raw = [old, call, result, steering]
+    header = text("handoff")
+    config = ContextConfig(window_management=True, reconstruction=reconstruction,
+                           work_packet_tokens=2000, recent_event_tokens=0)
+    assert select_context_cut(raw, prior_cut=0, header=header, transient=[], config=config,
+                              protected_from=3) == 1
+    assert select_context_cut([old, steering], prior_cut=0, header=header, transient=[], config=config,
+                              protected_from=1) == 1
+    with pytest.raises(ValueError, match="precedes the published cut"):
+        select_context_cut(raw, prior_cut=2, header=header, transient=[], config=config, protected_from=3)
+    with pytest.raises(ValueError, match="required control context"):
+        select_context_cut(raw, prior_cut=0, header=header, transient=[], config=config,
+                           protected_from=3, available_tokens=1)
+
+
 def test_history_capture_only_reads_and_appends_the_new_tail(tmp_path, monkeypatch):
     plugin, _, _, canonical = setup(tmp_path)
     reads = 0

@@ -82,6 +82,62 @@ async def test_root_review_control_survives_small_section_target_in_provider_req
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("same_cell", [False, True])
+async def test_worker_loss_notice_supplies_direct_recovery_for_verified_answer(tmp_path, monkeypatch, same_cell):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = DevelopmentContinuation(tmp_path / "trial", "missing", "findings")
+    trial.command_image = os.getenv("SKEIN_EVAL_DOCKER_IMAGE")
+    calls = 0
+    recovery_handles = []
+    initial_reads = 0
+
+    async def solve(self, request, stream=False):
+        nonlocal calls, initial_reads
+        calls += 1
+        if calls == 1:
+            initial_reads = sum(bool(e.payload.get("read_evidence")) for e in trial.events.read(trial.task_id))
+            code = "reads = agent.parallel([{'operation':'fs.read','arguments':{'path':'config/route_00.toml'}}])"
+            if same_cell:
+                code += "\nunfinished_result = 999\n1 / 0"
+        elif calls == 2 and not same_cell:
+            code = "unfinished_result = 999\n1 / 0"
+        elif calls == 3 - int(same_cell):
+            failure = next(part.function_response.response for content in reversed(request.contents)
+                           for part in content.parts or () if part.function_response
+                           and part.function_response.response.get("status") == "error")
+            assert failure["kernel"]["live"] is False and failure["effect"] == ("observed" if same_cell else "none")
+            notice, _ = json.JSONDecoder().raw_decode(failure["model_text"].split(
+                "State updates (advisory; sources historical):\n", 1)[1])
+            assert notice["program"] == "ptc_state_updates@3"
+            handle = next(row for row in notice["entries"] if row.get("historical_read", {}).get("path") == "config/route_00.toml")
+            recovery_handles.append(handle)
+            code = (
+                "import json, tomllib\n"
+                f"page = {handle['recover_expression']}\n"
+                + notice['decode_completed_read']['then_python'] + "\n"
+                "assert saved_result['status'] == 'ok' and source_text is not None\n"
+                "source = tomllib.loads(source_text)['service']\n"
+                "agent.fs.write('answer.json', json.dumps({'port': source['active_port'], 'protocol': source['protocol']}))"
+            )
+        else:
+            code = None
+        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{calls}", args={"code": code}))
+                if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify the recovered source-backed answer."})))
+        yield LlmResponse(content=types.Content(role="model", parts=[part]),
+                          usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
+                          custom_metadata={"provider_cost_usd": .001})
+
+    monkeypatch.setattr(OpenRouterResponsesLlm, "generate_content_async", solve)
+    result = await run_verified_case(trial)
+    assert recovery_handles and result["terminal"] == "verified_completion", result
+    assert result["first_verification_passed"] and not result["unresolved_execution"]
+    assert result["measurement"]["answer_evidence"]["all_answers_source_available"]
+    # The fixture seeds partial captures before the model starts. Only its first
+    # submitted cell acquires a complete read; recovery/review add no source reads.
+    assert sum(bool(e.payload.get("read_evidence")) for e in trial.events.read(trial.task_id)) == initial_reads + 1
+
+
+@pytest.mark.asyncio
 async def test_real_required_packet_overflow_stops_before_provider_dispatch(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
     trial = DevelopmentContinuation(tmp_path / "trial", "missing", "findings")
@@ -165,8 +221,8 @@ def test_host_oracle_hides_expected_values_and_delegates_nonexact_commands(tmp_p
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rejection", ("malformed", "unauthorized", "invalid_page"))
-async def test_rejected_artifact_load_can_recover_and_complete_from_supported_evidence(tmp_path, monkeypatch, rejection):
+@pytest.mark.parametrize("rejection", ("malformed", "unauthorized", "invalid_page", "search_unavailable", "search_invalid"))
+async def test_rejected_readonly_operation_can_recover_and_complete_from_supported_evidence(tmp_path, monkeypatch, rejection):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
     trial = DevelopmentContinuation(tmp_path / "trial", "missing", "findings")
     trial.command_image = os.getenv("SKEIN_EVAL_DOCKER_IMAGE")
@@ -180,6 +236,8 @@ async def test_rejected_artifact_load_can_recover_and_complete_from_supported_ev
                 "malformed": "agent.artifacts.load('artifact://sha256/abc...')",
                 "unauthorized": "agent.artifacts.load('artifact://sha256/' + '0' * 64)",
                 "invalid_page": "agent.artifacts.load(r['read_reference']['artifact_uri'], offset=-1)",
+                "search_unavailable": "agent.shell.run('search grep --pattern route --path config/route_00.toml')",
+                "search_invalid": "agent.shell.run('search grep --pattern x | echo unsafe')",
             }[rejection]
             code = (
                 "import tomllib\nr = agent.fs.read('config/route_00.toml')\n"
