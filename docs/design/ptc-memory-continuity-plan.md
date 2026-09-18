@@ -866,3 +866,663 @@ usage and cost were accounted with no extra wire attempts. Total cohort cost was
 $0.10907154; known cumulative live spend is $1.99084769 plus the older unpriced failed
 response. Raw `results.json`, `summary.json`, per-trial `measurement`, wire captures,
 and canonical ledgers remain unchanged. Defaults and paid DeepSWE expansion stay held.
+
+#### Frozen capability-routing diagnostic after worker-loss v1
+
+Repeat only `heldout_rollout` and `heldout_units`, both `no_recall` and `findings`,
+once each, at concurrency 4. Use Luna/max, the same cached immutable Docker image,
+12 total model calls, 200k task input, 8192 output, and 900 seconds per trial. All
+learning, checkpoint, acknowledgement, recovery, and verification remain charged.
+Output: `.artifacts/recovery-routing-diagnostic-20260912-v1`. Freeze code and the
+existing fixture hashes before dispatch; do not change code during the cohort.
+
+The intervention is exact PTC artifact byte recovery plus capability-aware guidance
+and valid note-kind guidance, applied to both arms. Preserve available artifact
+recovery in control; never force it to reread sources. Check independent first/final
+verification, completed evidence before answers, one actual worker stop/cut, disabled
+memory attempts, artifact recovery, source/exposure repeats, and complete call/cost
+accounting. Existing infrastructure/false-acceptance stops remain in force.
+
+This is **a repeated routing diagnostic**, not a new held-out sample. The driver's
+`screen_scope=heldout_worker_loss` describes the reused fixture family only. Do not
+pool these repeats into the original held-out result or interpret that label as fresh
+qualification. The ambiguous settlement fixture/result remains untouched. A negative
+or neutral routing result still gets reported; changed-source/repeated-cut gates and
+DeepSWE/default promotion remain held regardless of this repeat's outcome.
+
+#### Capability-routing diagnostic results
+
+The four-trial repeat finished at frozen `b38cf3b` with a clean diff. All four first
+independent verifications passed, all decisive source captures preceded the first
+managed answer write, and every trial exercised its one acknowledged worker stop and
+cut. Initial provider model/instruction/tool/reasoning prefix hashes matched
+(`eb43827861e33eaf598c510874f408a5117a9c9c156221a443214a773ca3316d`). No unknown
+effects, unaccounted calls, missing costs, or extra wire attempts were recorded.
+
+| Reused case / arm | Calls | Learning calls | Source reread lines | Artifact loads after cut | Exact duplicate emitted lines | Cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Rollout / no recall | 9 | 3 | 0 | 2 | 32 | $0.01274170 |
+| Rollout / findings | 8 | 4 | 0 | 0 | 0 | $0.01787898 |
+| Units / no recall | 7 | 2 | 0 | 5 | 24 | $0.01106463 |
+| Units / findings | 8 | 4 | 0 | 0 | 0 | $0.01432052 |
+
+Both controls used the advertised artifact route, with **zero submitted memory-command
+cells**. The only fresh post-cut file reads were checks of `answer.json`, not source
+rediscovery. Control's prior 57 source reread lines became zero in this repeat; do not
+attribute that improvement to memory. Findings continued directly from delivered note
+facts and avoided control's 56 exact source-equivalent re-emitted lines. This exposure
+measure is a conservative exact-line lower bound, excluding ambiguous/transformed text,
+not proof of semantic dependence or all prompt duplication.
+
+Overall calls tied at 16 per arm. Findings cost $0.03219950 versus $0.02380633:
+**35.3% more**, despite lower post-cut recovery work (8 versus 11 continuation calls).
+Its learning/checkpoint phase took 8 versus 5 calls; total input was 125,102 versus
+102,397 and output 14,572 versus 7,793 tokens. In rollout/findings, a safely rejected
+dunder expression ran no capabilities. Its replacement acquired sources but failed
+note validation because finding IDs contained dots; the model then raised, losing
+the heap. The next cell recovered from completed visible evidence and wrote a valid
+checkpoint without another source read. The note rejection itself was correctly
+`effect=none`; no unknown operation was relabeled safe. This is a schema-discoverability
+and preparation-overhead finding, not a compaction failure.
+
+The routing fix works in this diagnostic, but the no-cost-regression gate does not.
+Do not pool this repeat into the original held-out sample or promote defaults.
+Next: make the complete note-input contract discoverable from its validated schema
+instead of chasing individual hidden field constraints in prose. Then freeze explicit
+typed changed-source/repeated-cut cases with positive and negative evidence gates;
+preserve artifact-capable control and charge all checkpoint work. Avoid another repeat
+of these tiny fixtures as purported reliability evidence.
+
+Cohort cost: $0.05600583. Known cumulative live spend: $2.04685352 plus the older
+unpriced failed response. Process exited successfully; no live jobs remain. Regression
+suite: 772 passed, two skipped (774 collected); Ruff clean, Pyright zero errors and
+the existing `__all__` warning; both real Docker worker-loss preflights passed.
+
+#### Two-cut source-revision screen
+
+The next controlled lifecycle screen uses new `staged_dispatch` and
+`staged_allocation` fixtures, once per `no_recall`/`findings` arm (four trials,
+concurrency 4). Keep Luna/max, 12 total model calls, 200k task input, 8192 maximum
+output, and 900 seconds per trial. Use the same cached immutable Docker command
+image and existing actual ADK workflow; do not seed reads, findings, or answers.
+Planned output: `.artifacts/staged-source-revision-live-20260912-v1`.
+
+Both cases acquire source facts, publish a model-written checkpoint, acknowledge,
+and lose the live worker at a context cut. The coordinator then authorizes an exact
+policy-file revision through the ordinary guarded filesystem broker. A successful
+post-cut change receipt, a later completed read of that new version, and a subsequent
+new checkpoint must precede the second acknowledgement/worker loss/cut. Unchanged
+captures remain valid; they are not forced to be reread. Only after the second cut is
+the final typed-output question delivered. Dispatch tests regional deployment
+selection with queued work excluded; allocation tests completed stock minus a revised
+reserve, excluding pending stock. Both tasks specify exact output keys, types, and
+meanings before dispatch.
+
+The independent oracle requires both exercised checkpoints, completed decisive source
+ranges before the managed answer write, matching answer bytes, and the final source
+hashes. Policy edits are explicitly in the task scope from the start; no host-side
+source mutation or baseline rewrite occurs. Stale answers, correct premature answers,
+and correct answers followed by a policy revert are negative end-to-end tests in both
+arms. Separate ordering checks reject pre-cut writes, failed writes, reads before the
+change, and pending reads; later evidence cannot justify an earlier note.
+
+Measurements retain non-overlapping post-cut intervals, including the intermediate
+revision/checkpoint work, with same-version read coverage and exact-line exposure
+reported separately. All learning, schema discovery, failed cells, policy edits,
+checkpoint updates, recovery, and verification count against the shared budget.
+No-recall retains artifact APIs and the capability-aware guidance fixed earlier.
+
+Freeze the code and fixture hashes after deterministic/Docker preflight. The live
+screen must report every planned pair, first and final verification, both actual
+worker epochs/cuts, revision receipts, source freshness, rereads, exposure, calls and
+cost. Stop queued dispatch on infrastructure/provider/measurement or false-acceptance
+failure. A pass is a controlled two-cut lifecycle signal, not broad memory reliability;
+cost regression, budget exhaustion, or unexplained reads prevent efficiency promotion.
+Do not rerun the tuned routing panel or expand DeepSWE/defaults on this screen alone.
+
+#### First staged screen: protocol did not reach the second cut
+
+`.artifacts/staged-source-revision-live-20260912-v1` froze clean `4993810`.
+All four initial worker-loss cuts occurred. Every trial completed the authorized
+policy write and a later read of its expected new version, with zero same-version
+source rereads in the measured first interval. No second cut occurred, no final
+question was delivered, and no answer was independently accepted. **This is not a
+completed two-cut memory-quality comparison.** Preserve every raw result rather than
+counting successful policy updates or nonempty notes as completion.
+
+| Case / arm | Calls | Terminal | Cost |
+| --- | ---: | --- | ---: |
+| Dispatch / no recall | 9 | workflow_blocked | $0.02181947 |
+| Dispatch / findings | 8 | workflow_blocked | $0.02484655 |
+| Allocation / no recall | 6 | workflow_blocked | $0.01163627 |
+| Allocation / findings | 12 | workflow_blocked | $0.03565404 |
+
+The coordinator delivered a second acknowledgement with exactly the same wording and
+`CHECKPOINT_READY` token as the first. Its earlier policy-revision message remained
+pending and said it replaced the acknowledgement request. Wire captures show both
+messages together; model proposals cite the already-completed first acknowledgement
+and attempt to finish preparation instead of submitting the new acknowledgement cell.
+This strongly points to ambiguous stage/steering instructions, not evidence that the
+revised findings were lost. The next diagnostic must retire only the coordinator's
+own completed stage message, use distinct stage/token identities, and verify a fresh
+acknowledgement before advancing. It must not acknowledge unrelated user messages or
+weaken the source/cut/independent-verification gates. Reusing these cases after the
+protocol fix is diagnostic, not a new held-out sample.
+
+Allocation/findings also exposed a PTC result-contract problem: it checked
+`result.get('exit_code') != 0` on successful reserved memory commands, then attempted
+to parse their output as process stdout. Those commands return structured `data`,
+not a subprocess envelope. A note revision had already committed successfully before
+the model raised; later successful note reads triggered the same erroneous guard.
+Three cell failures are correctly retained, with no unknown effects or duplicated
+note commits inferred. Input-schema discovery alone cannot solve output-envelope
+confusion. Trace the shared reserved-command/`shell.run` contract and sibling callers
+before choosing normalization versus explicit branch-aware guidance; do not fabricate
+a process exit or undo a committed note to satisfy generated code.
+
+All 35 provider calls have complete usage/cost accounting and no extra wire attempts.
+Cost was $0.09395633; cumulative known live spend is $2.14080985 plus the older unpriced
+failed response. Process exited successfully; no live jobs remain. Latest regression
+suite: 787 passed, two skipped (789 collected); Ruff clean and Pyright zero errors
+with the existing warning. Both Docker staged preflights passed. The deterministic
+scripts establish execution/order contracts but did not predict the model's ambiguity
+around repeated acknowledgement wording. Defaults and DeepSWE expansion remain held.
+
+#### Staged protocol/result-contract diagnostic v2
+
+Repeat the same four pairs once at
+`.artifacts/staged-source-revision-live-20260912-v2`, with the unchanged Luna/max,
+12-call/200k-input/8192-output/900-second budgets, concurrency 4 and cached Docker
+image. This is a protocol diagnostic on reused cases, not fresh held-out evidence.
+
+Each staged checkpoint now names its number and a distinct `CHECKPOINT_READY_1`
+or `CHECKPOINT_READY_2` token. A later completed cell must print that exact token;
+an old token, failed cell or prose completion cannot advance. Once revision evidence
+and its new checkpoint are complete, the coordinator acknowledges only its own
+completed revision message. Unrelated user steering remains pending under normal
+workflow ownership. The new instruction explicitly supersedes earlier phase requests
+and says not to finish before the next stage/final question arrives.
+
+Both arms also receive the explicit PTC `result_kind` discriminator and a native
+memory-result example. Managed results preserve structured data without fabricated
+process exits; process results preserve actual exit/stream evidence. This paired
+bundle addresses the two observed failure mechanisms; it does not isolate their
+individual causal effects. Freeze code before dispatch, preserve all first/second
+checkpoint and source guards, and report all four outcomes even if the protocol is
+still not exercised. No default or DeepSWE promotion follows from this repeat alone.
+
+#### Staged v2 results: lifecycle fixed, efficiency gate remains open
+
+The diagnostic froze clean `b88eae1` at the v2 path above. All four trials passed
+their first independent verification and accepted completion after both acknowledged
+worker-loss cuts. Each stop records a live worker epoch before and no live worker
+after; no host-seeded cells were used. Every answer write had completed decisive
+source ranges beforehand, and final revised-source hash guards passed. This proves
+the exercised lifecycle and verification contracts, not semantic reliance on memory
+or broad reliability. Initial model/instruction/tool/reasoning prefix hashes matched
+across all four trials.
+
+| Case / arm | Calls | First verification | Post-second-cut same-version source lines | Cost |
+| --- | ---: | --- | ---: | ---: |
+| Dispatch / no recall | 10 | pass | 28 | $0.01508005 |
+| Dispatch / findings | 9 | pass | 27 | $0.02289624 |
+| Allocation / no recall | 12 | pass | 0 | $0.01891752 |
+| Allocation / findings | 11 | pass | 0 | $0.02387838 |
+
+No recall totals 22 calls, 141,724 input tokens, 66,673 uncached input tokens and
+$0.03399757. Findings totals 20 calls, 165,942 input tokens, 93,786 uncached input
+tokens and $0.04677462: **37.6% higher cost**, with only one fewer same-version source
+line reread. Each first interval contains one necessary new-version policy read after
+its authorized write; these are not rediscovery. Answer-file verification reads are
+also excluded from the source-line column. Allocation/control recovered artifacts,
+while allocation/findings used memory without source rereads. Exact emitted duplicate
+source lines in dispatch were 11 versus 10; this conservative metric excludes ambiguous
+or transformed content and is separate from read coverage.
+
+The dispatch/findings first post-second-cut request (`wire/005.json`) contains all
+four findings, the correct revised south/s41/14 facts and source dependencies, with
+zero omitted findings. It nevertheless rereads the unchanged 26-line deployment file
+and one-line policy. Missing fact delivery is therefore not the explanation. The
+serialized advisory block is 7,393 bytes for 670 bytes of finding text; allocation's
+second-cut block is 5,193 bytes for 532 bytes of text. The remaining bytes include
+necessary provenance, read-index and version metadata, not merely disposable overhead,
+but repeated full evidence addresses are a concrete projection target.
+
+Both handoffs also retain obsolete advisory next-actions: dispatch says to await the
+policy revision after it has happened, and allocation says to await the final question
+after delivery. Updating a fact did not supersede these separate note entries. Earlier
+checkpoint instructions also remain in compiled task history despite consuming the
+owned queue message. Investigate authority and representation together; do not erase
+user steering, silently expire all actions at a phase boundary, or label historical
+source captures current. Keep canonical evidence intact and use a deterministic,
+bounded, recoverable prompt projection. Separate cheap freshness validation from full
+unchanged-source rediscovery in the next diagnostic.
+
+No native-memory-as-process failures recurred. Allocation/findings recovered from two
+safely rejected dunder expressions; the safety checks remain intact. All 42 provider
+calls have usage/cost accounting, with no missing costs or extra wire attempts. Cohort
+cost is $0.08077219; cumulative known live spend is $2.22158204 plus the older unpriced
+failed response. The process exited successfully and no live jobs remain. Latest full
+regression: 787 passed, two skipped; Ruff clean, Pyright zero errors with the existing
+warning. The next gate is representation/cost improvement followed by genuinely new
+held-out behavior tests, not another broad DeepSWE run on the strength of this repeat.
+
+#### Compact projection diagnostic v3: frozen scope
+
+`continuation@3` changes only the shared model-facing handoff representation:
+compact advisory JSON, exact repeated finding-context/dependency tables with full
+identities, and explicit historical authority for recorded next-actions. Canonical
+notes, memory program/tool contracts, selection order, phase/cut policy, source guards
+and independent verification are unchanged. Selected entries must expand exactly;
+tables and explanatory overhead count toward the existing budget. Do not infer that
+metadata bytes are all unnecessary, or that smaller prompts imply memory consumption.
+
+Before dispatch, deterministic context, working-set, PTC, worker-loss and staged
+source-change checks must pass, including a real cached-Docker staged preflight. Freeze
+the clean code revision, then run the same four staged trials once at
+`.artifacts/staged-projection-live-20260912-v3`: Luna/max, concurrency 4, the same
+12-call/200k-input/8192-output/900-second limits and immutable cached image. This repeat
+tests live projection usability and preserves all protocol/source/verification gates;
+it is not new held-out reliability. Report all planned trials, actual cuts, first/final
+verification, source availability, interval rereads, exposure, calls, input/uncached
+tokens and total cost. Stop queued work on provider/infrastructure/measurement or
+false-acceptance failure. No automatic benchmark/default expansion follows.
+
+Offline projection of v2's complete selected advisory blocks yields dispatch
+6,444→5,498 and 7,393→6,161 bytes; allocation 4,767→4,743 and 5,193→5,144 bytes.
+These figures include local-reference legends and the new advisory action notice,
+but exclude unchanged control text. Action guidance is budgeted with selected advisory
+entries and cannot displace required control metadata. They are a representation measurement, not a
+prediction that the 37.6% cost gap is closed. A subsequent fresh held-out panel must
+still demonstrate reliable evidence use and reduced rediscovery without cost regression.
+
+#### Compact projection v3 results: reuse improves, checkpoint cost remains
+
+The frozen four-trial cohort at the v3 path above ran clean `c76ab87`. All four passed
+first independent verification and accepted completion after both real acknowledged
+worker-loss cuts. Every managed answer write had completed decisive source evidence
+beforehand, final source hashes passed, and no unknown effects were recorded. All 44
+provider calls share the same model/instruction/tool/reasoning prefix; usage and cost
+are fully accounted, with no extra wire attempts. The process exited successfully.
+
+| Case / arm | Calls | Post-second-cut same-version source lines | Cost |
+| --- | ---: | ---: | ---: |
+| Dispatch / no recall | 9 | 28 | $0.01556757 |
+| Dispatch / findings | 11 | 0 | $0.02688177 |
+| Allocation / no recall | 12 | 0 | $0.02000551 |
+| Allocation / findings | 12 | 0 | $0.02335643 |
+
+Control totals 21 calls, 137,526 input / 69,557 uncached input / 14,023 output tokens,
+and $0.03557308. Findings totals 23 calls, 192,603 input / 110,233 uncached input /
+17,530 output tokens, and $0.05023820: **41.2% higher cost**. Findings source rereads
+are zero versus 28 control lines; dispatch's exact emitted duplicate source lines are
+zero versus 11 (conservative exact-line coverage, not exhaustive transformed lineage).
+The necessary new-version policy read in each first interval and answer-file checks
+are not rediscovery. Allocation/control restores artifacts rather than rereading sources.
+
+Both findings continuations explicitly retrieve memory before answering: dispatch
+queries `working_set`, allocation reads its note. Neither passes a local table label
+as a broker argument or needs a source reread. All projected findings fit without
+omissions, but this does **not** establish direct use of the prompt projection: the
+subsequent memory query returns the full canonical representation. It also does not
+isolate the representation's causal effect from sampling variation or the shared JSON
+formatting change. Do not promote on the dispatch reread result alone.
+
+Phase accounting identifies the next cost seam. Findings uses 9 acquisition calls,
+5 revision calls and 9 final-continuation calls, versus control's 5, 5 and 11. Most
+of the dollar gap occurs before the final continuation. Allocation/findings first
+attempts an unnecessary acknowledgement note: a dunder expression is safely rejected,
+then an uncited observation is rejected, then a next-action note commits before actual
+source acquisition. Allocation/control also has one safely rejected dunder inspection.
+These attempts remain charged; do not weaken the source validator or observation
+citation requirement to make them pass.
+
+The native note-write path returns `_public_note(event)` after publication. Submitted
+PTC cells that print this result can re-emit full learned content and derived metadata:
+allocation's initial source-checkpoint cell emits 4,326 stdout bytes, and dispatch's
+note-submitting acquisition cell emits 6,855 bytes including its read-reference print.
+Both revision cells already select small output. Inspect the shared note-write receipt
+contract and its callers next: distinguish compact commit acknowledgement from full
+note retrieval while preserving CAS, idempotency, publication failures, full canonical
+records and explicit recovery. This is a concrete preparation/output-cost target;
+another handoff wording-only rerun is not the next step.
+
+After that contract is tested, freeze new diverse continuations with repeated evidence
+use and explicit output types, including changed-source and missing/pending evidence
+negatives. Charge all preparation and every query; report the cost crossover rather
+than selecting only long cases where notes win. Retain capable artifact recovery in
+control and keep one-shot cases as the overhead baseline. These staged cases remain
+development diagnostics, not the held-out sample or grounds for broad DeepSWE expansion.
+
+Cohort cost is $0.08581128; cumulative known live spend is $2.30739332 plus the older
+unpriced failed response. Final regression: 792 passed, two skipped (794 collected),
+Ruff clean and Pyright zero errors with the existing warning. Both final cached-Docker
+preflights passed. The full memory reliability/efficiency goal remains open.
+
+#### Compact note-commit receipt canary: frozen scope
+
+The shared note-write return path now acknowledges the committed event/version/hash
+and retained entry count, with enabled recovery commands. Full canonical notes and
+observer publication, CAS, idempotency, source authorization and completion checks are
+unchanged. `memory note read` retrieves latest content; `event.read`, when enabled,
+retrieves the exact older commit with existing paging. PTC/native result guidance and
+note-schema contract version 2 name this distinction; no extra API is introduced.
+
+Offline projection of the five v3 canonical notes yields 367-byte receipt bodies
+versus 564, 4,039 and 6,119 bytes for allocation, and 3,073 and 4,843 for dispatch.
+These are successful result-body sizes, not totals over model requests or predictions
+of saved calls/cost. Models still choose which Python values to print and may explicitly
+reread notes. Invalid input and publication failure must not acquire success receipts.
+
+After focused, full-suite and real cached-Docker checks pass, freeze clean code and run
+only `staged_allocation` × `no_recall`/`findings` once at
+`.artifacts/note-receipt-live-20260912-v1`, Luna/max, concurrency 2, unchanged
+12-call/200k-input/8192-output/900-second trial budgets and cached immutable image.
+Allocation is selected for its observed full-note echo and preparation overhead, not
+for a prior memory win. This two-trial compatibility canary is not held-out evidence or
+a powered cost comparison. Preserve both cut/source/final-verification gates and every
+attempt. Report first verification, receipt shape, actual recovery, checkpoint/query
+cost, interval rereads, input/uncached/output tokens and total cost. Do not expand the
+old staged panel merely to obtain a favorable sample.
+
+The next qualification design must exercise repeated use, not just one delayed answer:
+multiple individually source-gated answer artifacts across distinct continuation
+boundaries, with all setup/notes/queries charged. Include repository dependency and
+call-site mapping, configuration precedence with changed sources, signed cross-file
+reconciliation, and completed-versus-pending validation evidence. Keep matched one-shot
+overhead cases, capable artifact recovery in control, explicit output types, and true
+missing/failed/pending tool-evidence negatives. An earlier correct guess must not become
+valid because evidence is read later. Intermediate artifacts require their own temporal
+source checks; final acceptance must verify every requested artifact through the real
+workflow, not merely the last answer. Freeze cases, repeats, budgets and stopping gates
+before dispatch, and report the cost crossover across use counts without excluding
+short cases where memory loses. This evaluator extension remains to be implemented.
+
+#### Note-receipt canary results
+
+The two-trial allocation canary froze clean `fe087e4` at the receipt path above.
+Both passed first independent verification after both acknowledged worker-loss cuts.
+Every answer had completed decisive source evidence beforehand; final policy/source
+hashes passed and no unknown effects or failed cells were recorded. All 22 provider
+calls are fully accounted with no extra wire attempts, and their actual wire prefixes
+match within and across arms. The process exited successfully; no live jobs remain.
+
+| Arm | Calls | Input / uncached input | Output | Cost | Active wall |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| No recall | 10 | 64,426 / 38,653 | 8,492 | $0.02036761 | 85.5s |
+| Findings | 12 | 85,611 / 31,087 | 7,917 | $0.01836083 | 82.4s |
+
+Findings costs 9.9% less in this single pair despite more calls and total input; fewer
+uncached and output tokens contribute to the observed price difference. This is not
+a powered cost comparison or a causal attribution to the receipt change alone. Both
+arms reread zero source lines. The required revised-policy read is new-version evidence,
+and answer-file checks are separate. Control restores two artifacts in the first interval
+and four in the second; its exact repeated emitted source-equivalent lines are 10 and 14,
+versus none mapped in findings. These counts are conservative and non-overlapping by
+interval, not proof of complete transformed-output lineage.
+
+The model prints and accepts the compact receipt without attempting to access missing
+write-result entries or rereading the note solely to confirm a successful write. Its
+revision reads the note when merged content is needed. After the second worker loss,
+findings directly writes the correct answer from the available handoff, with no memory
+query, artifact load or source read before that write. The trace supports this exercised
+prompt-only continuation path, not universal semantic provenance enforcement. Required
+independent answer/source verification remains unchanged.
+
+Preparation overhead still differs: findings uses 6 acquisition / 2 revision / 4 final
+calls, versus control's 2 / 3 / 5. Findings starts with an unnecessary standalone
+acknowledgement and separates its learning marker from the successful note-write cell.
+The API no longer echoes full note content, but this result does not demonstrate fewer
+setup calls. Avoid another tiny wording repair and repeat on the same allocation task;
+the next implementation is the multi-answer temporal evidence gate and fresh diverse
+one-shot/repeated-use fixtures specified above. Keep protocol overhead separately
+measured and do not force an artificial new note version when a continuation adds no
+new knowledge. Any unchanged checkpoint remains explicitly historical, never fresh by
+default. Negative cases must exercise actual missing/failed/pending tool evidence, not
+only input records whose business status happens to say pending.
+
+Cost is $0.03872844 for this canary; cumulative known live spend is $2.34612176 plus the
+older unpriced failed response. Full regression: 794 passed, two skipped; lint clean,
+typing zero errors with the existing warning, and both cached-Docker preflights passed.
+The compact receipt contract is exercised; held-out reliability, repeated-use cost
+qualification and broader benchmark/default promotion remain open.
+
+#### Per-answer temporal gate implementation
+
+The evaluator now accepts 1–16 host-only answer contracts, each with a normalized
+workspace-relative artifact path, expected JSON value, decisive source ranges/versions,
+and a checkpoint index. The existing single-answer source auditor supplies the evidence
+check for each artifact; no new production tool or memory store is introduced.
+Every answer request must follow its assigned cut and complete before the next cut,
+when present. The supplied cut list must match all canonical published cuts. Failed,
+pending, late, wrong-version or opaque evidence does not become completed support.
+
+The staged coordinator checks an intermediate artifact before closing its interval:
+the expected value, managed-write hash and sufficient prior captures must match, and
+the write must precede the selected checkpoint. It rechecks after the acknowledgement
+cell, which can itself mutate files. A failed recheck requires a fresh checkpoint and
+handshake; acknowledgement idempotency includes the checkpoint event identity so a
+repaired checkpoint does not retrieve an already-consumed request. The existing
+worker-loss/cut/source-revision controls remain in force.
+Rejected answer checkpoints emit one bounded, idempotent repair instruction per
+checkpoint identity without disclosing expected values or hashes. Only the
+coordinator's own rejection message is consumed on repair; unrelated steering is
+untouched. This keeps an ordinary invalid answer from becoming a silent protocol stall.
+
+Final independent verification checks every requested artifact, including earlier
+answers, using strict JSON comparison and current-byte/managed-receipt identity.
+Nested symlink aliases, missing/oversized/invalid answers and a correct final answer
+with a corrupt earlier artifact fail. A legitimate corrected latest submission can
+pass, while `all_submissions_supported` preserves earlier unsupported submissions for
+qualification. That field describes source availability and timing, not the semantic
+correctness of every historical submission; final expected-value checks remain separate.
+No expected value or expected-answer hash is published to the model.
+
+Deterministic checks exercise two-answer windows, real root-workflow acceptance and
+rejection, both note/recall arms, two worker losses, pre-cut guesses, post-write reads,
+missing earlier artifacts, acknowledgement corruption and repair. Existing frozen live
+fixtures are not rewritten; staged tests add an intermediate contract locally. The
+driver manifest is `verified-continuity-v8`. These are evaluator contract tests, not
+held-out model-quality evidence or general production semantic-provenance enforcement.
+Fresh diverse one-shot/repeated-use fixtures and actual tool-evidence negatives are
+still next. No paid run was launched for this gate implementation; cumulative known
+live spend remains $2.34612176 plus the older unpriced failed response.
+
+Final verification: 830 unit/integration tests pass, two skip; full lint is clean
+and typing has zero errors with the existing warning. Four positive/repaired-checkpoint
+Docker preflights pass at `.artifacts/docker-multi-answer-preflight-20260912-v3` using
+the cached immutable network-disabled image. The offline v8 driver manifest at
+`.artifacts/multi-answer-driver-v8-dry-20260912/manifest.json` confirms unchanged legacy
+fixture hashes and decisive source requirements against the prior receipt cohort.
+
+#### Fresh one-use/three-use fixture implementation
+
+`evals/repeated_continuity.py` defines six previously unrun positive cases:
+`reuse_repository_1/3`, `reuse_config_1/3`, and `reuse_reconcile_1/3`. The suffix
+is the number of separately answered continuation questions, not a repetition count.
+All source acquisition, checkpoint work, acknowledgement, recovery, answers and final
+verification remain in the real ADK workflow and count toward the same arm budget.
+
+- Repository: imported named-function call sites, an entry point's cap dependency,
+  and a different entry point's path that does not invoke the cap. Full qualification
+  still requires real coding tasks; these small repositories are mechanism fixtures.
+- Configuration: per-key defaults/environment/service precedence, explicit false
+  versus absence, and a brokered guarded environment revision before the third answer.
+  The two earlier artifacts retain their historical meanings and must stay correct.
+- Reconciliation: alias joins and signed settled amounts across two CSV batches,
+  first per-account and then aggregate. Output types distinguish supporting row IDs
+  from a row count. Pending/failed input records are distractors, **not** substitutes
+  for the still-required actual pending/failed tool-operation controls.
+
+One-use and three-use forms share initial sources, the first question's semantics
+and decisive requirements, model/settings and arm capabilities. Both have a declared
+20-model-call/350,000-input-token ceiling, 8192 output reserve and 900-second wall
+limit. These new-case ceilings are fixed before any provider call; historical cases
+retain their original 12-call/200k ceilings. The v9 manifest records per-case budgets,
+and the measured wrapper and harness input gate use the same case-specific ceiling.
+Configuration's three-use form includes a source revision; report that workload
+separately rather than interpreting all one/three differences as pure reuse amortization.
+
+Each answer follows an acknowledged worker-loss context cut. Before an unchanged
+intermediate boundary, the coordinator accepts the successful answer/marker without
+requiring a new note version. It records the reused note identity when present but
+does not update the note, invent a finding, or call it fresh. The production compactor
+is unchanged: synthetic hard pressure can retain that explicitly stale historical
+note. This does not establish how frequently natural soft-pressure cuts should ask
+for updates. Changed-source boundaries retain completed guarded writes, new-version
+reads and updated checkpoints. Invalid reuse at an initial or changed-source boundary
+fails closed. Final source hashes and every answer's temporal/value checks still apply.
+
+Scripted tests derive answers from recovered source bytes, not hidden oracle values,
+and exercise all six cases in both arms. The control can recover its own artifact;
+it is never instructed to reread sources. Tests verify zero same-version source
+rereads, exact note-write counts, stale-note labelling, three actual worker losses,
+all answer/source contracts, cost accounting and matching bounded budgets. Those
+scripts prove achievable execution paths, not model behavior or held-out success.
+
+This is fixture implementation, not the final dispatch manifest or authorization to
+expand the benchmark. Finish actual completed-versus-failed/pending validation and
+missing-evidence controls next, then freeze repeats, interleaving, stopping gates and
+all hashes before dispatch. Keep paired cost/quality/readouts at both use counts;
+zero baseline duplication remains insufficient evidence of a reread reduction.
+No OpenRouter calls have been made for this implementation, and known cumulative
+live spend remains $2.34612176 plus the older unpriced failed response.
+
+The repeated-use implementation passes 845 unit/integration tests with two skips,
+full compile/lint checks, and typing with zero errors plus the existing warning.
+All six three-use cached-Docker preflights pass at
+`.artifacts/docker-repeated-use-preflight-20260912-v1`. The offline v9 manifest at
+`.artifacts/repeated-use-v9-dry-20260912/manifest.json` describes twelve positive
+trials, retains every legacy fixture hash, and records the new per-case budgets.
+No live jobs were launched. This dry manifest is not the final qualification cohort.
+
+#### Validation controls and frozen next screen
+
+The v10 evaluator adds three actual-operation cases in both arms: a completed checksum
+unittest, a failed checksum unittest, and a missing input. The successful case requires
+both completed source evidence and the matching successful validation before writing.
+Negative cases must withhold the answer. A failed command still has an unknown effect:
+report this as answer withholding, not successful reconciliation or safe abstention.
+Fourteen scripted local and cached-Docker checks include deliberately correct guesses
+without validation and a real subprocess result held before receipt publication. The
+latter tests an actual pending-publication boundary, not a live asynchronous model tool.
+
+Next paid screen is frozen to 18 trials: these three validation cases, followed by
+the six one/three-use cases, each with `no_recall` and `findings`, Luna/max and concurrency
+six. One sample per case/arm is diagnostic, not reliability qualification. Existing
+case budgets remain unchanged (validation 12 calls/200k input; reuse 20 calls/350k).
+The driver freezes source/fixture hashes, image identity and revision before dispatch.
+No provider or fixture errors, false acceptances, measurement errors or unknown cost
+may be excluded from the report; infrastructure/measurement failures stop queued work.
+Do not rerun a failed trial and replace its result.
+
+Report each pair's first verification, accepted result, every answer's source/window/
+validation support, actual worker-loss cuts, source reread intervals, artifact recovery,
+provider-visible exposure, all-in calls/input/uncached/output/cost and terminal category.
+Validation negatives are safety controls, not quality passes or efficiency samples.
+For repeated-use positives, require all answers supported and no quality regression;
+claim reread reduction only where control actually rereads, and require all-in cost
+not to regress before efficiency promotion. A zero-reread control is a floor, not a win.
+The configuration revision is a distinct workload, not pure amortization. Any success
+here requires an independently frozen repeat and then real coding tasks; defaults and
+the broad DeepSWE run remain held. This screen itself does not demonstrate reliability.
+
+#### Diagnostic outcome and next bounded canary
+
+The v10 screen completed all 18 trials for $0.35171184, with fully accounted costs,
+no provider errors and no false acceptance. The detailed frozen record is
+`.artifacts/diverse-continuity-live-20260912-v1/analysis.md`. Reconciliation's one/three-use
+pairs passed in both arms and findings eliminated post-cut artifact loads at 28–35%
+lower cost, but controls had zero source rereads. Output-schema ambiguities invalidate
+several other quality comparisons; v11 now declares JSON-object keys and workspace-relative
+paths explicitly. Original results are retained, not replaced or pooled with corrections.
+
+The changed-source findings run used an obsolete derived value, failed verification,
+then reread five lines to recover. `continuation@4` addresses that observed mechanism:
+inline freshness, no invalidated conclusion text/active status in the default handoff,
+scoped newer capture handles, and withholding of unstructured note excerpts that could
+repeat stale conclusions. Canonical/historical evidence remains unchanged and recoverable.
+
+Next paid canary is limited to six trials: `validation_complete`, `reuse_repository_1`,
+`reuse_config_3`, each with no_recall/findings, Luna/max, concurrency six and unchanged
+case budgets. Run only after focused tests, final regression and cached-Docker preflight.
+Freeze the clean revision, fixture hashes, image and execution settings before dispatch.
+Report schema compliance, first verification, acceptance, every cut and unknown outcome.
+For the invalidation mechanism specifically, require observed invalidated prompt entries,
+correct recomputation from applicable evidence, no same-version source reread and no
+stale first answer. If the model updates all derived findings before the cut and no
+invalidation entry occurs, that trial cannot qualify the new invalidation mechanism.
+Any failed/inconclusive control is retained. No broad expansion or default promotion.
+
+#### Note-cost guidance ablation
+
+The v11 invalidation canary passed all six first verifications but findings cost
+48.3% more on the three-use configuration case. The revision interval accounted for
+$0.02293013 versus control's $0.00854230. Instructions required a note read before
+writing and encouraged initial plan notes; the rejected update appended new IDs for
+already-known derived findings. Its exact canonical merge was 10,088 bytes. Reusing
+only `api_effective` and `importer_effective` IDs yields 7,649 bytes and retains the
+same completed evidence, below the unchanged 8,000-byte cap.
+
+Change only guidance: newest observed version instead of mandatory reread; learned
+evidence instead of an initial plan note; existing IDs for revisions; one selected
+rendering rather than data plus model_text. No automatic semantic merging, new API,
+larger budget, checkpoint bypass, history deletion or verification relaxation.
+
+After deterministic checks and cached-Docker preflight, run six trials with the same
+v11 fixture definitions: completed validation, repository one-use, configuration
+three-use, each no_recall/findings, Luna/max, concurrency six and existing budgets.
+Freeze the new clean revision and hashes before dispatch. Compare paired all-in
+cost, first verification, accepted evidence, actual cuts, rereads and artifact/query
+recovery. Also report initial plan-only notes, note reads, same-ID revisions, rejected
+updates and phase costs. Preserve every outcome. Older runs are diagnostic references,
+not same-request randomized baselines. This single screen cannot promote defaults or
+establish broad reliability; it tests whether the available efficient path is used.
+
+The six-trial guidance screen completed for $0.11372484. Findings passed all three
+first verifications without startup plan notes, note-budget retries or source rereads.
+Two controls did not reach a comparable endpoint: an unexecuted marker falsely claimed
+in prose, and a 20-call stop after correct artifacts but before verification. The full
+record is `.artifacts/note-guidance-live-20260913-v1/analysis.md`; preserve these outcomes.
+
+v12 adds a single pending-marker reminder per stage after prose, using existing
+steering and retaining original responses, source checks, completed marker cells and
+acknowledgement. The reminder is not execution evidence. It also increases both
+repeated-use arms to the existing supported 24-call ceiling (one/three-use budgets
+remain matched); 350k input and 900 seconds are unchanged. This addresses repeated
+control stops at the original arbitrary cap, not a retrospective pass or relaxed
+verification. Validation retains 12/200k. Freeze all changed hashes and limits before
+the next six-trial comparison, using the same cases and arms as the guidance screen.
+
+#### v12 outcome and frozen full-family stability repeat
+
+The six-trial v12 screen at clean `7cbb4f8` passed every first verification and
+completed-evidence gate. All ten worker-loss cuts occurred; no reminders, failed
+capabilities/cells, unknown effects, missing costs or extra wire attempts occurred.
+Findings cost 26.4% less for repository one-use, 14.7% less for changed configuration
+three-use and 18.2% more for completed validation. Aggregate cost fell 12.1%, with
+28 versus 34 model calls. Post-cut artifact loads fell 23 to zero, but both arms had
+zero source rereads. A four-line reread of the generated configuration answer is
+self-inspection, not independent evidence. The cohort cost $0.10507343. Full record:
+`.artifacts/checkpoint-feedback-live-20260913-v1/analysis.md`.
+
+Freeze one full-family stability repeat before further tuning: 18 trials comprising
+`validation_complete`, `validation_failed`, `validation_missing`, then
+`reuse_repository_1`, `reuse_repository_3`, `reuse_config_1`, `reuse_config_3`,
+`reuse_reconcile_1`, `reuse_reconcile_3`, each with `findings` then `no_recall`.
+Reverse the earlier arm scheduling order; keep six concurrent trials, Luna/max,
+the same cached immutable image, v12 fixtures and all per-case budgets. Each arm
+has fresh isolated state. No parameter or instruction change between results.
+Freeze clean revision, fixture and driver hashes before dispatch. Reused cases are
+a stability diagnostic, not new held-out samples. There is no seed guarantee.
+
+Retain all outcomes and stop queued work on infrastructure/provider/measurement
+failure or false acceptance. Validation negatives must withhold answers and are
+reported separately from positive completion and efficiency. Failed commands retain
+unknown-effect semantics; withholding is not reconciliation. Compare all seven
+positive pairs' first verification, source/window/check support, cut exercise,
+per-family/all-in costs, and recovery/source/exposure metrics. Missing accounting,
+unequal endpoints and zero baseline duplication cannot support improvement claims.
+Any failure becomes diagnostic; do not replace it with a passing retry. Even a clean
+repeat only supports designing genuinely new held-out cases with positive baseline
+rediscovery opportunities, not automatic DeepSWE expansion or default promotion.

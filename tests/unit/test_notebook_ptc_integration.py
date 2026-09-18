@@ -1085,9 +1085,18 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
     )
     assert worker.execute_code is not None
     try:
-        await worker.execute_code("agent.fs.read('note.txt')")
+        await worker.execute_code("original_read = agent.fs.read('note.txt')")
+        routes = await worker.execute_code(
+            "process = agent.shell.run('pwd')\n"
+            "assert process['result_kind'] == 'process' and process['exit_code'] == 0\n"
+            "assert isinstance(process['data']['stdout'], str)\n"
+            "managed = agent.shell.run('search health')\n"
+            "assert managed['result_kind'] == 'managed' and 'exit_code' not in managed\n"
+            "assert 'result_kind' in agent.help('shell.run', details=True)['shell.run']['result']\n"
+        )
+        assert routes["status"] == "ok", routes
         loaded = await worker.execute_code(
-            "uri = agent.artifacts.list()['data']['artifacts'][0]['uri']\n"
+            "uri = original_read['read_reference']['artifact_uri']\n"
             "agent.artifacts.load(uri)['data']['text']"
         )
         first = await worker.execute_code(
@@ -1127,6 +1136,56 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
     assert len(publish_events) == 2
     assert publish_events[0].payload["artifact_uri"] == publish_events[1].payload["artifact_uri"]
     assert publish_events[0].payload["host_visible"] is True
+
+
+@pytest.mark.asyncio
+async def test_artifact_byte_pages_roundtrip_unicode_and_binary_without_redaction_bypass(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
+        cast(BaseLlm, "test-model"), ptc_config=config.notebook_ptc,
+        redactor=SecretRedactor(known_secrets=("private-fixture-token",)),
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        result = await worker.execute_code(
+            "import base64\n"
+            "contract = agent.help('artifacts.load', details=True)['artifacts.load']['result']['data']\n"
+            "for payload in ['Aé🙂Z'.encode(), bytes([0, 255, 128, 65]), b'']:\n"
+            "    uri = agent.artifacts.publish(payload, 'Paging_fixture')['data']['uri']\n"
+            "    for limit in [1, 2, 3, 4, 16]:\n"
+            "        offset, restored = 0, b''\n"
+            "        while True:\n"
+            "            response = agent.artifacts.load(uri, offset=offset, limit=limit)\n"
+            "            assert response['status'] == 'ok', response\n"
+            "            page = response['data']\n"
+            "            assert set(page) <= set(contract)\n"
+            "            chunk = page['text'].encode() if page['encoding'] == 'utf-8' else base64.b64decode(page['base64'], validate=True)\n"
+            "            assert chunk == payload[offset:offset + limit]\n"
+            "            assert page['offset'] == offset and page['returned_bytes'] == len(chunk)\n"
+            "            assert page['total_bytes'] == len(payload)\n"
+            "            restored += chunk\n"
+            "            if page['complete']:\n"
+            "                assert page['next_offset'] is None\n"
+            "                break\n"
+            "            assert page['next_offset'] > offset\n"
+            "            offset = page['next_offset']\n"
+            "        assert restored == payload\n"
+            "print('exact_pages_verified')"
+        )
+        assert result["status"] == "ok", result
+        assert "exact_pages_verified" in result["model_text"]
+        denied = await worker.execute_code(
+            "unsafe = b'private-' + b'fixture-token' + bytes([255])\n"
+            "uri = agent.artifacts.publish(unsafe, 'Unsafe_fixture')['data']['uri']\n"
+            "agent.artifacts.load(uri, offset=7, limit=2)"
+        )
+        assert "artifact requires redaction" in denied["model_text"]
+        assert "private-fixture-token" not in json.dumps(denied)
+    finally:
+        worker.close()
 
 
 @pytest.mark.asyncio

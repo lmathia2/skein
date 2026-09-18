@@ -215,7 +215,7 @@ def test_oracle_binds_evidence_to_exact_answer_bytes_and_fails_closed(tmp_path):
     body = b'{"limit":12}'
     (tmp_path / "answer.json").write_bytes(body)
     digest = hashlib.sha256(body).hexdigest()
-    oracle = HostOracleSandbox(Commands(), {"limit": 12}, lambda observed: observed == digest)
+    oracle = HostOracleSandbox(Commands(), {"limit": 12}, lambda observed: observed == {"answer.json": digest})
     assert oracle.execute(SandboxRequest(ORACLE_COMMAND)).exit_code == 0
     (tmp_path / "answer.json").write_bytes(b'{"limit": 12}')  # Same value, no receipt for these bytes.
     assert oracle.execute(SandboxRequest(ORACLE_COMMAND)).exit_code == 1
@@ -224,6 +224,54 @@ def test_oracle_binds_evidence_to_exact_answer_bytes_and_fails_closed(tmp_path):
     broken = HostOracleSandbox(Commands(), {"limit": 12}, corrupt_evidence)
     with pytest.raises(ValueError, match="corrupt evidence"):
         broken.execute(SandboxRequest(ORACLE_COMMAND))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("defect", [None, "unsupported_first", "corrupt_first", "missing_first", "repair_first"])
+async def test_real_workflow_verifies_every_answer_and_reports_unsupported_earlier_writes(tmp_path, monkeypatch, defect):
+    from evals.continuity_cases import decisive_sources
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = DevelopmentContinuation(tmp_path / "trial", "missing", "findings")
+    trial.command_image = os.getenv("SKEIN_EVAL_DOCKER_IMAGE")
+    trial.fixture["permitted_paths"] = ["answer.json", "answers/first.json"]
+    trial.fixture["answers"] = [{"path": path, "expected": trial.fixture["expected"], "checkpoint": 0,
+                                "required": [read.model_dump() for read in decisive_sources(trial.fixture)]}
+                               for path in trial.fixture["permitted_paths"]]
+    calls = 0
+    async def solve(self, request, stream=False):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            code = "import json, tomllib\n"
+            if defect in {"unsupported_first", "repair_first"}:
+                code += "assert agent.fs.write('answers/first.json', '{\"port\":8400,\"protocol\":\"https\"}')['status'] == 'ok'\n"
+            code += (
+                "r = agent.fs.read('config/route_00.toml', offset=12, limit=2)\nassert r['status'] == 'ok'\n"
+                "s = tomllib.loads(r['data']['text'])\n"
+                "answer = json.dumps({'port': s['active_port'], 'protocol': s['protocol']})\n"
+            )
+            if defect not in {"unsupported_first", "missing_first"}:
+                code += "assert agent.fs.write('answers/first.json', answer)['status'] == 'ok'\n"
+            code += "assert agent.fs.write('answer.json', answer)['status'] == 'ok'\n"
+            if defect == "corrupt_first":
+                code += "assert agent.fs.write('answers/first.json', '{}')['status'] == 'ok'\n"
+            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="answers", args={"code": code}))
+        else:
+            part = types.Part(text=json.dumps({"status": "verify", "message": "Verify requested artifacts."}))
+        yield LlmResponse(content=types.Content(role="model", parts=[part]),
+                          usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
+                          custom_metadata={"provider_cost_usd": .001})
+    monkeypatch.setattr(OpenRouterResponsesLlm, "generate_content_async", solve)
+    result = await run_verified_case(trial)
+    accepted = defect in {None, "repair_first"}
+    assert result["accepted"] is accepted, result
+    assert result["first_verification_passed"] is accepted
+    assert result["answer_artifacts"]["answer.json"]["passed"]
+    assert result["passed"] is (defect not in {"corrupt_first", "missing_first"})
+    report = result["measurement"]["answer_contracts"]
+    assert report["all_latest_supported"] is (defect not in {"unsupported_first", "missing_first"})
+    assert report["all_submissions_supported"] is (defect not in {"unsupported_first", "missing_first", "repair_first"})
 
 
 @pytest.mark.asyncio

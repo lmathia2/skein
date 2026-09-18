@@ -283,6 +283,7 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
         },
     },
     "shell.run": {
+        "result_kind": "process|managed (route, not proof of execution or success)",
         "status": "ok|error|blocked|timeout",
         "exit_code": "int|null (process result only; absent for managed CLI views)",
         "data": {"stdout": "str (process only)", "stderr": "str (process only)"},
@@ -292,6 +293,7 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
             "data": "native managed-command payload, not process stdout/stderr",
             "model_text": "bounded rendering of the native payload",
             "memory_query": "result['data'] is the view envelope; result['data']['data'] is its body",
+            "memory_note": "Check result['status'] and result['data']['status']. Writes return a compact receipt in data (event_id, committed version, payload_hash, entry_count, recovery), not text/entries. note read returns full latest text/entries in data. No exit_code or stdout, no json.loads needed; a write receipt is not verification of findings.",
             "read_recover": "body['text'], body['read_evidence'], body['source_coverage']; historical capture only",
         },
     },
@@ -303,6 +305,17 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
     },
     "fs.write": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
     "fs.edit": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
+    "artifacts.load": {
+        "status": "ok|error|blocked",
+        "data": {"uri": "str", "encoding": "utf-8|base64",
+                 "text": "str for exact UTF-8, null otherwise",
+                 "base64": "present only for non-UTF-8 byte pages; decode with base64.b64decode",
+                 "offset": "zero-based byte offset", "returned_bytes": "int", "total_bytes": "int",
+                 "complete": "bool (end of artifact, not whole coverage if offset > 0)",
+                 "next_offset": "next byte offset or null"},
+        "recovery": "Combine exact page bytes before UTF-8/JSON parsing. A completed fs.read artifact is a saved result envelope: check its status, then data.text and source metadata. Historical only.",
+    },
+    "artifacts.list": {"data": {"artifacts": "list of task-authorized uri entries; published entries also carry name/description"}},
     "mcp.call": {"status": "capability-defined result mapping"},
     "parallel": {"status": "list[result] in input order", "allowed": ["fs.read"]},
 }

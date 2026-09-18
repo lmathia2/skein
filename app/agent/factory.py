@@ -626,6 +626,14 @@ class SkeinHarnessFactory:
                 details: dict[str, Any] = memory_service(task_id).handoff(focus=focus)
                 if config.memory.context_programs.mode != "active":
                     details = {"memory": "not model-accessible"}
+                    if worker.kernel_status is not None:
+                        details["retrieval"] = (
+                            "Memory commands are disabled; do not call memory query/history/note. "
+                            "PTC artifacts remain available: agent.artifacts.load(artifact_uri), "
+                            "agent.artifacts.list(); agent.help('artifacts.load', details=True) gives "
+                            "exact byte paging and saved-result decoding. Recovered evidence is historical, "
+                            "not proof of current source freshness."
+                        )
                 unresolved = [receipt for receipt in receipt_store.for_task(task_id)
                               if receipt.status == "started"]
                 details["unresolved_effects"] = {

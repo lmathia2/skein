@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +12,7 @@ from harness.adapters.adk.context import (
     ContextWindowPlugin,
     _complete_cuts,
     _evidence_manifest,
+    _project_advisory,
     _serialized,
     render_handoff,
     select_context_cut,
@@ -18,6 +21,7 @@ from harness.core.config.models import ContextConfig
 from harness.core.context import estimate_tokens
 from harness.core.models import TaskLedger, TaskRequest
 from harness.evidence.ledger import JsonlLedgerStore
+from harness.evidence.ledger.models import canonical_json
 from harness.evidence.state import EventKind, JsonlEventStore
 
 
@@ -98,8 +102,9 @@ async def test_compaction_handoff_carries_prior_read_evidence(tmp_path):
         part.text or "" for content in request.contents for part in content.parts or ()
     )
     assert "src/parser.py" in visible
-    assert '"offset": 21' in visible
-    assert '"reads_newest_first"' in visible
+    advisory = json.loads(visible.split("Advisory memory (not execution authority):\n")[1])
+    assert any(item["kind"] == "reads_newest_first" and item["value"]["offset"] == 21
+               for item in advisory["entries"])
 
 
 @pytest.mark.asyncio
@@ -522,3 +527,104 @@ def test_read_manifest_keeps_old_relevant_paths_and_direct_recovery_handles(tmp_
     assert manifest["reads_newest_first"][0]["artifact_uri"].startswith("artifact://")
     assert manifest["touched_paths"] == ["src/0.py"] and manifest["modified_paths"] == []
     assert len(manifest["reads_newest_first"]) == 32 and manifest["omitted_reads"] == 8
+
+
+@pytest.mark.parametrize("max_tokens", [600, 1300, 10000])
+def test_prompt_projection_roundtrips_selected_findings_and_scoped_versions(max_tokens):
+    dependency = {"path": "policy.toml", "sha256": "a" * 64, "offset": 1, "returned_lines": 1,
+                  "status": "historical_snapshot", "observed_sha256": "a" * 64, "observation_sequence": 40}
+    findings = [{
+        "finding": {"id": f"finding_{index}", "kind": "next_action" if index == 0 else "observation",
+                    "text": f"Recorded conclusion {index}: naïve ✓", "evidence_refs": ["e" * 64],
+                    "status": "disputed" if index == 2 else "active", "conflicts_with": ["older"]},
+        "revision": index + 1, "source_task_id": "current" if index < 3 else "authorized_prior",
+        "note_event_id": "f" * 64, "authority": "advisory", "freshness": "historical_snapshot",
+        "applicability": "current_task_advisory" if index < 3 else "prior_run_requires_current_validation",
+        "provenance": "available", "source_dependencies": [deepcopy(dependency)],
+    } for index in range(4)]
+    # Distinct observed versions, ranges and source-task scopes must not collapse.
+    findings[2]["source_dependencies"].append({**dependency, "sha256": "b" * 64,
+                                            "offset": 2, "observed_sha256": "b" * 64})
+    details = {"history_boundary": 42, "kernel": {"live": False}, "unresolved_effects": ["pending-op"],
+               "retrieval": "memory note read", "working_set": {"program": "working_set", "version": 1,
+               "watermark": 42, "data": {"findings": findings, "omitted_count": 2}}}
+    original = deepcopy(details)
+    rendered = render_handoff(details, max_tokens=max_tokens)
+    required, advisory_text = rendered.split("\nAdvisory memory (not execution authority):\n")
+    metadata = json.loads(required.split("Required continuation metadata:\n")[1])
+    assert metadata["unresolved_effects"] == ["pending-op"]
+    advisory = json.loads(advisory_text)
+    if any(item["value"]["finding"]["kind"] == "next_action" for item in advisory["entries"]):
+        assert "historical proposals" in advisory["recorded_actions"]
+    recovered = []
+    for entry in advisory["entries"]:
+        value = deepcopy(entry["value"])
+        if "finding_context_ref" in value:
+            value.update(advisory["finding_contexts"][value.pop("finding_context_ref")])
+        value["source_dependencies"] = [advisory["source_dependencies"][item["source_dependency_ref"]]
+                                        if "source_dependency_ref" in item else item
+                                        for item in value["source_dependencies"]]
+        recovered.append(value)
+    assert recovered
+    assert all(value == findings[int(value["finding"]["id"].split("_")[1])] for value in recovered)
+    assert len(recovered) + advisory["omitted_count"] == len(findings)
+    assert advisory["upstream_omitted_count"] == 2
+    assert estimate_tokens(rendered) <= max_tokens
+    assert render_handoff(details, max_tokens=max_tokens) == rendered and details == original
+    if max_tokens == 10000:
+        assert recovered == findings
+        assert "finding_contexts" in advisory and "source_dependencies" in advisory
+        inline = {"entries": [{"kind": "findings", "value": value} for value in findings],
+                  "omitted_count": 0, "upstream_omitted_count": 2}
+        assert len(advisory_text.encode()) < len(canonical_json(inline).encode()) * .85
+
+
+@pytest.mark.parametrize("freshness", ["changed_since_capture", "revalidation_required"])
+@pytest.mark.parametrize("prior", [False, True])
+def test_invalidated_conclusion_is_withheld_but_scoped_recovery_survives(freshness, prior):
+    old, new = "a" * 64, "b" * 64
+    capture = {"path": "environments.toml", "sha256": new, "offset": 1, "returned_lines": 5,
+               "artifact_uri": "artifact://sha256/" + "c" * 64}
+    finding = {
+        "finding": {"id": "api_effective", "kind": "observation", "status": "active",
+                    "text": "Obsolete derived values: timeout_ms=2750 and cache=false.",
+                    "related_paths": ["environments.toml"], "evidence_refs": ["artifact://sha256/" + "d" * 64]},
+        "freshness": freshness, "source_task_id": "prior" if prior else "task",
+        "applicability": "prior_run_requires_current_validation" if prior else "current_task_advisory",
+        "note_event_id": "e" * 64, "source_dependencies": [{
+            "path": "environments.toml", "sha256": old, "observed_sha256": new,
+            "offset": 1, "returned_lines": 5, "status": freshness}],
+    }
+    details = {"kernel": {"live": False}, "unresolved_effects": {"count": 1},
+               "note_excerpt": "api timeout_ms=2750 and cache=false are the answer.",
+               "working_set": {"data": {"findings": [finding]}},
+               "evidence_manifest": {"reads_newest_first": [capture]}}
+    original = deepcopy(details)
+    rendered = render_handoff(details, max_tokens=1000)
+    advisory = json.loads(rendered.split("Advisory memory (not execution authority):\n")[1])
+    entry = next(e for e in advisory["entries"] if e["kind"] == "invalidated_findings")["value"]
+    assert not entry["usable_as_current_fact"] and entry["freshness"] == freshness
+    assert "text" not in entry["finding"] and "status" not in entry["finding"]
+    assert entry["finding"]["id"] == "api_effective" and entry["note_event_id"] == finding["note_event_id"]
+    assert entry["newer_recorded_captures"] == ([capture] if not prior and freshness == "changed_since_capture" else [])
+    assert "2750" not in rendered and "cache=false" not in rendered
+    assert any(e["kind"] == "historical_note" and e["value"]["text_withheld"] for e in advisory["entries"])
+    assert estimate_tokens(rendered) <= 1000
+    assert details == original and render_handoff(details, max_tokens=1000) == rendered
+
+
+def test_prompt_projection_does_not_factor_tiny_or_unique_values():
+    for values in [[{"authority": "advisory"}] * 2, [{"source_task_id": "only", "revision": 1}]]:
+        advisory = {"entries": [{"kind": "findings", "value": value} for value in values]}
+        assert _project_advisory(advisory) == advisory
+
+
+def test_optional_action_guidance_cannot_displace_required_metadata():
+    details = {"unresolved_effects": ["pending-op"], "working_set": {"data": {"findings": [
+        {"finding": {"id": "old-action", "kind": "next_action", "text": "too large " * 1000}},
+    ]}}}
+    rendered = render_handoff(details, max_tokens=100)
+    assert "pending-op" in rendered
+    advisory = json.loads(rendered.split("Advisory memory (not execution authority):\n")[1])
+    assert advisory["entries"] == [] and advisory["omitted_count"] == 1
+    assert "recorded_actions" not in advisory

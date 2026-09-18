@@ -293,8 +293,16 @@ class Continuation:
                     snapshots.append({"read_evidence": evidence, "text": payload["data"]["text"]})
         exposure = {"snapshots": snapshots, "records": self.records}
         _atomic_write(self.root / "exposure.json", json.dumps(exposure, ensure_ascii=False))
-        return {"reads": audit_reads(events, cut_sequence=self.cut_sequence),
-                "exposure": audit_emissions(snapshots, self.records, cut_sequence=self.cut_sequence)}
+        measured: dict[str, Any] = {"reads": audit_reads(events, cut_sequence=self.cut_sequence),
+                    "exposure": audit_emissions(snapshots, self.records, cut_sequence=self.cut_sequence)}
+        if self.fixture.get("stages"):
+            cuts = [e.sequence for e in events if e.kind == EventKind.COMPACTION_CREATED]
+            measured["checkpoint_intervals"] = [{
+                "cut_sequence": cut, "until_sequence": end,
+                "reads": audit_reads([e for e in events if e.sequence < end], cut_sequence=cut),
+                "exposure": audit_emissions(snapshots, [r for r in self.records if r["sequence"] < end], cut_sequence=cut),
+            } for cut, end in zip(cuts, [*cuts[1:], events[-1].sequence + 1], strict=True)]
+        return measured
 
 
 def account_response(result: dict[str, Any], response: LlmResponse, estimated: int) -> int:

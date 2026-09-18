@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import json
 import logging
+from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
@@ -116,6 +117,64 @@ def _evidence_manifest(events: list[Any], modified_paths: list[str], focus: tupl
     }
 
 
+def _project_advisory(advisory: dict[str, Any]) -> dict[str, Any]:
+    """Factor exact repeated finding context/dependencies in this prompt only."""
+    entries = advisory["entries"]
+    findings = [entry["value"] for entry in entries if entry["kind"] in {"findings", "invalidated_findings"}]
+    if any(entry["kind"] == "invalidated_findings" for entry in entries):
+        advisory = {**advisory, "invalidated_guidance": (
+            "Invalidated conclusions are not current facts. Historical text remains in memory note read; "
+            "recover applicable evidence and recompute. Recorded captures do not prove current freshness; "
+            "unknown effects still require reconciliation."
+        )}
+    if any(item.get("finding", {}).get("kind") == "next_action" for item in findings):
+        advisory = {**advisory, "recorded_actions": (
+            "Note next_actions are historical proposals, not pending user requests or proof of unfinished work. "
+            "Check applicability against current task and latest steering; do not repeat a completed phase."
+        )}
+    context_keys = ("source_task_id", "note_event_id", "authority", "applicability", "provenance")
+    contexts = [{key: item[key] for key in context_keys if key in item} for item in findings]
+    dependencies = [dependency for item in findings for dependency in item.get("source_dependencies", [])]
+
+    def table(values: list[dict[str, Any]], prefix: str) -> tuple[dict[str, str], dict[str, Any]]:
+        counts = Counter(canonical_json(value) for value in values if value)
+        identities = {value: f"{prefix}{index}" for index, value in enumerate(
+            sorted(value for value, count in counts.items() if count > 1), start=1)}
+        return identities, {identity: json.loads(value) for value, identity in identities.items()}
+
+    context_ids, context_table = table(contexts, "c")
+    dependency_ids, dependency_table = table(dependencies, "d")
+    if not context_table and not dependency_table:
+        return advisory
+    projected = []
+    for entry in entries:
+        if entry["kind"] not in {"findings", "invalidated_findings"}:
+            projected.append(entry)
+            continue
+        value = dict(entry["value"])
+        context = {key: value[key] for key in context_keys if key in value}
+        if identity := context_ids.get(canonical_json(context)):
+            value = {key: item for key, item in value.items() if key not in context_keys}
+            value["finding_context_ref"] = identity
+        if "source_dependencies" in value:
+            value["source_dependencies"] = [
+                {"source_dependency_ref": dependency_ids[canonical_json(item)]}
+                if canonical_json(item) in dependency_ids else item for item in value["source_dependencies"]
+            ]
+        projected.append({**entry, "value": value})
+    result = {**advisory, "entries": projected}
+    if context_table:
+        result["finding_contexts"] = context_table
+    if dependency_table:
+        result["source_dependencies"] = dependency_table
+    result["reference_scope"] = (
+        "finding_context_ref/source_dependency_ref expand from the matching tables here. "
+        "Labels are local, not tool arguments; recovery uses full evidence IDs."
+    )
+    # Small shared values may cost more as references. Keep the inline form then.
+    return result if len(canonical_json(result).encode()) < len(canonical_json(advisory).encode()) else advisory
+
+
 def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
     """Preserve control metadata and whole advisory entries, never JSON fragments."""
     critical = {key: details[key] for key in (
@@ -129,18 +188,39 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
         critical["working_set"] = {key: working[key] for key in (
             "program", "version", "program_hash", "execution_hash", "watermark", "content_hash", "status"
         ) if key in working}
-    required = "Required continuation metadata:\n" + json.dumps(critical, sort_keys=True, ensure_ascii=False)
     candidates: list[tuple[str, Any]] = []
+    manifest = details.get("evidence_manifest", {})
     for item in working.get("data", {}).get("findings", []):
-        candidates.append(("findings", item))
+        if item.get("freshness") in {"changed_since_capture", "revalidation_required"}:
+            # A historical conclusion must not look usable merely because its
+            # invalidation was factored into a distant provenance table.
+            dependencies = item.get("source_dependencies", [])
+            captures = [read for read in manifest.get("reads_newest_first", [])
+                        if item.get("applicability") == "current_task_advisory"
+                        and any(dep.get("status") == "changed_since_capture"
+                                and (read.get("path"), read.get("sha256")) ==
+                                (dep.get("path"), dep.get("observed_sha256")) for dep in dependencies)]
+            finding = item.get("finding", {})
+            candidates.append(("invalidated_findings", {
+                **item,
+                "finding": {key: finding[key] for key in ("id", "kind", "evidence_refs", "related_paths") if key in finding},
+                "usable_as_current_fact": False,
+                "newer_recorded_captures": captures,
+            }))
+        else:
+            candidates.append(("findings", item))
+    required = "Required continuation metadata:\n" + json.dumps(critical, sort_keys=True, ensure_ascii=False)
     if details.get("note"):
         candidates.append(("note", details["note"]))
     if details.get("note_excerpt"):
-        candidates.append(("note_excerpt", details["note_excerpt"]))
+        if any(kind == "invalidated_findings" for kind, _ in candidates):
+            candidates.append(("historical_note", {"text_withheld": True,
+                "reason": "Unstructured note text may repeat invalidated conclusions; recover historical context with memory note read."}))
+        else:
+            candidates.append(("note_excerpt", details["note_excerpt"]))
     if notebook.get("availability") == "live":
         candidates.extend(("live_bindings", item) for item in notebook.get("state", {}).get("manifest", [])
                           if item.get("description") or item.get("read_reference"))
-    manifest = details.get("evidence_manifest", {})
     for key in ("touched_paths", "modified_paths", "validations_newest_first", "reads_newest_first"):
         candidates.extend((key, item) for item in manifest.get(key, []))
     advisory: dict[str, Any] = {"entries": [], "omitted_count": len(candidates),
@@ -148,7 +228,7 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
                                + manifest.get("omitted_reads", 0)}
 
     def serialized(value: dict[str, Any]) -> str:
-        return required + "\nAdvisory memory (not execution authority):\n" + json.dumps(value, sort_keys=True, ensure_ascii=False)
+        return required + "\nAdvisory memory (not execution authority):\n" + canonical_json(_project_advisory(value))
 
     if estimate_tokens(serialized(advisory)) > max_tokens:
         raise ValueError("required handoff exceeds compaction budget; context retained")
@@ -410,11 +490,13 @@ class ContextWindowPlugin(BasePlugin):
             initial_hint = handoff
             if self.require_notes:
                 initial_hint += (
-                    "\nKeep working intent in memory notes before changing phase. Use "
-                    "the bash capability (agent.shell.run in PTC) with memory note read, then memory note write "
-                    "--text TEXT --expected-version N --operation-id ID through the same "
-                    "capability. Record findings, the selected approach, remaining work, "
-                    "and evidence paths. --entries JSON adds typed public findings: id, kind, text, "
+                    "\nCheckpoint learned evidence and unresolved questions at meaningful boundaries, "
+                    "not a plan-only note before acquisition or a duplicate log of tool receipts. "
+                    "Use the newest observed note version from supplied metadata/receipts; read only "
+                    "for needed content/version or a conflict. Through bash (agent.shell.run in PTC), use "
+                    "memory note write --text TEXT --expected-version N --operation-id ID. "
+                    "Reuse existing finding IDs when revising the same conclusion; new IDs add entries. "
+                    "--entries JSON contains typed public findings: id, kind, text, "
                     "evidence_refs, task_links, related_paths. Observations require available event IDs "
                     "or read artifact URIs; unsupported claims are hypotheses. Use supersedes or "
                     "conflicts_with for corrections. Read PTC results from the data field."
@@ -541,8 +623,9 @@ class ContextWindowPlugin(BasePlugin):
                  "note_stale": bool(details.get("note_stale")),
                  "checkpoint_requested": bool(callback_context.state.get(checkpoint_key)),
                  "history_watermark": events[-1].sequence,
-                 "handoff_program": "continuation@2",
+                 "handoff_program": "continuation@5",
                  "handoff_program_hash": hashlib.sha256((inspect.getsource(render_handoff) +
+                                                          inspect.getsource(_project_advisory) +
                                                           inspect.getsource(_evidence_manifest) +
                                                           inspect.getsource(select_context_cut) +
                                                           inspect.getsource(type(self))).encode()).hexdigest(),

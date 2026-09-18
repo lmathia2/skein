@@ -160,6 +160,28 @@ detect external edits that were never observed. A current read/guarded mutation 
 still establish the required source version. Restored historical content never silently
 answers a current filesystem read or authorizes a stale guarded edit.
 
+PTC artifact recovery pages immutable **bytes**, not independently decoded text
+fragments. A valid UTF-8 page returns `encoding=utf-8` and exact `text`; a split
+code point or binary page returns `encoding=base64`, null `text`, and exact base64.
+Offsets and lengths remain byte-based. Join page bytes before parsing; `complete`
+means end-of-artifact, not full coverage when starting at a nonzero offset. Scope
+and content-hash validation remain required. Full-payload redaction is checked
+before paging/encoding; a payload requiring redaction fails closed instead of
+silently changing evidence or exposing a secret across pages. Detailed artifact
+help describes the saved tool-result envelope and its historical-only authority.
+When memory programs are disabled, the PTC handoff advertises artifact recovery;
+memory handoffs advertise only enabled program versions. These are guidance and
+transport fixes, not proof that a model uses recovered evidence reliably.
+
+PTC `shell.run` results explicitly identify `result_kind=process|managed` before
+canonical result capture. This describes the route, not execution or success.
+Memory/search commands keep their native structured `data`; they do not acquire
+fabricated subprocess exits or stdout. Process results retain actual exits and
+streams, including unavailable exits on non-execution. Callers must branch on the
+result kind and validate the relevant status/coverage before using evidence. Help
+and the stable PTC example expose this distinction directly. No new tool or execution
+authority is introduced, and existing receipt/effect semantics remain unchanged.
+
 Recoverable context pressure uses bounded output/artifact indirection or the available
 checkpoint without inventing missing findings. Corrupt captured history, scope/identity
 mismatch, and unresolved effects still fail closed. Terminal reporting must distinguish
@@ -221,6 +243,18 @@ that an arbitrary diff meets acceptance criteria. Analysis/answer modes do not i
 that coding-only requirement.
 
 ## Steering and cancellation
+
+Evaluation answer contracts can additionally require exact validation commands. PTC
+shell request and terminal events carry the command hash; a successful host-observed
+validation must match that operation and precede the answer request. Source text or
+an unpublished, failed, or later result is not completed evidence. This reuses existing
+validation observations and immutable result artifacts; it adds no execution authority.
+The synchronous PTC API exposes no model-facing pending-task state. Its publication
+boundary is tested by holding an actual command result before its receipt is recorded.
+Failed shell effects remain unknown, even when a negative fixture expects failure.
+Reporting that a model withheld an answer does not reconcile those effects or qualify
+the task as safely complete. These evaluator contracts are not a general proof of
+semantic dataflow or relevance for arbitrary production answers.
 
 Steering is durably queued and delivered at configured safe points before model/tool
 work or at a work-batch boundary. Cancellation propagates through owned execution

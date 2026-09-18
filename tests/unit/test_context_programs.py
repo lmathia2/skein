@@ -26,6 +26,8 @@ def test_configured_program_versions_restrict_the_live_service(tmp_path: Path):
     seed(store)
     config = ContextProgramConfig(mode="active", programs={"events.count": 1})
     service = ContextProgramService(store, "task", **config.model_dump())
+    service.working_notes = False
+    assert service.handoff()["retrieval"] == "memory query --program events.count"
     assert service.execute("memory query --program events.count")["status"] == "ok"
     assert service.execute("memory history")["status"] == "unavailable"
     assert service.execute("memory query --program events.count --version 2")["status"] == "unavailable"
@@ -108,11 +110,12 @@ def test_command_receipts_notes_conflicts_restart_and_bounds(tmp_path: Path):
     assert service.execute("memory query --program events.count") == response
     command = "memory note write --text 'remember password=topsecret123' --expected-version 0 --operation-id n1"
     note = service.execute(command)
-    assert note["version"] == 1 and "topsecret" not in note["text"]
+    retained = service.note_read()
+    assert note["version"] == 1 and "topsecret" not in retained["text"]
     assert service.execute(command) == note
     assert service.execute(command.replace("n1", "n2"))["status"] == "conflict"
     restarted = ContextProgramService(JsonlLedgerStore(store.path), "task", working_notes=True)
-    assert restarted.note_read() == note
+    assert restarted.note_read() == retained
     assert len(restarted.handoff()["note_excerpt"]) <= 512
     assert ContextProgramService(store, "task", mode="shadow").execute("memory history")["status"] == "denied"
     assert ContextProgramService(store, "task", mode="shadow").shadow()["status"] == "ok"
@@ -122,6 +125,7 @@ def test_note_sink_repaired_on_retry(tmp_path: Path):
     store = JsonlLedgerStore(tmp_path / "events.jsonl")
     calls = []
     def sink(note):
+        assert note["text"] == "next step" and "receipt_version" not in note
         calls.append(note["event_id"])
         if len(calls) == 1:
             raise OSError("sink publication failed")
@@ -129,7 +133,9 @@ def test_note_sink_repaired_on_retry(tmp_path: Path):
     command = "memory note write --text 'next step' --expected-version 0 --operation-id n1"
     failed = service.execute(command)
     assert failed["status"] == "unavailable" and failed["effect"] == "unknown"
-    assert service.execute(command)["version"] == 1
+    repaired = service.execute(command)
+    assert repaired["version"] == 1 and repaired["receipt_version"] == 1
+    assert "text" not in repaired and repaired["event_id"] == calls[0]
     assert calls[0] == calls[1]
     assert len([e for e in store.read("task") if e.kind == "memory.note"]) == 1
 
@@ -139,14 +145,15 @@ def test_multiline_note_is_data_and_rejected_commands_have_no_effect(tmp_path: P
     text = "Finding one\nFinding two\r\n$(not-a-process); literal shell text"
     command = f"memory note write --text {shlex.quote(text)} --expected-version 0 --operation-id multiline"
     note = service.execute(command)
-    assert note["status"] == "ok" and note["text"] == text
+    retained = service.note_read()
+    assert note["status"] == "ok" and retained["text"] == text
     assert service.execute(command) == note
     for invalid in ("memory note write --expected-version 1 --operation-id missing",
                     "memory note read\nrm answer.json", "memory note read; rm answer.json",
                     "memory note read\x00", "memory note read | anything"):
         result = service.execute(invalid)
         assert result["status"] == "unavailable" and result["effect"] == "none"
-        assert service.note_read() == note
+        assert service.note_read() == retained
 
 
 def test_nested_sink_rejection_cannot_relabel_a_committed_note(tmp_path: Path):

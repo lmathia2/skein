@@ -61,6 +61,18 @@ class MemoryFinding(BaseModel):
         return self
 
 
+class WorkingNoteInput(BaseModel):
+    """Validated update input; canonical note size and evidence are checked at commit."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str
+    expected_version: int = Field(ge=0)
+    operation_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
+    evidence_event_ids: tuple[str, ...] = ()
+    entries: list[MemoryFinding] | None = Field(default=None, max_length=64, strict=True)
+
+
 class ViewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

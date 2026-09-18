@@ -26,7 +26,15 @@ async def test_real_worker_loss_keeps_authorized_recovery_and_completed_evidence
         index, calls = calls, calls + 1
         visible = "\n".join(p.text or "" for c in request.contents for p in c.parts or [])
         if index == 0:
-            code = f"sources = {{p: agent.fs.read(p) for p in {sorted(trial.fixture['files'])!r}}}\n"
+            code = ""
+            if arm == "findings":
+                code += (
+                    "contract = agent.shell.run('memory note schema')\nassert contract['status'] == 'ok'\n"
+                    "assert contract['result_kind'] == 'managed' and 'exit_code' not in contract\n"
+                    "assert 'stdout' not in contract['data']\n"
+                    "assert contract['data']['input_schema']['$defs']['MemoryFinding']['properties']['id']['pattern'] == '^[A-Za-z0-9_-]{1,96}$'\n"
+                )
+            code += f"sources = {{p: agent.fs.read(p) for p in {sorted(trial.fixture['files'])!r}}}\n"
             code += "assert all(r['status'] == 'ok' for r in sources.values())\nprint('ACQUISITION_ONLY_SENTINEL')"
         elif index == 1:
             assert trial.fixture["followup"] not in visible
@@ -38,7 +46,10 @@ async def test_real_worker_loss_keeps_authorized_recovery_and_completed_evidence
                     "for i, (p, text) in enumerate(stored.items())]\n"
                     "note = agent.shell.run('memory note write --text checkpoint --expected-version 0 "
                     "--operation-id heldout-note --entries ' + shlex.quote(json.dumps(entries)))\n"
-                    "assert note['status'] == 'ok'\n"
+                    "assert note['status'] == 'ok' and note['result_kind'] == 'managed'\n"
+                    "assert note['data']['receipt_version'] == 1 and note['data']['version'] == 1\n"
+                    "assert 'entries' not in note['data'] and 'text' not in note['data']\n"
+                    "assert note['data']['entry_count'] == len(entries)\n"
                 )
             else:
                 code += "saved = agent.artifacts.publish(stored, 'Source_checkpoint')\nassert saved['status'] == 'ok'\n"
@@ -51,6 +62,9 @@ async def test_real_worker_loss_keeps_authorized_recovery_and_completed_evidence
             assert trial.fixture["followup"] in visible
             assert '"live": false' in visible
             assert "ACQUISITION_ONLY_SENTINEL" not in visible
+            if arm == "no_recall":
+                assert "Memory commands are disabled" in visible
+                assert "agent.artifacts.load" in visible
             code = "assert 'sources' not in [d['name'] for d in agent.state.list()]\nimport json, csv, tomllib\n"
             if arm == "findings":
                 code += (

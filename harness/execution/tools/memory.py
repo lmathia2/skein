@@ -22,7 +22,7 @@ from harness.evidence.memory.context import (
     project,
 )
 from harness.evidence.memory.lance import LanceMemorySearch
-from harness.evidence.memory.models import MemoryFinding, ReadEvidence
+from harness.evidence.memory.models import MemoryFinding, ReadEvidence, WorkingNoteInput
 from harness.execution.safety.redaction import SecretRedactor
 
 _RESERVED = re.compile(r"^\s*memory(?:\s|$)")
@@ -125,28 +125,71 @@ class ContextProgramService:
         return _public_note(event)
 
     def _publish_note(self, event: Any) -> dict[str, Any]:
-        response = _public_note(event)
+        # A write acknowledges its committed version, not the latest note or the
+        # truth of its findings. Full content stays in the canonical event/read API.
+        receipt = {"status": "ok", "receipt_version": 1, "event_id": event.event_id,
+                   "version": event.payload["version"], "payload_hash": event.payload_hash,
+                   "entry_count": len(event.payload.get("entries", [])),
+                   "recovery": {"latest": "memory note read"}}
+        if self.programs is None or self.programs.get("event.read") == 1:
+            receipt["recovery"]["committed"] = f"memory event --event-id {event.event_id}"
         if self.on_note:
             try:
-                self.on_note(response)
+                self.on_note(_public_note(event))
             except _NoteRejected as exc:
                 # A sink can invoke another note operation. Its rejection does
                 # not undo this already committed note or resolve publication.
                 raise ValueError(str(exc)) from exc
+        return receipt
+
+    def note_schema(self) -> dict[str, Any]:
+        """On-demand configuration contract, not a historical evidence view."""
+        if self.mode != "active" or not self.working_notes:
+            return {"status": "denied", "reason": "working notes disabled", "effect": "none"}
+        contract = {
+            "version": 3, "input_schema": WorkingNoteInput.model_json_schema(),
+            "command": "memory note write --text TEXT --expected-version N --operation-id ID [--evidence IDS] [--entries JSON]",
+            "encoding": "Quote TEXT and JSON with shlex.quote. --evidence is comma-separated public event IDs; --entries is a JSON array, not the whole input object.",
+            "budget_bytes": min(self.max_result_bytes // 2, 8000),
+            "write_result": {
+                "receipt_version": 1, "status": "ok only after canonical commit and publication",
+                "event_id": "exact committed event", "version": "committed note version, not necessarily latest on retry",
+                "payload_hash": "SHA-256 of canonical ledger event payload, not source freshness or verification",
+                "entry_count": "retained entries after merge; no full text/entries echoed",
+                "recovery": "latest note read and, when enabled, exact committed event command",
+            },
+            "commit_rules": [
+                "Use the newest observed note version from metadata or a successful receipt. Read only for needed content/version or a conflict; an identical retry can return an older committed version.",
+                "Writes merge by ID; revise the same finding under its existing ID, not a parallel *_current entry. New IDs represent distinct findings; omitted entries remain. At most 64 merged entries; update IDs must be unique.",
+                "Finding text must be nonblank and at most 2000 UTF-8 bytes. Each link list must be unique; links must be nonempty and at most 4096 UTF-8 bytes each.",
+                "An observation requires evidence_refs. Evidence must be exposed public task evidence: event IDs or read_reference artifact URIs; --evidence accepts event IDs only.",
+                "supersedes/conflicts_with must name existing or same-update finding IDs, never self. Supersession chains need separate revisions; superseded findings cannot be disputed.",
+                "The byte budget covers the complete canonical note after merging, redaction, and attached source dependencies, not just input text. Oversize rejection retains the last checkpoint.",
+                "Reuse an operation ID only for the identical retry. Version conflicts require rereading the note; changed content requires a new operation ID.",
+                "Findings are advisory and historical, not proof of current freshness or task completion.",
+            ],
+        }
+        response = {"status": "ok", "effect": "none", **contract,
+                    "contract_sha256": hashlib.sha256(canonical_json(contract).encode()).hexdigest()}
+        if len(canonical_json(response).encode()) > self.max_result_bytes:
+            return {"status": "unavailable", "effect": "none",
+                    "reason": "note schema exceeds result budget", "budget_bytes": self.max_result_bytes}
         return response
 
     def note_write(self, *, text: str, expected_version: int, operation_id: str,
                    evidence_event_ids: tuple[str, ...] = (), entries: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         if self.mode != "active" or not self.working_notes:
             return {"status": "denied", "reason": "working note writes disabled", "effect": "none"}
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", operation_id) or expected_version < 0:
-            raise _NoteRejected("note requires a safe operation ID and nonnegative expected version")
-        if entries is not None and (not isinstance(entries, list) or len(entries) > 64):
-            raise _NoteRejected("entries require a bounded array of typed findings")
         try:
-            updates = [MemoryFinding.model_validate(self.redactor.redact(item)) for item in entries or []]
+            request = WorkingNoteInput.model_validate({
+                "text": self.redactor.redact_text(text), "expected_version": expected_version,
+                "operation_id": operation_id, "evidence_event_ids": evidence_event_ids,
+                "entries": self.redactor.redact(entries),
+            })
         except ValueError as exc:
             raise _NoteRejected(str(exc)) from exc
+        text, expected_version, operation_id = request.text, request.expected_version, request.operation_id
+        evidence_event_ids, updates = request.evidence_event_ids, request.entries or []
         payload = {"version": expected_version + 1, "expected_version": expected_version,
                    "text": self.redactor.redact_text(text), "evidence_event_ids": list(evidence_event_ids)}
         request_hash = hashlib.sha256(canonical_json({**payload, "updates": [item.model_dump(mode="json") for item in updates]}).encode()).hexdigest()
@@ -177,7 +220,7 @@ class ContextProgramService:
                 return {"status": "unavailable", "reason": "note exceeds budget; last checkpoint retained",
                         "current_version": expected_version, "effect": "none",
                         "required_bytes": required_bytes, "budget_bytes": budget_bytes,
-                        "recovery": "Shorten note text/findings; cite receipts instead of duplicating source hashes and ranges. Retry at the same version with a new operation ID."}
+                        "recovery": "Reuse existing finding IDs for revised claims; omitted entries remain, so parallel new IDs grow the note. Shorten text/findings and cite receipts without copying hashes/ranges into prose. Retry at the same version with a new operation ID."}
             event = self.ledger.append(
                 task_id=self.task_id, source="context_note", source_id=f"{self.task_id}:{operation_id}",
                 kind="memory.note", payload=payload, status="completed", idempotency_key=key,
@@ -188,25 +231,28 @@ class ContextProgramService:
         """Small advisory metadata; caller allocates its existing dynamic budget."""
         try:
             note = self.note_read()
-            hint = (
-                "memory history; memory query --program events.count; "
-                "memory query --program tools.usage; memory note read"
-            )
+            hints = [command for program, command in (
+                ("history.page", "memory history"),
+                ("events.count", "memory query --program events.count"),
+                ("tools.usage", "memory query --program tools.usage"),
+            ) if self.programs is None or self.programs.get(program) == 1]
+            if self.working_notes:
+                hints.append("memory note read")
             if self.programs is None or self.programs.get("reads.lookup") == 1:
-                hint += "; memory query --program reads.lookup --path PATH"
+                hints.append("memory query --program reads.lookup --path PATH")
             if self.programs is None or self.programs.get("read.recover") == 1:
-                hint += (
-                    "; memory query --program read.recover --event-id ID --offset 1 --limit 40 "
+                hints.append(
+                    "memory query --program read.recover --event-id ID --offset 1 --limit 40 "
                     "(offset is relative to captured lines; --byte-offset pages long selected text)"
                 )
-            if self.runtime.semantic_search is not None:
-                hint += "; memory history --query TEXT --retrieval semantic|hybrid (top-k, not exhaustive)"
+            if self.runtime.semantic_search is not None and (self.programs is None or self.programs.get("history.page") == 1):
+                hints.append("memory history --query TEXT --retrieval semantic|hybrid (top-k, not exhaustive)")
             sources = tuple(dict.fromkeys((self.task_id, *self.runtime.authorized_tasks)))[:16]
             if len(sources) > 1:
-                hint += "; authorized source tasks: " + ",".join(sources) + "; use --tasks TASK with retrieval; prior findings are not current workspace evidence"
+                hints.append("authorized source tasks: " + ",".join(sources) + "; use --tasks TASK with retrieval; prior findings are not current workspace evidence")
             details = {"memory": self.mode, "note": {key: value for key, value in note.items()
                                                     if key in {"status", "version", "event_id"}},
-                       "note_excerpt": str(note.get("text", "")), "retrieval": hint}
+                       "note_excerpt": str(note.get("text", "")), "retrieval": "; ".join(hints)}
             details["note"]["entry_count"] = len(note.get("entries", []))
             if self.mode == "active" and (self.programs is None or self.programs.get("working_set") == 1):
                 details["working_set"] = self._query({"--tasks": ",".join(sources)}, "working_set", focus=focus)
@@ -285,11 +331,13 @@ class ContextProgramService:
                     raise ValueError("invalid or duplicate memory option")
                 options[tokens[index]] = tokens[index + 1]
             if operation == "note":
+                if tokens[2] == "schema" and not options:
+                    return self.note_schema()
                 if tokens[2] == "read" and not options:
                     return self.note_read()
                 if (tokens[2] != "write" or set(options) - {"--text", "--expected-version", "--operation-id", "--evidence", "--entries"}
                         or not {"--text", "--expected-version", "--operation-id"} <= options.keys()):
-                    raise ValueError("usage: memory note read|write --text TEXT --expected-version N --operation-id ID")
+                    raise ValueError("usage: memory note schema|read|write --text TEXT --expected-version N --operation-id ID")
                 arguments: dict[str, Any] = dict(text=options["--text"], expected_version=int(options["--expected-version"]),
                                  operation_id=options["--operation-id"],
                                  evidence_event_ids=tuple(filter(None, options.get("--evidence", "").split(","))),

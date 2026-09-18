@@ -34,6 +34,9 @@ For shell processes, stdout/stderr are in `data`. Managed commands such as memor
 return their native payload instead: a memory query's view is `result['data']`, with the
 program body in `result['data']['data']` (including `text` for read.recover). Check both
 the capability and view statuses; absent stdout does not mean empty evidence.
+`result_kind` identifies process versus managed routes, not success. Never require
+exit_code or parse stdout for a managed memory/search result. Process data in Python;
+when rendering a result, select data fields or model_text, not both copies.
 After a successful fs.read, the citation is `result['read_reference']['artifact_uri']`
 at the top level, not inside data. Keep it with the retained text; data.sha256 is the
 source-file hash, not a receipt URI. Reuse the saved result or its state descriptor to
@@ -70,8 +73,10 @@ source_ref = result["read_reference"]["artifact_uri"] if result["status"] == "ok
 print(src[start:start + 4000])
 agent.state.annotate("src", "Source range used for the next edit")
 # Later: agent.state.describe("src", preview=True), then slice the retained range.
-# A read_reference artifact URI can recover exact historical text after worker loss:
+# If memory programs are active, recover a historical range after worker loss:
 # agent.shell.run("memory query --program read.recover --artifact-uri URI --offset 1 --limit 40")
+# Without memory programs, use agent.artifacts.load(URI); agent.help('artifacts.load', details=True)
+# describes exact byte paging and the saved result envelope. Do not retry disabled memory commands.
 
 pages = agent.parallel([
     {"operation": "fs.read", "arguments": {"path": path}} for path in known_paths
@@ -99,16 +104,31 @@ a brief advisory purpose to supported values; it does not durably retain conclus
 When working notes are enabled, record concise public findings and next actions with
 `memory note write --text TEXT --entries JSON --expected-version N --operation-id ID`
 through `agent.shell.run`; quote text and JSON with `shlex.quote`, including multiline text.
-Read `memory note read` for the current version first. Each finding's text is at most
+Use `memory note schema` for the validated input format, live byte budget, and merge rules
+when needed; its input_schema describes the write arguments, while --entries takes only
+the entries array. Use the newest observed note version from supplied metadata or a
+successful receipt; read notes only to recover needed content/version or resolve a conflict.
+Do not start with an empty-note read or plan-only write. Finding IDs
+use 1-96 letters, digits, underscores, or hyphens (not file paths). Each finding's text is at most
 1000 characters and 2000 UTF-8 bytes; the complete note also has a bounded serialized
 budget, including automatically attached source dependencies. Keep --text a short
 checkpoint heading; put conclusions in entries, without repeating receipt hashes/ranges
-in prose. A budget rejection reports required/budget bytes and retains the last checkpoint.
-Each entry has id, kind, text, and optional evidence_refs,
+in prose. Writes merge by ID: revise the same finding under its existing ID, rather than
+adding a parallel *_current entry. New IDs are for distinct findings; omitted entries remain.
+A budget rejection reports required/budget bytes and retains the last checkpoint.
+Successful writes return a compact commit receipt, not full text/entries: check status,
+then retain event_id and version. version identifies the committed note;
+receipt_version identifies the response schema. An identical retry may refer to an
+older commit. Do not reread just to confirm a
+successful write. Use memory note read for current merged content when needed, or
+the receipt's recovery command for the exact committed event if available. A committed
+note is not proof that its findings are true, sources are current, or the task is done.
+Each entry has id, kind (observation, hypothesis, decision, rejected_approach,
+open_question, or next_action), text, and optional evidence_refs,
 task_links, related_paths, supersedes, conflicts_with. An observation requires a public
 event ID or read_reference artifact URI; use hypothesis for an unsupported claim.
-Record useful findings after interpreting evidence or before changing phase, not after
-every read. Use `memory query --program working_set` to recover them. Findings survive
+Checkpoint learned evidence and unresolved questions at meaningful boundaries, not
+ceremonial plans or a second log of tool receipts. Use `memory query --program working_set` to recover them. Findings survive
 binding loss but remain advisory and historical, never proof of current freshness or
 verification. Missing/disabled memory is not an execution failure; continue using
 available evidence. For `.ipynb` files, use `nb read` or

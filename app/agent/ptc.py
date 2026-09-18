@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import base64
 import hashlib
 import json
 import re
@@ -280,6 +281,7 @@ def build_notebook_session(
                 "workspace_may_have_changed": operation not in {"fs.read", "artifacts.load", "artifacts.list", "artifacts.publish"},
             }
             if operation == "shell.run":
+                common["command_sha256"] = hashlib.sha256(str(arguments.get("command", "")).encode()).hexdigest()
                 try:
                     words = shlex.split(str(arguments.get("command", "")))
                 except ValueError:
@@ -314,6 +316,12 @@ def build_notebook_session(
             self.effects.append(effect)
 
         def _record_result(self, common: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+            if common["operation"] == "shell.run":
+                metadata = result.get("ui_details")
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                result = {**result, "result_kind": "managed" if metadata.get("memory") is True
+                          or str(metadata.get("virtual_operation", "")).startswith("search.") else "process"}
             result = redactor.redact({
                 **result,
                 "data": result.get("data") if isinstance(result.get("data"), dict) else {},
@@ -659,12 +667,24 @@ def build_notebook_session(
                 content = _ArtifactResolver(
                     workspace=settings.workspace, state_root=settings.state_root,
                 )._read_content(uri, max_source_bytes=16_000_000)
+                # Check the complete payload before paging/encoding: neither a byte
+                # boundary nor base64 may bypass model-visible secret redaction.
+                decoded = content.decode("utf-8", errors="surrogateescape")
+                if redactor.redact_text(decoded) != decoded:
+                    raise PermissionError("artifact requires redaction; exact recovery is unavailable")
                 selected = content[offset : offset + limit]
+                try:
+                    representation = {"encoding": "utf-8", "text": selected.decode("utf-8")}
+                except UnicodeDecodeError:
+                    # Preserve arbitrary bytes and split UTF-8 code points exactly;
+                    # callers combine decoded pages before interpreting the document.
+                    representation = {"encoding": "base64", "text": None,
+                                      "base64": base64.b64encode(selected).decode("ascii")}
                 return {
                     "status": "ok",
                     "data": {
                         "uri": uri,
-                        "text": selected.decode("utf-8", errors="replace"),
+                        **representation,
                         "offset": offset,
                         "returned_bytes": len(selected),
                         "total_bytes": len(content),

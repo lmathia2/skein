@@ -99,6 +99,75 @@ Implementation ownership, dependencies, and acceptance gates are in the
   - [x] Add an explicit note/recall-off control and unseeded worker-loss qualification
     protocol, sharing PTC artifacts, safe restoration, context-cut policy, and
     independent completed-source verification with treatment.
+  - [x] Preserve exact artifact byte pages across UTF-8/binary boundaries with
+    pre-encoding redaction checks; document envelope recovery and advertise only
+    available memory/PTC recovery routes. Keep any repeat a routing diagnostic.
+  - [x] Expose the complete validated note-input contract on demand, avoiding
+    repeated trial-and-error over hidden ID/kind/size constraints. The routing
+    diagnostic passed 4/4 but findings cost 35.3% more with equal total calls.
+  - [x] Add unseeded two-cut source-revision cases with normal brokered changes,
+    post-change captures, final-source guards, interval measurements, and negative
+    completion/ordering tests. Freeze a four-trial live lifecycle screen separately.
+  - [x] Repair staged acknowledgement identity/owned-message consumption and
+    virtual-command versus process result confusion found in the first staged live
+    screen. All four revisions succeeded but zero reached the second cut; retain
+    that first cohort as an unexercised quality gate. The repaired diagnostic reached
+    both cuts and first verification in 4/4 trials; findings still cost 37.6% more.
+  - [x] Reduce repeated model-facing provenance metadata without losing recoverable
+    evidence identities, versions or uncertainty; distinguish historical advisory
+    next-actions from current steering. Exact-reconstruction and budget tests cover
+    the prompt-only projection; full canonical records remain unchanged. Saved
+    advisory blocks shrink about 1–17%, including the added action-authority notice.
+  - [x] Test the compact projection's live usability, full prompt/cost impact and
+    unchanged-source rereads. All four pass first verification; findings reread
+    zero versus 28 source lines but cost 41.2% more and explicitly requery memory.
+  - [x] Separate note-write commit acknowledgement from full note retrieval after
+    tracing publication/CAS/idempotency callers. Verify bounded receipt bodies, full
+    publication and paged historical recovery, legacy retries and real PTC continuity.
+  - [x] Measure live receipt usability/preparation overhead. Both canary trials pass
+    first verification; findings costs 9.9% less but uses two more calls. Both have
+    zero source rereads; the findings final continuation needs no recovery query.
+  - [x] Implement multi-answer temporal evidence gates: per-artifact values, completed
+    sources before each write, assigned cut windows, receipt/current-byte identity,
+    checkpoint/acknowledgement rechecks and final verification of every artifact.
+    Keep unsupported earlier submissions visible even after a valid correction.
+  - [ ] Freeze fresh diverse repeated-use continuations with one-shot and actual
+    missing/failed/pending tool controls. Account for checkpoint/protocol overhead
+    and retain capable artifacts. The gate is tested; this fresh cohort is not run.
+    - [x] Add repository-call-path, configuration-precedence/revision and signed
+      reconciliation families with matched one/three-use cases and individually
+      verified outputs. Reuse historical checkpoints in unchanged phases without
+      claiming freshness; retain normal new-version capture after source changes.
+    - [x] Add actual completed/failed/missing validation-operation controls and a
+      pending-result-publication race; reject guessed and temporally premature answers.
+    - [x] Freeze and run the 18-trial v10 diagnostic screen. Preserve all results;
+      output-contract ambiguities prevent clean qualification. Explicit JSON object
+      keys and workspace-relative paths are now published by the v11 fixtures.
+    - [x] Fix invalidated finding projection using the actual revised-config trace:
+      stale values remained salient despite factored freshness labels. Verify the
+      scoped recovery handle; retain historical notes and withhold unsafe default text.
+    - [x] Live-test recomputation after invalidation and corrected output schemas:
+      all six first verifications pass; revised-config findings encountered invalidation
+      and recovered without a source reread. This is one targeted regression, not promotion.
+    - [ ] Reduce measured preparation/checkpoint overhead without weakening provenance:
+      findings cost 48.3% more on the changed-source canary, including a bounded
+      note-budget rejection/retry. Inspect accounting, update guidance and exposure.
+      - [x] Replay the rejected merge and correct unnecessary note-read/plan-write
+        guidance. Reusing two existing finding IDs fits 7,649 bytes with full evidence,
+        versus the recorded 10,088-byte rejection under the unchanged 8,000-byte cap.
+      - [x] Measure guidance in the frozen six-trial diagnostic; all findings pass
+        without plan-only notes or note-budget retries, but two controls fail to reach
+        the same stopping point, preventing clean paired efficiency conclusions.
+      - [x] Add bounded missing-marker feedback while retaining actual execution
+        requirements; give both repeated-use arms 24-call headroom under unchanged
+        input/wall budgets. Retain the old unexercised and call-limit outcomes.
+      - [x] Freeze and run the v12 comparison after checks: 6/6 first verifications,
+        completed evidence and all cuts exercised. Findings cost 12.1% less overall
+        but 18.2% more on short validation. Artifact recovery fell 23 to zero;
+        both arms had zero source rereads. No held-out qualification claim.
+      - [ ] Run the frozen full-family v12 stability repeat with actual validation
+        negatives; retain each family and short-task overhead separately. Do not
+        retune between trials or label reused fixtures held out.
   - [ ] Demonstrate evidence-use and actual reread improvements on new held-out
     continuations; distinguish first proposals, verifier rejection/recovery, and
     independently accepted outcomes. Earlier fixture loops bypassed outer verification.

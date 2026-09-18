@@ -181,8 +181,9 @@ def test_registry_rejects_composition_validated_for_a_different_factory(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("ptc", [False, True])
 @pytest.mark.parametrize("mode,windows", [("off", False), ("shadow", False), ("active", False), ("off", True)])
-async def test_handoff_owner_matches_installed_context_plugin(tmp_path, monkeypatch, mode, windows):
+async def test_handoff_owner_matches_installed_context_plugin(tmp_path, monkeypatch, mode, windows, ptc):
     from app.agent import factory
     from harness.adapters.adk.context import ContextWindowPlugin
 
@@ -197,6 +198,7 @@ async def test_handoff_owner_matches_installed_context_plugin(tmp_path, monkeypa
     config["memory"].update(enabled=mode != "off" or windows,
                              implementation="trace_native", context_programs={"mode": mode})
     config["context"]["window_management"] = windows
+    config["notebook_ptc"]["enabled"] = ptc
     assembly = build_harness(parse_harness_composition(payload), RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"))
     try:
         plugin_present = any(isinstance(p, ContextWindowPlugin) for p in assembly.app.plugins)
@@ -204,6 +206,13 @@ async def test_handoff_owner_matches_installed_context_plugin(tmp_path, monkeypa
         if plugin_present:
             names = [p.name for p in assembly.app.plugins]
             assert names.index("context_windows") < next(i for i, name in enumerate(names) if "metrics" in name)
+            plugin = next(p for p in assembly.app.plugins if isinstance(p, ContextWindowPlugin))
+            handoff = plugin.handoff(SimpleNamespace(task_id="task", current_step_id=None,
+                                                     criterion_rows=(), files_modified=()))
+            if mode != "active":
+                assert handoff["memory"] == "not model-accessible"
+                assert ("agent.artifacts.load" in handoff.get("retrieval", "")) is ptc
+                assert "memory query --program" not in handoff.get("retrieval", "")
     finally:
         if assembly.close:
             value = assembly.close()

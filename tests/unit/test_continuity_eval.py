@@ -100,7 +100,10 @@ async def test_seed_cut_recover_and_current_version_gate(tmp_path, monkeypatch, 
             described = await trial.cell(f"print(agent.state.describe('sources', selector=({trial.fixture['target']!r}, 'data', 'text')))")
             assert "'whole_file': False" in described["model_text"]
             cuts = [event for event in trial.ledger.read(trial.task_id) if event.kind == "compaction.created"]
-            assert '"whole_file": false' in cuts[0].payload["header"]["parts"][0]["text"]
+            header = cuts[0].payload["header"]["parts"][0]["text"]
+            advisory = json.loads(header.split("Advisory memory (not execution authority):\n")[1])
+            assert any(item["kind"] == "reads_newest_first" and item["value"].get("source_coverage") == coverage
+                       for item in advisory["entries"])
         if family in {"mutation", "prior"}:
             # A recovered old snapshot is never permission for a stale write.
             path = trial.fixture["target"]
@@ -140,7 +143,9 @@ async def test_arm_cut_and_representation_are_real_config_changes(tmp_path, monk
         if arm != "full_history":
             assert "Checkpoint padding." not in text
         if arm == "findings":
-            assert '"kind": "findings"' in text.replace('\\"', '"')
+            header = cuts[0].payload["header"]["parts"][0]["text"]
+            advisory = json.loads(header.split("Advisory memory (not execution authority):\n")[1])
+            assert any(item["kind"] == "findings" for item in advisory["entries"])
     finally:
         await trial.close()
 

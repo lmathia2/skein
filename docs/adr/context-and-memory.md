@@ -40,6 +40,34 @@ Code-level requirements and test mappings are in the
 
 ## How a prompt is constructed
 
+`memory note schema` exposes the same typed update schema used by note writes,
+plus the configured canonical-byte budget and runtime evidence/merge/idempotency
+rules. It is read-only, on demand, and available only when working notes are active.
+It is not a historical memory program or a new model-facing tool: the existing
+reserved command broker records its result. Schema responses are deterministic and
+hashed; if the whole contract cannot fit the result budget, it is unavailable rather
+than silently partial. Static guidance names this discovery path without embedding
+the full schema in every prompt. Live efficiency improvement remains an eval gate.
+
+Note writes return a versioned compact commit receipt (`receipt_version: 1`), not
+the full note. It carries the committed event ID, note `version`, canonical ledger
+`payload_hash`, retained entry count and enabled recovery commands. `version` is the
+committed version even when an identical retry occurs after later writes; it is not
+a claim about the latest note. The hash identifies the stored payload, including
+internal request identity, not source freshness or the truth of a finding.
+`memory note read` still returns the full latest note; enabled `event.read` retrieves
+the exact committed event, with normal byte paging for large records. No new tool or
+memory program is introduced. Note-schema contract version 2 documents the output.
+
+Canonical commit and full-note publication remain ordered before a successful
+acknowledgement. Publication failure remains unknown and retries repair the same sink
+event without appending another note. Legacy notes and content-sensitive idempotency,
+CAS conflicts, merge/supersession, evidence authorization, redaction and budgets retain
+their existing semantics. Internal note observers still receive the full public note.
+PTC and four-tool bash share the compact return path; callers needing content must
+explicitly retrieve it rather than depending on a write echo. This reduces bounded
+output size, not the amount of source evidence required for completion.
+
 The checked-in worker has one byte-stable provider prefix: model identity, stable
 instruction, tool declarations, and tool configuration. Before every model call it
 compares those canonical bytes with the first call and fails closed if they changed.
@@ -327,6 +355,65 @@ and read recovery handles. Oversized entries are omitted whole, not head/tail-sp
 into invalid JSON; both rendering omissions and upstream selection omissions are counted.
 The selected header remains frozen for its context epoch and complete call/result
 interactions remain together in the exact tail.
+
+`continuation@3` factors exact repeated finding-context and source-dependency objects
+into handoff-local tables. References are explicitly local labels, not broker arguments;
+the tables retain full recovery identities. Unique objects remain inline, and factoring
+is used only when it saves serialized bytes including its explanatory legend. Selection
+budgets the complete projected result, with no dangling references or partial findings.
+Compact canonical JSON removes separator whitespace from advisory data. Required
+kernel/effect metadata remains separate. Canonical notes, `working_set@1`, source
+freshness semantics and memory tool results are unchanged; expanding the selected
+prompt entries reconstructs their original objects exactly.
+
+Recorded next-actions are explicitly historical advisory proposals, not pending user
+requests or proof that a phase remains unfinished. Current task and latest steering
+govern applicability. The renderer does not infer semantic completion, delete note
+entries, acknowledge messages, or silently expire actions on phase changes. Historical
+source versions and conflicts remain available. Deterministic checks establish exact
+reconstruction, bounded output, scope/version preservation and replay stability; live
+efficiency and reliable reuse still require the controlled evaluation gate.
+
+`continuation@4` supersedes the lossless default projection for invalidated findings.
+The live revised-config diagnostic showed that factored freshness labels did not stop
+the model from using salient obsolete values. Freshness now remains inline. Findings
+whose dependencies changed or need revalidation become explicit non-current entries;
+their conclusion text and misleading active status are withheld from the default
+handoff, while identity, dependencies, scope and historical recovery remain. Matching
+newer recorded captures are attached only for current-task changed dependencies, never
+inferred as current filesystem truth or mapped across prior-run scope. If invalidated
+findings exist, unstructured note excerpts are also withheld to avoid repeating the
+same obsolete conclusion without its dependency label. Full notes remain recoverable.
+Canonical notes, historical views and verification authority are unchanged. Other
+selected findings retain the exact factoring/reconstruction contract. The initial
+offline regression uses the actual third-cut failure plus deterministic scope and
+uncertainty cases; live qualification of this change is still required.
+
+The subsequent six-trial canary passed first verification in both arms on all three
+cases. The changed-source findings trial actually received two invalidated entries,
+read the updated note, and submitted the correct revised answer without a source
+reread. This qualifies one regression path only. It does not meet the overall
+efficiency gate: that trial cost 48.3% more than control because setup and checkpoint
+updating outweighed final-continuation savings. Hard note budgets and historical
+provenance remain intact; defaults and broad benchmark expansion stay held.
+
+The next efficiency change corrects note lifecycle guidance, not storage semantics.
+Use the newest observed committed version from task metadata or a receipt, and read
+only for needed content/version or a conflict. CAS remains mandatory; an idempotent
+retry can identify an older commit and must not replace newer observed state. A new
+task does not require an empty-note read or plan-only write. Checkpoint learned
+evidence at useful boundaries, updating existing IDs for revised findings rather
+than appending parallel `_current` entries. The model still decides semantic identity;
+the host never merges claims by text similarity. Supersession/history, source evidence,
+unknown-effect handling and the 8,000-byte canonical bound are unchanged.
+
+This is note-schema guidance version 3 and `continuation@5` initial guidance; the v4
+invalidation representation is retained. The PTC static instruction also says to
+render selected data or model_text, not both copies. Replaying the actual rejected
+update with only its two revised IDs reused reduced 10,088 bytes to 7,649 bytes,
+retaining all evidence references. That demonstrates an available lower-cost path,
+not that a live model will use it reliably. Live cost qualification remains required.
+
 The installed context plugin owns handoff delivery. The workflow omits its duplicate
 persisted summary from the model packet in that configuration, while retaining a
 conservative pre-dispatch token reservation. Without that plugin (including shadow),
@@ -361,6 +448,29 @@ can establish another observed version; it never upgrades historical evidence to
 unqualified claim of current filesystem freshness. Unobserved external changes remain
 outside this observation log and require a new workspace check. Prior-run findings keep
 their source scope and must not authorize a current-task mutation without fresh evidence.
+
+## Repeated-use evaluation
+
+Repeated-use evaluation must verify each requested answer artifact independently,
+not just the last answer. Host-only contracts bind expected values, decisive source
+versions/ranges and an assigned checkpoint window. Completed source evidence must
+precede that artifact's managed write request; later reads cannot justify it retroactively.
+The coordinator checks intermediate artifacts before and after the acknowledgement
+cell, and final verification checks all artifact values and current-byte/receipt hashes.
+Corrections require a fresh write in the still-open window; earlier unsupported
+submissions remain visible in qualification metrics. This is an evaluation policy,
+not a claim that production memory proves arbitrary semantic derivations. Memory
+quality/default promotion still requires fresh live paired results with all overhead
+charged; deterministic gate tests alone do not satisfy it.
+
+In controlled repeated-use fixtures, an unchanged-source question may close its
+answer window with a completed marker while retaining the existing historical note
+or artifact. The evaluator records that note identity but does not manufacture a new
+note version or freshness claim. Source-revision stages cannot use this shortcut:
+they still require completed new-version capture and an updated checkpoint. The
+production compactor's stale-note and bounded hard-pressure fallback semantics are
+unchanged. One-use controls remain in the comparison so note preparation overhead
+cannot be hidden by selecting only repeated-use workloads.
 
 ## Python, SQL, and caching
 
