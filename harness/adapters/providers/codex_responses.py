@@ -222,6 +222,15 @@ def build_codex_request_body(
     return body
 
 
+INVALID_ARGUMENTS_KEY = "_skein_invalid_arguments"
+
+
+class InvalidArgumentsPart(types.Part):
+    """Transient transport evidence; never serialize raw arguments into ADK history."""
+
+    _raw_arguments: str = PrivateAttr(default="")
+
+
 def _function_call_part(item: Mapping[str, Any]) -> types.Part | None:
     name = item.get("name")
     call_id = item.get("call_id") or item.get("id")
@@ -230,11 +239,18 @@ def _function_call_part(item: Mapping[str, Any]) -> types.Part | None:
         return None
     try:
         args = json.loads(arguments) if isinstance(arguments, str) else arguments
-    except json.JSONDecodeError:
-        args = {"_raw_arguments": arguments}
-    if not isinstance(args, dict):
-        args = {"value": args}
-    part = types.Part.from_function_call(name=name, args=args)
+        if not isinstance(args, dict):
+            raise ValueError("arguments must be an object")
+        # The request encoder rejects NaN/Infinity too; do not admit values that
+        # cannot be replayed as JSON on the next provider request.
+        json.dumps(args, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except (ValueError, RecursionError):
+        part = InvalidArgumentsPart(function_call=types.FunctionCall(
+            name=name, args={INVALID_ARGUMENTS_KEY: {"reason": "expected_json_object"}},
+        ))
+        part._raw_arguments = arguments if isinstance(arguments, str) else _json(arguments)
+    else:
+        part = types.Part.from_function_call(name=name, args=args)
     if part.function_call is not None:
         part.function_call.id = call_id
     return part

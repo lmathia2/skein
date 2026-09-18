@@ -176,6 +176,51 @@ commands and available operation, receipt, workspace and artifact references; th
 historical status does not authorize completion. Required handoff overflow uses the
 existing typed `context_control_budget_exceeded` outcome.
 
+`continuation@9` and `work_batch_navigation@2` compact only the live-binding prompt
+view. The full descriptor remains in canonical state events and the state-inspection
+API. The view omits the internal value fingerprint and redundant builtins module
+label; when an exact access expression exists, it replaces the parallel name,
+selector and inspection-expression forms. Without that expression the old locators
+remain. Source references are not shortened: task/operation/artifact identity,
+path/version/range and coverage stay intact, as do origin cell, replay policy, type,
+shape, purpose, freshness, uncertainty and unfamiliar fields. Non-builtin module
+labels remain. Required controls, selection order, output budgets, state validation,
+recovery and verification do not change. Previously captured packets replay their
+original bytes; new publications identify the new renderer version and source hash.
+
+`continuation@11`, `work_batch_navigation@4` and `ptc_state_updates@4`
+share the same live-binding projection. Broker registration records whether the
+unchanged value is the read-result envelope, its data mapping or its source text;
+the view supplies a `content_expression` for that attested form. It does not infer
+the form from a model-authored dictionary or retrofit it onto older descriptors.
+For these entries the form/content locator replaces generic type/size/container and
+duplicate locator fields; complete source references, origin cell, replay policy,
+descriptions and historical freshness remain. Canonical descriptors retain all
+validation metadata. Changed-only comparisons still use full descriptors before
+projection, and invalidations retain priority under the unchanged byte/entry limits.
+No expression runs automatically and no historical source becomes current merely
+because it remains in a live worker. This is a usability correction, not demonstrated
+live-model memory reuse.
+
+Note-checkpoint reminders use `note_checkpoint_delivery@1`, recorded as
+`context.note_checkpoint_exposed` before dispatch. Like steering delivery, the
+record contains the invocation/root identity, original native-history boundary and
+prefix hash, cut identity, task-harness source watermark, exact text and content/source
+hashes. Subsequent requests reinsert the same reminder at that position before new
+model/tool content; writing the requested note does not delete the old message.
+An explicit cut can remove it normally. Restart reconstructs exposures from events
+and rejects corrupt content, source-prefix divergence, duplicate cut identities or
+task mismatches. Later steering retains its relative order and protected boundary.
+This fixes the observed one-request reminder that broke an otherwise stable prefix;
+it does not raise budgets, restore heap state or establish live-model memory quality.
+
+Offline rerendering of all twelve consumed transfer review snapshots retains every
+previously selected evidence entry. Unconstrained packets save up to 2060 bytes;
+the full build/findings packets admit five and three additional entries rather than
+necessarily shrinking. This is deterministic representation evidence, not demonstrated
+live reuse, paid cost reduction or qualification. Report:
+`.artifacts/lean-navigation-offline/analysis.md`.
+
 Scripted provider-request tests verify nested read recovery at review without another
 source read and stable appended navigation across subsequent calls. Deterministic
 tests cover replay, bounds, redaction, partial capture and worker/failure negatives.
@@ -404,6 +449,18 @@ or foreign-task references rather than importing authority from a path or an art
 name. Prior-run findings are retrieved under separate source authorization, not silently
 rewritten as current-task observations.
 
+Citation rejection distinguishes malformed artifact-address syntax from a reference
+unavailable in current-task public evidence. It does not infer a foreign owner from
+absence or guess-repair an address. The bounded recovery reply tells the caller to
+copy exact references from completed read results or authorized historical recovery,
+preserves the last checkpoint/version, and keeps prior-task reuse conditional and
+separately authorized. No rejected reference value or suggested replacement is
+echoed. On-demand note schema version 7 includes the same copy-safe guidance;
+publication, CAS, effect classification, source freshness and citation admission
+are unchanged. Deterministic tests exercise rejection/correction through both the
+note service and the real PTC workflow, including independently verified answers
+and required abstention. Live efficiency is still unqualified.
+
 Explicit conflict links mark both entries disputed; explicit supersession hides old
 entries from the current working set without deleting their historical note versions.
 Subsequent checkpoints retire already-superseded entries from the bounded current set.
@@ -534,12 +591,19 @@ entries with recovery URIs and prioritize relevant paths before recency. These a
 representation choices, not different evidence or execution authorities. No mode makes
 an omitted read unavailable in the canonical evidence store.
 
-PTC can append bounded changed descriptions/read associations and explicit invalidation
+PTC can opt in to bounded changed descriptions/read associations and explicit invalidation
 notices through `notebook_ptc.emit_state_updates`; its result separately reports observed
 kernel liveness and epoch. It does not rewrite prior messages or the static prefix.
 The stable instruction explains selective reuse, advisory annotation,
 typed finding checkpoints, recovery, and conditions requiring a fresh read. Four-tool
 mode shares durable notes/findings without claiming a live Python binding.
+
+The default does not append those notices to every successful cell. In an intact
+worker, submitted cell history plus retained values supported all eligible delayed
+questions without same-version source reacquisition, while eager notices added cost
+and no reread reduction. Phase handoffs remain the bounded place to surface live
+binding descriptions after an actual context transition; explicit `agent.state`
+inspection remains available on demand.
 
 PTC terminal receipts and direct-tool `workspace.effect_observed` events retain touched
 paths, returned content hashes, and conservative workspace-change uncertainty. The
@@ -843,6 +907,34 @@ recipe in its program hash and records the reproduced notice hash and byte budge
 Model execution of this example is advisory, not host evidence acquisition or
 proof that the containing failed cell completed. Live decoding efficiency remains
 unqualified until separately measured.
+
+Ordinary PTC cut and work-batch handoffs now use the same saved-read decoding
+contract (`continuation@10`, `work_batch_navigation@3`). Eligible completed JSON
+read receipts carry an exact load expression and expected source path/hash/range;
+one shared recipe checks a complete offset-zero UTF-8 page, decodes the saved result
+envelope, checks its source identity, and exposes `source_text` and the exact
+`source_citation` value. The latter comes from the authorized loaded page, not a
+manually reconstructed hash or an assumed nested `read_reference` in the saved body.
+
+This is optional model-executed recovery, never automatic acquisition or source
+execution. Four-tool handoffs do not receive PTC recipes. Required metadata has
+priority; when the recipe does not fit, the original whole evidence pointer can
+still fit within the unchanged budget. Missing or incomplete pages do not establish
+a recovered value; mismatched identity and contradictory captured coverage fail
+closed. Complete artifact bytes remain distinct from complete source coverage and
+current freshness. Existing captured handoffs replay their original bytes; new
+program hashes include the shared recipe.
+
+The deterministic checks include real ADK/PTC continuations across repository,
+configuration and reconciliation tasks, one or three worker-loss cuts, authorized
+source revision, exact citation reuse, and independent first-pass verification with
+zero overlapping source rereads. All 119 focused checks and 14 cached-Docker
+handoff lifecycle cases pass in `.artifacts/ordinary-read-recovery-focused` and
+`.artifacts/ordinary-read-recovery-docker`. These use scripted model decisions;
+live model uptake, prompt cost and held-out memory reliability remain unqualified.
+The combined unit/integration regression passes 1,244 tests with three skips at
+`.artifacts/ordinary-read-recovery-regression/pytest.xml`; lint and compilation pass,
+and typing has zero errors plus the existing `__all__` warning.
 
 ## Rejected alternatives
 

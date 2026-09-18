@@ -91,7 +91,7 @@ def completed_validations(events: list[LedgerEvent], command: str, required: lis
 
 def audit_answer_contracts(
     events: Iterable[LedgerEvent], specifications: list[AnswerSpec], cuts: list[int],
-    *, prior: PriorEvidence | None = None,
+    *, prior: PriorEvidence | None = None, boundary_kind: str = "compaction.created",
 ) -> dict[str, Any]:
     """Check each submitted artifact's own evidence and declared cut interval."""
     if not 1 <= len(specifications) <= 16 or len({spec.path for spec in specifications}) != len(specifications):
@@ -99,7 +99,9 @@ def audit_answer_contracts(
     if any(type(cut) is not int or cut < 1 for cut in cuts) or cuts != sorted(set(cuts)):
         raise ValueError("answer windows require increasing checkpoint sequences")
     retained = sorted(events, key=lambda event: event.sequence)
-    published_cuts = sorted(event.sequence for event in retained if event.kind == "compaction.created")
+    if boundary_kind not in {"compaction.created", "evaluation.learning_checkpoint"}:
+        raise ValueError("unsupported answer-window boundary")
+    published_cuts = sorted(event.sequence for event in retained if event.kind == boundary_kind)
     if cuts != published_cuts:
         raise ValueError("answer windows must include every published checkpoint")
     reports = {}
@@ -121,7 +123,7 @@ def audit_answer_contracts(
                               "latest_supported": latest.get("status") == "available" and bool(latest.get("within_window")) and bool(latest.get("validations_completed")),
                               "all_submissions_supported": bool(audit["answers"]) and all(
                                   a["status"] == "available" and a["within_window"] and a["validations_completed"] for a in audit["answers"])}
-    return {"version": "multi-answer-evidence-v3", "artifacts": reports,
+    return {"version": "multi-answer-evidence-v4", "boundary_kind": boundary_kind, "artifacts": reports,
             "all_latest_supported": all(a["latest_supported"] for a in reports.values()),
             "all_submissions_supported": all(a["all_submissions_supported"] for a in reports.values())}
 

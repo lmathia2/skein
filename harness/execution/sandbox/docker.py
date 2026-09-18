@@ -85,6 +85,7 @@ class DockerSandbox:
             "LANG": "C.UTF-8",
             "LC_ALL": "C.UTF-8",
             "PYTHONUNBUFFERED": "1",
+            "PYTHONPYCACHEPREFIX": "/tmp/pycache",
             **self.environment,
             **dict(request.environment),
         }

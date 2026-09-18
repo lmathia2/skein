@@ -201,6 +201,8 @@ async def test_handoff_owner_matches_installed_context_plugin(tmp_path, monkeypa
     config["notebook_ptc"]["enabled"] = ptc
     assembly = build_harness(parse_harness_composition(payload), RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"))
     try:
+        names = [p.name for p in assembly.app.plugins]
+        assert names.index("harness_metrics") < names.index("invalid_tool_arguments")
         plugin_present = any(isinstance(p, ContextWindowPlugin) for p in assembly.app.plugins)
         assert captured["deps"].plugin_owns_handoff == plugin_present == (mode == "active" or windows)
         assert (captured["deps"].work_batch_handoff is not None) is plugin_present

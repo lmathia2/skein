@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
+
+import pytest
 
 from harness.execution.safety import (
     ApprovalAction,
@@ -59,6 +62,66 @@ def test_classifier_rejects_shell_and_git_bypass_forms() -> None:
     assert classify_command("cat ../../etc/passwd") == CommandRisk.UNKNOWN
     assert classify_command("npx package command") == CommandRisk.DEPENDENCY_INSTALL
     assert classify_command("npx --no-install eslint .") == CommandRisk.BUILD_OR_TEST
+
+
+@pytest.mark.parametrize("source", [
+    'from router import route; import json; print(route("GET", "/api/admin/logs"))',
+    "import json, router; rules=json.load(open('routing.json')); print(router.route(rules, 'POST', '/jobs/new'))",
+    "value = 1\nprint(value)",
+    "print('left|right && up;down')",
+])
+def test_classifier_keeps_quoted_program_text_in_one_argument(source: str) -> None:
+    command = shlex.join(["python", "-c", source])
+    assert classify_command(command) == CommandRisk.BUILD_OR_TEST
+
+
+@pytest.mark.parametrize("separator", [";", "\n", "&&", "||", "|", "&"])
+def test_quoted_program_cannot_hide_a_following_shell_command(separator: str) -> None:
+    command = shlex.join(["python", "-c", "print('a;b|c')"])
+    assert classify_command(command + separator + "curl https://example.com") == CommandRisk.NETWORK_ACCESS
+    assert ApprovalPolicy().decide(command + separator + "git push origin main").action == ApprovalAction.REQUIRE_APPROVAL
+
+
+@pytest.mark.parametrize("command", [
+    "printf '%s' ';' '|' '&'",
+    r"printf left\;right\|up\&down",
+    'printf "left;right|up&down"',
+])
+def test_literal_shell_separators_remain_arguments(command: str) -> None:
+    assert classify_command(command) == CommandRisk.READ_ONLY
+
+
+@pytest.mark.parametrize("command", [
+    "echo # '\ncurl https://example.com\n#'",
+    "echo $'escaped\\'; curl https://example.com'",
+    "echo ${COMMAND}",
+    "echo (curl https://example.com)",
+    "echo 'unclosed; curl https://example.com",
+    "echo trailing\\",
+    'echo "$(curl https://example.com)"',
+    'echo `curl https://example.com`',
+])
+def test_unsupported_or_malformed_shell_syntax_is_not_automatic(command: str) -> None:
+    assert ApprovalPolicy().decide(command).action != ApprovalAction.ALLOW
+
+
+@pytest.mark.parametrize("suffix", [
+    "; rm -rf /", " | sudo rm -rf /", " && git reset --hard", " & git push --force",
+])
+def test_quoted_argument_never_hides_destructive_suffix(suffix: str) -> None:
+    command = shlex.join(["printf", "%s", "a;b|c"]) + suffix
+    assert ApprovalPolicy().decide(command).action == ApprovalAction.DENY
+
+
+@pytest.mark.parametrize("prefix", [r"printf \>", r"printf \<", "printf '>'", 'printf ">"'])
+def test_literal_redirect_character_cannot_hide_background_command(prefix: str) -> None:
+    assert ApprovalPolicy().decide(prefix + "&curl https://example.com").action != ApprovalAction.ALLOW
+
+
+@pytest.mark.parametrize("command", ["printf ok 2>&1", "printf ok &> output.log"])
+def test_descriptor_redirection_is_not_a_background_command(command: str) -> None:
+    assert classify_command(command) == CommandRisk.READ_ONLY
+    assert classify_command(command + "&curl https://example.com") == CommandRisk.NETWORK_ACCESS
 
 
 def test_policy_requires_approval_and_never_auto_allows_destructive() -> None:

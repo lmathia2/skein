@@ -33,7 +33,7 @@ def test_note_schema_matches_write_validation_and_is_bounded_read_only(tmp_path)
     before = service.ledger.read("task")
     response = service.execute("memory note schema")
     assert response["status"] == "ok" and response["effect"] == "none"
-    assert response["schema_version"] == 6
+    assert response["schema_version"] == 7
     assert "version" not in response  # No task-note CAS revision in this read-only contract.
     assert response["input_schema"] == WorkingNoteInput.model_json_schema()
     assert response["budget_bytes"] == 8000
@@ -186,6 +186,29 @@ def test_observations_cannot_cite_private_forged_or_foreign_evidence(tmp_path):
         assert result["status"] == "unavailable"
     assert service.note_read()["version"] == 0
     assert write(service, [{"id": "x", "kind": "hypothesis", "text": "unproven"}])["status"] == "ok"
+
+
+@pytest.mark.parametrize("bad_reference,issue", [
+    ("artifact://sha256/" + "a" * 63, "malformed_artifact_address"),
+    ("artifact://sha256/" + "c" * 64, "unavailable_current_task_reference"),
+    ("unknown-event", "unavailable_current_task_reference"),
+])
+def test_missing_note_citation_recovers_exact_local_reference_without_mutation(tmp_path, bad_reference, issue):
+    service, event, uri = service_at(tmp_path)
+    entry = {"id": "source", "kind": "observation", "text": "Captured source", "evidence_refs": [uri]}
+    assert write(service, [entry])["status"] == "ok"
+    retained, before = service.note_read(), service.ledger.read("task")
+    rejected = write(service, [{**entry, "evidence_refs": [bad_reference]}], 1, "bad-citation")
+    assert rejected["status"] == "unavailable" and rejected["effect"] == "none"
+    assert rejected["recovery"]["issue"] == issue
+    assert rejected["recovery"]["strategy"] == "recover_exact_current_task_reference"
+    assert rejected["recovery"]["local_note_scope"] == "current_task_public_evidence_only"
+    assert bad_reference not in canonical_json(rejected)
+    assert service.note_read() == retained and service.ledger.read("task") == before
+    # Reuse a receipt value, not a guessed repair, and preserve the CAS version.
+    corrected = {**entry, "evidence_refs": [event.payload["result_artifact_uri"]]}
+    assert write(service, [corrected], 1, "corrected-citation")["status"] == "ok"
+    assert service.note_read()["entries"][0]["finding"]["evidence_refs"] == [uri]
 
 
 def test_revisions_conflicts_and_explicit_supersession_retain_history(tmp_path):
@@ -344,7 +367,8 @@ def test_prior_reuse_recovers_exact_source_note_without_admitting_foreign_citati
     before = consumer.note_read()
     rejected = write(consumer, [entry])
     assert rejected["effect"] == "none" and rejected["status"] == "unavailable"
-    assert rejected["recovery"]["strategy"] == "reference_in_place"
+    assert rejected["recovery"]["strategy"] == "recover_exact_current_task_reference"
+    assert rejected["recovery"]["issue"] == "unavailable_current_task_reference"
     assert rejected["recovery"]["local_note_scope"] == "current_task_public_evidence_only"
     assert consumer.note_read() == before
     # Recovered source prose and a source-note command do not widen authorization.

@@ -16,6 +16,7 @@ from harness.core.config import (
 )
 from harness.core.context import build_static_prefix
 from harness.execution.repo import collect_project_instructions
+from harness.ptc.repl.worker import WORKSPACE_EXECUTION_GUIDANCE
 
 NOTEBOOK_PTC_INSTRUCTION = """
 Notebook-native programmatic tool calling is enabled. Your only model-visible tool is
@@ -50,7 +51,9 @@ the intended result. For errors use str(exc), not type(exc).__name__; dunder acc
 Use Python for exact calculation, parsing, aggregation, comparison, and deterministic
 transformation when it reduces copying or reasoning error; return prose directly when
 execution adds no evidence.
-Retain useful reads under meaningful names. Reuse covered ranges of the same source
+Retain useful reads under meaningful names, separate from answer/check outputs and
+scratch results. A review boundary is not a source change: reuse the retained source
+mapping for new calculations instead of reacquiring it. Reuse covered ranges of the same source
 version; a partial read is not a whole-file snapshot. After edits, external changes,
 unknown shell effects, or a missing range, obtain fresh evidence where needed and use
 expected_sha256 for guarded edits. A missing match in captured lines is not evidence
@@ -61,6 +64,9 @@ coverage only, not unseen lines: recovery `complete` applies to its selected cap
 page, whereas `source_coverage.whole_file` describes the original source capture.
 Use `source_coverage.next_unread_offset` for a needed fresh source read, never as a
 recovery-page offset. Correctness takes priority over reducing re-reads.
+Finish source-dependent calculations and assertions before a later cell performs
+workspace mutations. An exception after a write cannot roll back that effect and
+discards the live epoch, so do not combine speculative interpretation with writes.
 Lost-binding updates may retain historical_read and a recover_expression for the
 completed result envelope, not the current variable. Check loader status and complete
 byte paging before parsing its data.text; recovered reads never establish that a failed
@@ -84,12 +90,16 @@ agent.state.annotate("src", "Source range used for the next edit")
 # Without memory programs, use agent.artifacts.load(URI); agent.help('artifacts.load', details=True)
 # describes exact byte paging and the saved result envelope. Do not retry disabled memory commands.
 
-pages = agent.parallel([
+source_pages = agent.parallel([
     {"operation": "fs.read", "arguments": {"path": path}} for path in known_paths
 ])
-good = [p for p in pages if p["status"] == "ok"]
-errors = [p["model_text"] for p in pages if p["status"] != "ok"]
-[(p["data"]["path"], "needle" in p["data"]["text"]) for p in good], errors
+source_reads = {p["data"]["path"]: p for p in source_pages if p["status"] == "ok"}
+errors = [p["model_text"] for p in source_pages if p["status"] != "ok"]
+del source_pages
+[(path, "needle" in p["data"]["text"]) for path, p in source_reads.items()], errors
+# Later: source_reads[path]["data"]["text"]; retain its read_reference and range metadata.
+# Keep answer_reads/check_results separate; never mutate captured source envelopes.
+# Retain multiple ranges/versions of one path separately, keyed by (path, sha256, offset).
 
 changed = agent.fs.edit(path, old, new, expected_sha256=digest)
 check = agent.shell.run(targeted_check) if changed["status"] == "ok" else changed
@@ -152,7 +162,7 @@ records code and selected outputs, while the append-only ledger records executio
 nested capability outcomes. `open()` and direct filesystem, process, or network APIs are
 blocked; use the corresponding `agent.*` capability. A notebook is not proof that a side effect completed, and cells
 that write or have unknown effects must never be replayed automatically.
-""".strip()
+""".strip() + "\n\n" + WORKSPACE_EXECUTION_GUIDANCE
 
 @dataclass(frozen=True, slots=True)
 class HarnessSettings:

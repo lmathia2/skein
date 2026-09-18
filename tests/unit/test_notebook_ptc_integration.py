@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import shlex
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -47,6 +48,45 @@ def _enabled_composition():
 
 
 @pytest.mark.asyncio
+async def test_quoted_workspace_program_uses_same_policy_in_direct_and_ptc(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    state = tmp_path / "state"
+    events = JsonlEventStore(state / "events")
+    tools = create_adk_tools(tmp_path, state_root=state, search_mode="disabled")
+    command = shlex.join(["python3", "-c", "import json; print(json.dumps({'result': 'a;b|c'}))"])
+    direct = tools.bash(command, task_scope="task")
+    assert direct["status"] == "ok" and direct["exit_code"] == 0
+    assert json.loads(direct["data"]["stdout"]) == {"result": "a;b|c"}
+    forbidden = command + " && curl https://example.com"
+    assert tools.bash(forbidden, task_scope="task")["status"] == "blocked"
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=state, task_id="task")),
+        cast(BaseLlm, "test-model"), tools=tools, ptc_config=config.notebook_ptc, event_store=events,
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        result = await worker.execute_code(
+            f"process = agent.shell.run({command!r})\n"
+            "assert process['status'] == 'ok' and process['exit_code'] == 0\n"
+            "assert json.loads(process['data']['stdout']) == {'result': 'a;b|c'}\n"
+            f"denied = agent.shell.run({forbidden!r})\n"
+            "assert denied['status'] == 'blocked'\n"
+            "retained = 42"
+        )
+        assert result["status"] == "ok"
+        assert (await worker.execute_code("assert retained == 42"))["status"] == "ok"
+    finally:
+        worker.close()
+    terminals = [e for e in events.read("task") if e.kind in {
+        EventKind.CAPABILITY_COMPLETED, EventKind.CAPABILITY_BLOCKED,
+    } and e.payload.get("operation") == "shell.run"]
+    assert [e.kind for e in terminals] == [EventKind.CAPABILITY_COMPLETED, EventKind.CAPABILITY_BLOCKED]
+    assert terminals[-1].payload["effect"] == "none"
+
+
+@pytest.mark.asyncio
 async def test_description_notices_spill_selected_utf8_output_and_redact_values(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
@@ -54,7 +94,7 @@ async def test_description_notices_spill_selected_utf8_output_and_redact_values(
         settings_from_composition(composition, RuntimeBindings(
             workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
         cast(BaseLlm, "test-model"),
-        ptc_config=config.notebook_ptc.model_copy(update={"max_output_bytes": 2048}),
+        ptc_config=config.notebook_ptc.model_copy(update={"max_output_bytes": 2048, "emit_state_updates": True}),
         redactor=SecretRedactor(known_secrets=("private-fixture-token",)),
     )
     assert worker.execute_code is not None and worker.close is not None
@@ -1044,7 +1084,10 @@ async def test_lost_binding_recovers_completed_artifact_not_failed_calculation(t
     state_root = tmp_path / "state"
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
-    ptc_config = config.notebook_ptc.model_copy(update={"state": "snapshot"}) if case == "snapshot" else config.notebook_ptc
+    ptc_config = config.notebook_ptc.model_copy(update={
+        "state": "snapshot" if case == "snapshot" else config.notebook_ptc.state,
+        "emit_state_updates": True,
+    })
     events = JsonlEventStore(state_root / "events")
     worker = build_coding_worker(
         settings_from_composition(composition, RuntimeBindings(
@@ -1410,6 +1453,57 @@ async def test_artifact_byte_pages_roundtrip_unicode_and_binary_without_redactio
 
 
 @pytest.mark.asyncio
+async def test_three_source_notice_supplies_reusable_content_within_existing_budget(tmp_path: Path) -> None:
+    from app.agent.ptc import _state_updates
+    from harness.evidence.ledger.models import canonical_json
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    sources = {"contract.md": "# Contract\n", "router.py": "mode = 'ordered'\n", "routing.json": '{"rules": []}\n'}
+    for path, text in sources.items():
+        (workspace / path).write_text(text)
+    task_id = "qualification_ordered_rules-findings"
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(state_root / "events")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(workspace=workspace, state_root=state_root, task_id=task_id)),
+        cast(BaseLlm, "test-model"),
+        ptc_config=config.notebook_ptc.model_copy(update={"emit_state_updates": True}), event_store=events,
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        # Reproduce the live cell's parallel container, dictionary and final loop alias.
+        context = SimpleNamespace(state={"task_id": task_id}, invocation_id="inv", function_call_id="read")
+        initial = await worker.execute_code(
+            f"paths = {list(sources)!r}\n"
+            "reads_batch = agent.parallel([{'operation': 'fs.read', 'arguments': {'path': p}} for p in paths])\n"
+            "reads_current = {r['data']['path']: r for r in reads_batch}\n"
+            "for p in paths:\n    r = reads_current[p]\n", tool_context=context)
+        assert initial["status"] == "ok", initial
+        notice, _ = json.JSONDecoder().raw_decode(initial["model_text"].split(
+            "State updates (advisory; sources historical):\n", 1)[1])
+        entries = notice["entries"]
+        assert len(entries) == 3 and len(canonical_json(entries).encode()) <= 2048
+        assert {entry["read_reference"]["path"] for entry in entries} == set(sources)
+        completed = next(e for e in reversed(events.read(task_id)) if e.kind == EventKind.REPL_CELL_COMPLETED)
+        manifest = completed.payload["state"]["manifest"]
+        assert entries == _state_updates([], manifest, 2048)
+        assert all("value_fingerprint" in row for row in manifest if row.get("read_reference"))
+        code = "\n".join(f"assert {entry['content_expression']} == {sources[entry['read_reference']['path']]!r}"
+                         for entry in entries)
+        reused = await worker.execute_code(code)
+        assert reused["status"] == "ok", reused
+        assert reused["kernel"]["kernel_epoch"] == initial["kernel"]["kernel_epoch"]
+        assert len([e for e in events.read(task_id) if e.kind == EventKind.CAPABILITY_COMPLETED
+                    and e.payload.get("operation") == "fs.read"]) == 3
+        assert not any(e.payload.get("operation") == "artifacts.load" for e in events.read(task_id))
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("nested", (False, True))
 async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_path: Path, nested: bool) -> None:
     workspace = tmp_path / "workspace"
@@ -1424,7 +1518,7 @@ async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_
             workspace=workspace, state_root=state_root, task_id="task")),
         cast(BaseLlm, "test-model"),
         tools=create_adk_tools(workspace, state_root=state_root, task_scope="task"),
-        ptc_config=config.notebook_ptc, event_store=events,
+        ptc_config=config.notebook_ptc.model_copy(update={"emit_state_updates": True}), event_store=events,
     )
     assert worker.execute_code is not None
     try:
@@ -1432,7 +1526,7 @@ async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_
             initial = await worker.execute_code(
                 "reads = agent.parallel([{'operation': 'fs.read', 'arguments': {'path': 'note.txt'}}])")
             assert initial["status"] == "ok", initial
-            assert '"access_expression":"reads[0]"' in initial["model_text"]
+            assert "\"content_expression\":\"reads[0]['data']['text']\"" in initial["model_text"]
             assert "historical source" not in initial["model_text"]
             await worker.execute_code("source = reads[0]")
         else:

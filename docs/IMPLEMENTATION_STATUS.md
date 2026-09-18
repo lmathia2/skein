@@ -897,3 +897,272 @@ source-emission counter misses custom JSON and Python repr source wrappers, so i
 264-to-104 mapped duplicate-line change is not proof of lower total exposure.
 PTC execution guidance and review evidence reuse remain unqualified follow-ups;
 defaults, natural-compaction/prior-run claims and DeepSWE expansion stay held.
+
+PTC now shares explicit computation-versus-workspace execution guidance between its
+stable instructions and existing kernel help. The catalog's blocked direct-call and
+module lists derive from the actual guard; no policy changes. The acquisition example
+retains source envelopes by path separately from answer/check outputs, preserving
+their citations and range metadata. Sixty-six focused checks pass, including actual
+execution of the shipped example and guard/catalog consistency; all 24 cached-Docker
+transfer/worker-loss checks pass. Lint/compile pass; typing has zero errors and the
+existing export warning. Full regression closed with 1139 passes/two skips at
+`.artifacts/ptc-boundary-regression`; focused and isolated reports are at
+`.artifacts/ptc-boundary-focused` and `.artifacts/ptc-boundary-docker-checks`.
+All checks are terminal; live uptake is still unmeasured.
+
+Read-only byte accounting adds an economic concern: the three fixture source sets
+are 746, 967 and 1248 bytes, while findings-arm review packets occupy 8746-15946 bytes.
+SQL/r1's finding text alone is 1189 bytes for 967 source bytes. Build/r1 spends 5800
+compact-JSON bytes on six live-binding entries and omits eight advisory candidates;
+the control also pays substantial binding/index metadata overhead. This motivates
+reducing redundant navigation representation through the existing projection, not
+dropping uncertainty/provenance or claiming a smaller prompt already improves quality.
+
+`continuation@9` and `work_batch_navigation@2` now omit internal fingerprints,
+redundant builtins labels and duplicate locator forms from live-binding prompt hints.
+Full read references, source scope/coverage, origin cell, replay policy, shape,
+descriptions, freshness and unfamiliar uncertainty fields remain; original manifests
+and state inspection are unchanged. New packets carry new renderer identities;
+captured historical packets still replay their bytes. No new tool or larger budget.
+All twelve offline transfer review snapshots retain prior selected evidence: packets
+with spare capacity save up to 2060 bytes; two full build/findings packets instead
+gain five and three entries. Report: `.artifacts/lean-navigation-offline/analysis.md`.
+
+The original focused suite passes 153 checks/one skip; the final focused suite with
+actual prompt-derived access-expression execution passes 100/one skip, and all 54
+cached-Docker root/transfer checks pass. Reports are `.artifacts/lean-navigation-focused`,
+`.artifacts/lean-navigation-final-focused` and `.artifacts/lean-navigation-docker-checks`.
+Lint/compile pass and typing has zero errors/one existing export warning. Full
+regression closed with 1142 passes/two skips at `.artifacts/lean-navigation-regression`.
+All test processes are terminal; no new paid job has started.
+
+The consumed-case follow-up uses an explicit evaluator `--diagnostic` flag (manifest
+v23). Manifest and trial rows retain that label; summary scope cannot infer a held-out
+claim merely from a `qualification_*` fixture name. Dry-run and queued-failure checks
+pass without provider work. Runtime/navigation remains `0917b90`; the planned six-trial
+output is `.artifacts/lean-navigation-live-diagnostic-v1`, at unchanged declared limits.
+
+The six-trial diagnostic closed at clean `2823018`, costing $0.21560601. Control
+verified 3/3; findings verified 1/3, with one call limit and one pre-dispatch input
+budget stop before verification. All 18 final files are correct; all 19 submissions
+have completed required source availability, but SQL/control first wrote an incorrect
+answer and repaired it before advancing. No unknown effects/accounting gaps remain;
+all 102 captured within-epoch request transitions are append-only. Findings/control
+source reread lines are 293/204, so the overall goal still fails despite SQL/findings'
+zero rereads, 13 calls and $0.02089325 versus control's 71 lines, 22 calls and $0.04131155.
+Incomplete endpoints confound aggregate cost comparisons. No paid job remains.
+Full report: `.artifacts/lean-navigation-live-diagnostic-v1/analysis.md`.
+
+The live errors identify next work: routing repeats approval-gated project execution
+after cuts and raises on known blocked results; build parses Markdown as JSON and
+later attempts blocked `__import__`. The JSON error is also mislocated by the harness:
+its data-relative `lineno=1` is incorrectly attached to the notebook's `import json`
+line. Fix the shared error-location path, then examine receipt-backed blocked-approach
+continuity and recovery usability. Preserve policy, dirty-state disposal and independent
+verification; do not promote defaults or call consumed reruns held out.
+
+The error-location probe reproduced three failures: JSON data-relative positions
+misidentified two notebook lines, and an older-cell function's line was attached to
+unrelated current source. The worker now uses source-hash compilation filenames and
+current-source traceback frames for execution failures, retaining parser/source-guard
+locations. Original failures remain at `.artifacts/cell-error-location-probe`.
+All 109 focused checks and three cached-Docker prompt/recovery checks pass at
+`.artifacts/cell-error-location-focused` and `.artifacts/cell-error-location-docker-checks`.
+Lint and typing pass apart from the known export warning. The full suite completed
+with 1,149 passing and two skipped tests at `.artifacts/cell-error-location-regression`;
+no paid model job is active. The diagnostic fix has not yet been live-tested.
+
+Additional read-only inspection found five distinct approval-pending Python commands
+in routing/findings, not just its two raised cell exceptions. Their exact commands,
+reasons and pending status already exist in `approval.pending` events, while the
+corresponding `capability.blocked` receipts record no effect and addressed results.
+Use that existing authority for the next blocked-approach continuity investigation;
+do not infer a permanent command-family prohibition or ignore later authorization.
+
+Deeper inspection found a shared execution-policy defect before adding that memory
+projection: regex splitting treated semicolons/newlines/pipes inside quoted arguments
+as shell command boundaries. All five recorded routing `python -c` commands (canonical
+sequences 106, 211, 248, 420 and 476) reproduce `unknown`; the corrected lexical
+segmentation classifies them as the already-existing `build_or_test` category. This
+does not establish those proposed programs are correct or predict a successful run.
+No saved command was executed and the original results remain unchanged.
+
+The correction uses quote/escape-aware segmentation followed by standard-library
+`shlex` argument parsing. Actual trailing commands retain independent risk checks;
+unsupported comment/expansion/grouping forms remain approval-gated. All 89 focused
+checks pass, including an actual quoted Python command through both direct and PTC
+tools and a rejected trailing network command without losing the live worker.
+The initial failing probes are retained under `.artifacts/quoted-command-policy-probe`
+and `.artifacts/quoted-command-policy-broker` (the latter exposed a test's incorrect
+stdout-envelope lookup, corrected in the integration test).
+The initial full regression passed 1,175 tests with two skips at
+`.artifacts/quoted-command-policy-regression`.
+No new paid run or default promotion has occurred; blocked-attempt continuity and
+live memory reliability remain open.
+
+The offline audit covered all 18 canonical trial ledgers from the last two campaigns.
+Fifteen distinct approval requests change from `unknown` to `build_or_test`: eight
+in the older transfer panel (four per arm), and seven in the latest diagnostic
+(five findings, two control). Three SQLite/nested-shell requests remain `unknown`.
+This counts recorded approval requests, not all repeated capability attempts.
+
+An additional adversarial probe reproduced an escaped `>` before `&` incorrectly
+hiding a background command. Redirection pairs are now recognized only while they
+are actual unquoted/unescaped syntax; literal `>` followed by `&curl` is blocked.
+The failed probe remains at `.artifacts/quoted-command-policy-redirection-probe`.
+All 95 final focused checks pass at `.artifacts/quoted-command-policy-final-focused`;
+the exact final runtime passed 1,181 tests with two skips at
+`.artifacts/quoted-command-policy-final-regression`. Four cached-Docker checks also
+pass on the final runtime at `.artifacts/quoted-command-policy-final-docker-checks`.
+Lint and typing pass (typing requires
+`--pythonpath .venv/bin/python`; the default interpreter probe had missing dependencies).
+
+The two-trial dry preflight at `.artifacts/quoted-command-policy-dry-preflight`
+matches the earlier diagnostic's model, selected fixture hash, evaluator source hashes
+and per-task budgets. The next paid scope is only the documented routing pair, not
+a benchmark expansion. Full offline analysis: `.artifacts/quoted-command-policy-audit/analysis.md`.
+
+The two-trial routing diagnostic is closed at clean `24e169b`; supervisor exited
+zero and no paid job remains. Control independently verifies in 19 calls for
+$0.03178639; findings stops at its input-budget reserve after 21 calls for
+$0.06258172. Tracked source rereads are 171 versus 221. All six answer submissions
+are correct/source-supported, but both first verification attempts reject incidental
+Python bytecode outside the allowed paths; only control repairs that scope violation.
+No unresolved effects or provider/accounting errors remain. The memory gate fails.
+Full report: `.artifacts/quoted-command-policy-live-diagnostic-v1/analysis.md`.
+
+This run exposes stronger deterministic next fixes. A malformed 8192-output-token
+call leaves 40,172 raw argument bytes in history despite no dispatch, growing the
+next input from 7,188 to 43,578 tokens. A temporary note-checkpoint reminder then
+disappears from the next same-epoch request, breaking one of 32 captured prefix
+transitions and repeating a large uncached input region. Finally Docker command
+imports create workspace bytecode, unlike the local cache-isolated execution path.
+Fix bounded malformed-call evidence, stable checkpoint-message placement and Docker
+cache isolation before another paid diagnostic. Preserve the original failures,
+scope verification and budgets; no default promotion or held-out claim is justified.
+
+The checkpoint-prefix defect is now corrected using the existing steering exposure
+pattern. `note_checkpoint_delivery@1` publishes the exact reminder at a native-history
+boundary and reconstructs that position across note updates and plugin restart.
+Later steering stays newer; only an explicit cut removes the historical reminder.
+All 80 focused context/steering checks pass at `.artifacts/checkpoint-prefix-final-focused`,
+including outgoing OpenRouter request equality and publication/history/content/task/
+duplicate-boundary negatives. The original failure is retained at
+`.artifacts/checkpoint-prefix-probe`; an intermediate wire test's missing required
+reasoning argument is retained at `.artifacts/checkpoint-prefix-negative`.
+Docker import-cache isolation is also implemented: `PYTHONPYCACHEPREFIX=/tmp/pycache`
+keeps incidental bytecode outside the workspace while explicit compiler outputs and
+scope verification remain unchanged. All 51 sandbox/verification checks pass at
+`.artifacts/checkpoint-cache-docker-checks`, including the actual cached-Docker import
+and explicit-output regression. The original structural failure is preserved at
+`.artifacts/docker-cache-policy-probe`. The combined full regression passes 1,189 tests
+with three skips at `.artifacts/checkpoint-cache-regression/pytest.xml`; live
+qualification remains pending.
+
+Malformed Codex/OpenRouter tool-call JSON is now bounded before ADK history
+serialization. The new factory hook archives redacted argument text in the existing
+artifact store and records `tool.call_rejected` before publishing a reference; the
+reserved marker never dispatches a PTC cell or direct tool. Corrected calls remain
+available, and no already-sent request prefix is rewritten. Program and lifecycle
+contracts are in the execution/recovery ADR. All 73 focused checks pass at
+`.artifacts/malformed-call-parallel-focused`, including real ADK/PTC streaming and
+mixed valid/invalid parallel calls, unchanged kernel epoch, artifact recovery, complete
+model charges and an explicit error tool metric. The initial parser failure remains
+at `.artifacts/malformed-call-boundary-probe`. The combined full regression passes
+1,212 tests with three skips at `.artifacts/malformed-call-regression`. Lint and
+compilation pass; typing has zero errors and one existing `__all__` warning.
+
+An offline projection of the exact saved malformed routing response preserves its
+40,172 argument bytes (SHA-256
+`6f7065d4652099673fdb65e4729e61c1e202a28da229333a897fe2e3bd2f2322`)
+in an artifact without executing any submitted code. Canonical compact JSON for the
+argument object shrinks from 72,349 bytes to 225 bytes (99.689%). The earlier report's
+72,350-byte count used default JSON separators rather than compact separators. This is the malformed argument
+region only, not whole-prompt token savings, lower live cost, or improved memory use.
+The original live cohort remains unchanged and still fails the memory gate.
+
+The common-fix routing pair is now closed at clean `d333c6a`. Both arms independently
+verify on the first attempt with all six answers source-supported and all six cuts
+exercised. Control uses 12 calls/$0.01666828; findings uses 23 calls/$0.04120137. Both
+reread 171 tracked source lines; the memory efficiency gate still fails. All 27 outgoing
+same-epoch prefixes pass, with no unknown effects or accounting errors. Neither a
+malformed call nor a checkpoint-reminder exposure occurred, so their direct recovery
+evidence remains deterministic rather than live. Docker bytecode no longer causes a
+scope violation or repair cells. Full report and next mechanisms:
+`.artifacts/continuity-common-fixes-live-v1/analysis.md`.
+
+The remaining reread mechanism is now clearer: findings are present after the cut,
+but normal handoffs omit the direct artifact-load/decoding recipe already available
+in PTC recovery notices. Findings reloads all three sources after every cut and never
+loads an artifact. One note update correctly rejects a manually truncated local
+artifact hash, but supplies misleading prior-run recovery guidance. A later update
+using live read references succeeds. Investigate ordinary-cut executable recovery,
+copy-safe citations and completed-phase instruction continuity next; no more paid
+dispatch, default promotion or benchmark expansion is implied by these two passes.
+
+Ordinary PTC handoffs now offer the saved-read recovery recipe rather than only an
+artifact address (`continuation@10`, `work_batch_navigation@3`). The exact load code
+checks historical source identity and returns content plus a copy-safe citation;
+page completion never establishes whole-source coverage or current freshness.
+The optional recipe respects the existing handoff budget and four-tool boundary.
+All 119 focused checks and 14 cached-Docker lifecycle cases pass, including actual
+post-worker-loss artifact recovery, configuration revision and independently verified
+answers without overlapping source reads. Artifacts are under
+`.artifacts/ordinary-read-recovery-focused` and `.artifacts/ordinary-read-recovery-docker`.
+This is deterministic mechanism evidence, not observed live model uptake or a memory
+efficiency pass. The full regression passes 1,244 tests with three skips at
+`.artifacts/ordinary-read-recovery-regression/pytest.xml`. Lint and compilation pass;
+typing reports zero errors and the existing `__all__` warning. No additional paid
+diagnostic has been dispatched.
+
+Note citation rejection now identifies malformed artifact-address syntax separately
+from unavailable current-task evidence and gives exact-reference recovery guidance.
+It no longer assumes every missing citation is foreign. The update remains no-effect,
+preserves the last checkpoint/version, never suggests a guessed address, and retains
+prior-run authorization. Note schema version 7 carries copy-safe citation guidance.
+All 36 focused note tests and 12 cached-Docker continuation checks pass at
+`.artifacts/citation-guidance-focused` and `.artifacts/citation-guidance-docker`;
+the initial failing probe is retained at `.artifacts/citation-guidance-probe`.
+The full regression passes 1,247 tests with three skips at
+`.artifacts/citation-guidance-regression/pytest.xml`. Lint and compilation pass;
+typing has zero errors plus the existing `__all__` warning. Live uptake remains
+unqualified; no citation validation or independent-verification rule was relaxed.
+
+The completed-preparation audit confirms current steering and the explicit instruction
+not to repeat satisfied preparation were present in the common-fix final review's
+actual outgoing requests. The extra acknowledgement is not a missing-delivery defect.
+No second phase registry, criterion deletion or reduced verification is justified by
+that evidence. See `.artifacts/continuity-common-fixes-live-v1/phase-review-audit.md`.
+The next recovery diagnostic preserves the fixture and workflow; repeated preparation
+remains a measured behavior, not a claimed fix. Its bounded frozen plan is
+`docs/experiments/ordinary-read-recovery-20260913.md`.
+
+The ordinary-recovery live pair is closed on clean `08df057`. Both arms pass first
+independent verification with all six answers source-supported and all six cuts
+exercised. Findings uses 14 calls/$0.02833852 versus control's 15/$0.03265830, but
+rereads 285 tracked source lines versus 284; the joint efficiency gate still fails.
+All 21 outgoing same-epoch prefixes pass with sound effect/usage accounting. Every
+first-post-cut handoff includes the executable recovery recipe, with no omitted entries.
+Control loads six artifacts but prints their serialized bodies and then rereads files;
+findings loads none. Both also repeat reads while retaining a live kernel. Findings
+cells 87 and 110 reacquire the same 57 lines in the same epoch without an intervening
+source mutation. The next mechanism is productive decoded recovery and warm-worker
+value reuse, not simply another handoff recipe. Full analysis:
+`.artifacts/ordinary-read-recovery-live-v1/analysis.md`. No paid job remains active;
+default promotion and benchmark expansion stay held.
+
+The warm-worker notice correction records broker-attested result/data/text forms
+and shares one compact projection across changed-only PTC notices and context
+handoffs (`ptc_state_updates@4`, `continuation@11`, `work_batch_navigation@4`).
+It exposes exact content expressions without increasing budgets or changing full
+canonical manifests, invalidation, source coverage, historical freshness or
+verification authority. The recorded three-source shape fits in 1,999 bytes; a real
+PTC reproduction captures three sources once and executes all delivered content
+expressions in the same epoch without additional reads or artifact loads.
+Focused validation passes 216 tests with one skip at
+`.artifacts/live-binding-content-focused-v2/pytest.xml`; lint and diff checks pass,
+typing has zero errors and the existing `__all__` warning. Initial failing probes
+are retained. This patch has not received a full-suite rerun or live evaluation.
+Per user request, stop further implementation/paid experiments after this validation
+and analyze the failed recovery uptake. See
+`docs/audits/recovery-uptake-2026-09-13.md`; the broad goal remains unproven.

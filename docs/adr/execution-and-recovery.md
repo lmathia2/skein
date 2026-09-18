@@ -97,10 +97,53 @@ Skein notebook PTC reaches file, shell, and registered capabilities through this
 protocol. It records submitted source and terminal cell results, and refuses automatic
 replay of interrupted or unknown cells.
 
+Malformed Responses tool arguments are rejected before this protocol admits a PTC
+cell or direct tool invocation. The shared Codex/OpenRouter parser accepts only a
+JSON object that can round-trip through the strict outgoing JSON encoder; it never
+wraps an array/null as a callable `value` argument or guesses missing code. Invalid
+argument text is held privately, excluded from ADK serialization, while the public
+call carries a reserved bounded rejection marker.
+
+The factory-installed ADK `InvalidToolArgumentsPlugin` owns
+`invalid_tool_arguments@1`. After final usage accounting, it redacts the original
+argument text into the existing content-addressed artifact store and appends
+`tool.call_rejected` before exposing the artifact reference. The receipt identifies
+task, invocation, call, program/source hash, original text hash/size, retained size,
+redaction status, and explicit no-execution/no-effect semantics. Artifact bytes are
+exact only when redaction leaves them unchanged. Existing task-scoped artifact
+loaders provide bounded recovery; no new model-facing tool or evidence store exists.
+
+Partial calls carry only the bounded parser placeholder and never execute; artifact
+publication waits for final usage so a storage failure cannot discard an already
+reported charge. Repeated final delivery is idempotent for identical content; mismatched
+identity/content, corrupt artifacts or failed publication stop processing. Before-tool
+handling verifies the invocation/call receipt and returns an explicit `error` without
+submitting a cell, changing the heap, or replaying any code. A model-supplied reserved
+marker also rejects execution but cannot confer artifact access. Corrected subsequent
+calls use the ordinary broker and verification paths. Previously exposed history is
+not retroactively rewritten under its existing cache epoch.
+
 The local adapter is intended for trusted workspaces and is not an OS security
 sandbox. Docker isolates configured commands, not every host-side Python/file path.
 Network, dependency installation, destructive commands, and history mutation remain
 disabled unless policy and approval explicitly permit them.
+
+Docker command environments default `PYTHONPYCACHEPREFIX` to `/tmp/pycache`, outside
+the mounted workspace, matching local execution's import-cache isolation. Ordinary
+imports must not create incidental scope violations or require cleanup cells. Explicit
+compiler output paths and configured environment overrides retain their semantics;
+this is execution hygiene, not an exemption in the independent scope verifier.
+
+Command classification separates shell commands before applying the existing risk
+rules, but quoted or escaped separators remain argument data. In particular, a
+semicolon in a quoted `python -c` body is not another shell command. Each real
+pipeline/list command is still classified, including trailing network, publish and
+destructive operations. Unclosed quotes, unsupported unquoted comments/expansion/
+grouping, and substitution remain non-automatic. This lexical correction does not
+make the risk classifier a shell security sandbox or inspect interpreter-program
+effects: Python retains its existing trusted-workspace build/test category. Exact
+persisted denials, task-scoped approvals, confinement and completion gates remain
+owned by the same adapter and verifier.
 
 ## Checkpoint and recovery
 
@@ -340,6 +383,28 @@ and successful saved result, preserves the original coverage metadata, and clear
 its output bindings before checking an unavailable or partial page. Larger/binary
 artifacts still require exact byte assembly using the existing loader contract.
 This is model-side guidance, not reconciliation or permission to use stale evidence.
+
+The PTC prompt and existing kernel help now share an explicit execution boundary:
+the computation worker is not the workspace interpreter. Captured source is data,
+not permission to exec/eval it or import project code into the host worker. Required
+project checks remain brokered commands under existing policy, and a denied command
+does not become executed evidence. Generated command arguments use standard-library
+quoting. Kernel help derives blocked-call/module lists from the actual source guard.
+The acquisition example retains path-keyed source envelopes separately from answer
+and check results, including original citations and partial-range metadata; multiple
+ranges/versions require distinct retained entries. No automatic source recovery,
+import-policy expansion, review bypass or verification weakening is introduced.
+This is implemented guidance; live efficiency and model uptake remain unqualified.
+
+PTC error locations distinguish notebook source from parser input. Execution
+exceptions use traceback frames belonging to the submitted source, not an arbitrary
+exception's `lineno` attribute (for example, JSONDecodeError's JSON-data position).
+Compilation uses a deterministic source-hash filename so a retained function from
+an earlier cell cannot supply a line number for unrelated current source. Such an
+error points to its current-cell call site; same-cell function failures retain the
+inner source location. Syntax/parser and source-guard locations remain unchanged.
+This changes diagnostics only, not source validation, execution, state rollback,
+effect status, replay admission or completion authority.
 
 Unavailable managed-search backends and invalid reserved-search syntax are known
 pre-dispatch rejections. Their originating adapter records `effect=none`; the shared

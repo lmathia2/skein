@@ -86,7 +86,8 @@ def solve_code(family, question):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case,omit_marker", [(case, False) for case in REPEATED_CASES] + [("reuse_repository_1", True)])
 @pytest.mark.parametrize("arm", ["no_recall", "findings"])
-async def test_repeated_questions_use_real_evidence_and_worker_loss_without_forced_note_rewrites(tmp_path, monkeypatch, case, arm, omit_marker):
+@pytest.mark.parametrize("recovery", ["checkpoint", "handoff"])
+async def test_repeated_questions_use_real_evidence_and_worker_loss_without_forced_note_rewrites(tmp_path, monkeypatch, case, arm, omit_marker, recovery):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
     trial = LearnedContinuation(tmp_path / "trial", case, arm)
     trial.command_image = os.getenv("SKEIN_EVAL_DOCKER_IMAGE")
@@ -104,8 +105,29 @@ async def test_repeated_questions_use_real_evidence_and_worker_loss_without_forc
             )
         return f"assert agent.artifacts.publish({{'stored': stored, 'refs': refs}}, {'Revised' if revised else 'Initial'!r})['status'] == 'ok'\n"
 
-    def recover(question):
+    def recover(question, visible):
         code = "import json, shlex, hashlib, csv, tomllib, ast\n"
+        if recovery == "handoff":
+            # Copy only code delivered in the actual post-cut provider request.
+            # Answers below are derived from recovered bytes, never oracle values.
+            advisory = json.JSONDecoder().raw_decode(visible.rsplit("Advisory memory (not execution authority):\n", 1)[1])[0]
+            recipe = advisory["completed_read_recovery"]["then_python"]
+            code += "stored, refs = {}, {}\n"
+            selected = set()
+            for entry in advisory["entries"]:
+                if entry["kind"] != "reads_newest_first":
+                    continue
+                read = entry["value"]
+                path = read["path"]
+                if path in selected or path not in trial.fixture["files"]:
+                    continue
+                assert read["source_coverage"]["whole_file"]
+                selected.add(path)
+                code += read["read_recovery"]["load_code"] + "\n" + recipe + "\n"
+                code += "assert saved_result is not None and source_citation is not None\n"
+                code += f"stored[{path!r}], refs[{path!r}] = source_text, source_citation\n"
+            assert selected == set(trial.fixture["files"])
+            return code
         if arm == "findings":
             return code + (
                 "note = agent.shell.run('memory note read')\nassert note['status'] == 'ok'\n"
@@ -154,7 +176,7 @@ async def test_repeated_questions_use_real_evidence_and_worker_loss_without_forc
             question = index // 2 - 1
             assert f"Question {question + 1}/{uses}" in visible
             assert '"live": false' in visible
-            code = recover(question) + solve_code(family, question)
+            code = recover(question, visible) + solve_code(family, question)
             code += f"assert agent.fs.write({trial.fixture['answers'][question]['path']!r}, json.dumps(result))['status'] == 'ok'\n"
             if question < uses - 1:
                 if family == "config" and question == 1:
@@ -186,6 +208,10 @@ async def test_repeated_questions_use_real_evidence_and_worker_loss_without_forc
     assert not any(e.kind in {"repl.cell_failed", "repl.cell_timeout"} for e in events)
     assert all(c["worker_loss"]["before"]["live"] and not c["worker_loss"]["after"]["live"] for c in result["learning_checkpoints"])
     assert all(i["reads"]["counts"].get("pre_cut_overlap_lines", 0) == 0 for i in result["measurement"]["checkpoint_intervals"])
+    if recovery == "handoff":
+        loads = [e for e in events if e.kind == "capability.completed" and e.payload.get("operation") == "artifacts.load"]
+        assert len(loads) == uses * len(trial.fixture["files"])
+        assert all(e.payload["status"] == "ok" for e in loads)
     for checkpoint_event in result["learning_checkpoints"]:
         if checkpoint_event.get("checkpoint_policy"):
             assert bool(checkpoint_event["reused_note_event_id"]) is (arm == "findings")

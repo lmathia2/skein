@@ -2493,3 +2493,79 @@ Use existing PTC help, retained source mappings and review control before adding
 new view. Keep targeted checks, source freshness, effect fencing and independent
 verification intact. Any tuned reuse of this panel is diagnostic only. Remaining
 natural-compaction, prior-run and real-coding gates are unchanged; no promotion.
+
+#### Shared navigation projection and next diagnostic
+
+The next context-only change is `continuation@9` / `work_batch_navigation@2`.
+Remove redundant live-binding locators when an exact access expression is already
+available, plus internal fingerprints and the builtins module label, from the prompt
+only. Preserve full canonical descriptors, source references, cell/replay identity,
+shape, uncertainty and unfamiliar fields. Do not invent source text, hide changed
+versions, alter finding semantics or add a new index/tool. New source/program hashes
+identify the projection; historical packets keep captured bytes on replay.
+
+All twelve recorded transfer review inputs have been rerendered offline. No prior
+selected evidence entry was lost. Unconstrained packets save up to 2060 bytes; two
+full findings packets gain five and three entries within the same budget. The source
+sets are tiny relative to the metadata, so this is a shared representation improvement,
+not proof that findings beat control. The offline report is
+`.artifacts/lean-navigation-offline/analysis.md`.
+
+After focused, full and cached-Docker checks and a clean commit, the next paid run is
+a **consumed-case diagnostic**, not a held-out screen: the same three transfer cases,
+`no_recall` and `findings`, one fresh-state repetition each, Luna/max and concurrency
+six. Preserve the existing 24-call / 350k-input / 8192-output / 900-second limits,
+for six trials, 18 delayed answer windows, at most 144 calls and 2.1M task-input tokens.
+Charge acquisition, checkpointing, recovery and review. Record diagnostic scope in
+the manifest and summary before dispatch. Freeze the common PTC guidance and lean
+navigation together; the memory arm alone enables the existing notes/recall/programs.
+Comparison against the older consumed runs is directional and confounded by sampling
+and both shared changes; it cannot assign a causal effect to either individual change.
+No selective retries, hidden failed answers, raised limits or benchmark expansion.
+
+Inspect source capture reuse, exact access-expression uptake, recovery versus
+workspace-execution detours, review reads, every answer's completed evidence,
+independent verification, prefix stability and complete costs. The original
+source-emission formatting blind spots remain explicit. Stop on infrastructure,
+accounting or false-acceptance failure through the existing coordinator. Even a clean
+diagnostic cannot promote defaults; follow it with new held-out lifecycle evidence.
+
+Navigation implementation is committed as `0917b90`; its full regression closed at
+1142 passes/two skips and all 54 isolated root/transfer checks pass. The existing
+evaluator adds `--diagnostic` under manifest v23: the manifest and every retained
+trial carry `diagnostic_reuse`, and the summary uses diagnostic scope even for
+qualification-named fixtures. This metadata-only correction changes neither tasks,
+budgets, dispatch gates nor model context. Dry-run and queued-failure tests cover it.
+The frozen output for the specified six-trial diagnostic is
+`.artifacts/lean-navigation-live-diagnostic-v1`; record a clean documentation-inclusive
+revision and actual driver hashes before provider work. Use the same cached immutable
+Docker image as the transfer panel. No changes during the live run.
+
+#### Quoted-command policy correction and bounded diagnostic
+
+The shared policy split quoted Python bodies on semicolons/newlines/pipes, creating
+false `unknown` classifications. Offline classification of 18 retained trial ledgers
+finds 15 affected approval requests, across both arms; three SQLite/nested-shell
+requests remain unknown. This changes the next action: correct the common execution
+path before adding more rejection-memory metadata. Parser and source-location fixes
+are shared by both arms; neither independently demonstrates a memory benefit.
+
+After final deterministic, isolated-recovery, lint/type checks and a clean commit,
+run one diagnostic pair only: `qualification_ordered_rules`, arms `no_recall` then
+`findings`, one fresh-state repetition, concurrency two, Luna/max. Keep the same
+24-call/350k-input/8192-output/900-second per-trial limits and immutable cached Docker
+image. Maximum two episodes, 48 model calls and 700k task input. Use explicit
+`--diagnostic` and fresh output `.artifacts/quoted-command-policy-live-diagnostic-v1`;
+do not overwrite a prior output, selectively retry, increase budgets or edit source
+during execution. This is a consumed-case mechanism check, not held-out qualification
+or permission to expand a paid benchmark.
+
+Report every terminal reason, provider cost/calls, actual program failures, blocked
+capabilities, completed source availability, independent acceptance, exercised cuts,
+and same-version repeated `fs.read` coverage. Successful shell execution can acquire
+source bytes that the file-read metric does not cover: report shell-source coverage
+as unknown where receipts cannot establish it, and never call a shift from file
+reads to shell reads a demonstrated reread reduction. A successful quoted execution
+does not establish its semantic result is right. Preserve task-specific independent
+verification and unsupported-answer negatives. Do not add a second paid diagnostic
+automatically if this pair fails; inspect the failure mechanism first.

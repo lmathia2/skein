@@ -62,6 +62,26 @@ def test_each_answer_requires_its_own_completed_evidence_and_cut_window(tmp_path
         audit_answer_contracts(store.read("task"), specs, [first])
 
 
+def test_answer_windows_can_use_explicit_live_worker_boundaries(tmp_path):
+    store = JsonlLedgerStore(tmp_path / "events.jsonl")
+    need = ReadEvidence(path="source.txt", sha256="a" * 64, offset=1, returned_lines=1)
+    store.append(task_id="task", source="fixture", source_id="read", kind="capability.completed",
+                 payload={"operation": "fs.read", "status": "ok", "read_evidence": need.model_dump()})
+    boundary = store.append(task_id="task", source="fixture", source_id="boundary",
+                            kind="evaluation.learning_checkpoint", payload={}).sequence
+    common = {"operation": "fs.write", "operation_id": "write", "arguments_sha256": "b" * 64}
+    store.append(task_id="task", source="fixture", source_id="request", kind="capability.requested", payload=common)
+    store.append(task_id="task", source="fixture", source_id="done", kind="capability.completed",
+                 payload={**common, "status": "ok", "changed_paths": ["answer.json"],
+                          "content_hashes": {"answer.json": "c" * 64}})
+    spec = AnswerSpec(path="answer.json", expected={}, required=[need], checkpoint=0)
+    report = audit_answer_contracts(store.read("task"), [spec], [boundary],
+                                    boundary_kind="evaluation.learning_checkpoint")
+    assert report["all_latest_supported"] and report["boundary_kind"] == "evaluation.learning_checkpoint"
+    with pytest.raises(ValueError, match="every published checkpoint"):
+        audit_answer_contracts(store.read("task"), [spec], [boundary])
+
+
 def test_multi_answer_oracle_checks_all_values_hashes_and_confines_nested_paths(tmp_path):
     class Commands:
         workspace = tmp_path

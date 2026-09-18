@@ -166,8 +166,11 @@ class _LearningCheckpoint(BasePlugin):
                           if raw["checkpoint"] == self.stage - 1]
         if not specifications:
             return True
-        cuts = [event.sequence for event in events if event.kind == "compaction.created"]
-        report = audit_answer_contracts(events, specifications, cuts, prior=self._trial.prior_evidence)
+        boundary_kind = ("evaluation.learning_checkpoint" if self._trial.fixture.get("checkpoint_mode") == "live_worker"
+                         else "compaction.created")
+        cuts = [event.sequence for event in events if event.kind == boundary_kind]
+        report = audit_answer_contracts(events, specifications, cuts, prior=self._trial.prior_evidence,
+                                        boundary_kind=boundary_kind)
         checks = check_answer_artifacts(self._trial.workspace, {
             spec.path: json.dumps(spec.expected, sort_keys=True, separators=(",", ":"), allow_nan=False)
             for spec in specifications})
@@ -208,9 +211,10 @@ class _LearningCheckpoint(BasePlugin):
                      and marker in str(e.payload.get("stdout", "")).splitlines()] if marker else []
             if marker and not ready:
                 return
-            if trial.arm != "no_recall" and not reuse_checkpoint and not notes:
+            live_worker = trial.fixture.get("checkpoint_mode") == "live_worker"
+            if trial.arm != "no_recall" and not live_worker and not reuse_checkpoint and not notes:
                 return
-            note = ready[-1] if trial.arm == "no_recall" or reuse_checkpoint else notes[-1]
+            note = ready[-1] if trial.arm == "no_recall" or live_worker or reuse_checkpoint else notes[-1]
             if marker and note.sequence > ready[-1].sequence:
                 return
             change_floors = {}
@@ -307,9 +311,10 @@ class _LearningCheckpoint(BasePlugin):
             historical_notes = [e for e in events if e.kind == "memory.note"]
             self.pending["reused_note_event_id"] = historical_notes[-1].event_id if historical_notes else None
             self.pending["checkpoint_policy"] = "historical_reuse_no_freshness_claim"
-        # Explicit synthetic pressure, not a provider-window claim. Preserve the
-        # normal packet and hard-window capacities, and restore the ratio after one cut.
-        trial.plugin.config = self.config.model_copy(update={"compaction_threshold_ratio": 0.000001})
+        if trial.fixture.get("checkpoint_mode") != "live_worker":
+            # Explicit synthetic pressure, not a provider-window claim. Preserve the
+            # normal packet and hard-window capacities, and restore the ratio after one cut.
+            trial.plugin.config = self.config.model_copy(update={"compaction_threshold_ratio": 0.000001})
 
     async def after_model_callback(self, *, callback_context, llm_response):
         if llm_response.partial or callback_context.agent_name != "coding_worker":
@@ -332,13 +337,23 @@ class _LearningCheckpoint(BasePlugin):
                     status="observed", payload={"stage": self.stage, "marker": marker})
             return
         cuts = [e for e in trial.ledger.read(trial.task_id) if e.kind == "compaction.created"]
-        if len(cuts) != self.stage + 1 or cuts[-1].sequence <= self.stage_floor:
-            raise ValueError("learning intervention did not publish exactly one new checkpoint")
-        trial.cut_sequence = cuts[-1].sequence
-        trial.plugin.config = self.config
-        trial.ledger.append(task_id=trial.task_id, source="evaluation", source_id=f"learning-checkpoint-{self.stage}",
-                            kind="evaluation.learning_checkpoint", payload={**self.pending,
-                            "cut_sequence": trial.cut_sequence, "seeded_cells": trial.seed_cells})
+        if trial.fixture.get("checkpoint_mode") == "live_worker":
+            if cuts:
+                raise ValueError("live-worker intervention must not compact context")
+            checkpoint = trial.ledger.append(
+                task_id=trial.task_id, source="evaluation", source_id=f"learning-checkpoint-{self.stage}",
+                kind="evaluation.learning_checkpoint", payload={**self.pending, "seeded_cells": trial.seed_cells,
+                "boundary": "same_live_worker_no_context_cut"})
+            trial.cut_sequence = trial.cut_sequence or checkpoint.sequence
+        else:
+            if len(cuts) != self.stage + 1 or cuts[-1].sequence <= self.stage_floor:
+                raise ValueError("learning intervention did not publish exactly one new checkpoint")
+            trial.cut_sequence = cuts[-1].sequence
+            trial.plugin.config = self.config
+            checkpoint = trial.ledger.append(
+                task_id=trial.task_id, source="evaluation", source_id=f"learning-checkpoint-{self.stage}",
+                kind="evaluation.learning_checkpoint", payload={**self.pending,
+                "cut_sequence": trial.cut_sequence, "seeded_cells": trial.seed_cells})
         self.stage += 1
-        self.stage_floor = trial.cut_sequence
+        self.stage_floor = checkpoint.sequence
         self.note = self.ack_message = self.pending = None

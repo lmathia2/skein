@@ -54,13 +54,21 @@ def _merge_findings(
         raise _NoteRejected("finding update IDs must be unique")
     known = set(entries) | {item.id for item in updates}
     for finding in updates:
-        if not set(finding.evidence_refs) <= available.keys():
+        unavailable = set(finding.evidence_refs) - available.keys()
+        if unavailable:
             raise _NoteRejected("finding cites unavailable public task evidence", recovery={
-                "strategy": "reference_in_place", "local_note_scope": "current_task_public_evidence_only",
-                "guidance": "Prior findings remain durable in their source task; use their source_note_command "
-                            "or the authorized working_set query when recovery is needed. Do not checkpoint a "
-                            "duplicate or turn foreign IDs into local citations. Save new current-task learning "
-                            "with current-task evidence; unsupported conclusions remain hypotheses.",
+                "strategy": "recover_exact_current_task_reference", "local_note_scope": "current_task_public_evidence_only",
+                "issue": "malformed_artifact_address" if any(
+                    ref.startswith("artifact:") and not re.fullmatch(r"artifact://sha256/[0-9a-f]{64}", ref)
+                    for ref in unavailable) else "unavailable_current_task_reference",
+                "guidance": "The update did not commit; the last checkpoint and note version are unchanged. "
+                            "Copy exact evidence values from completed current-task read_reference fields or "
+                            "authorized historical recovery, rather than retyping hashes. Recover a missing reference "
+                            "through the supplied history/artifact routes; do not guess-repair addresses or remove "
+                            "supporting citations to make the update pass. Retry corrected content with a new operation ID.",
+                "prior_reuse": "If the reference belongs to a prior task, reuse its finding in place through the "
+                               "authorized source_note_command or working_set query. A foreign citation does not "
+                               "become current-task evidence. Unavailable does not establish which task owns it.",
             })
         if not set((*finding.supersedes, *finding.conflicts_with)) <= known:
             raise _NoteRejected("finding links an unknown finding ID")
@@ -157,7 +165,7 @@ class ContextProgramService:
         if self.mode != "active" or not self.working_notes:
             return {"status": "denied", "reason": "working notes disabled", "effect": "none"}
         contract = {
-            "schema_version": 6, "input_schema": WorkingNoteInput.model_json_schema(),
+            "schema_version": 7, "input_schema": WorkingNoteInput.model_json_schema(),
             "command": "memory note write --text TEXT --expected-version N --operation-id ID [--evidence IDS] [--entries JSON]",
             "encoding": "Quote TEXT and JSON with shlex.quote. --evidence is comma-separated public event IDs; --entries is a JSON array, not the whole input object.",
             "budget_bytes": min(self.max_result_bytes // 2, 8000),
@@ -174,6 +182,7 @@ class ContextProgramService:
                 "Writes merge by ID; revise the same finding under its existing ID, not a parallel *_current entry. New IDs represent distinct findings; omitted entries remain. At most 64 merged entries; update IDs must be unique.",
                 "Finding text must be nonblank and at most 2000 UTF-8 bytes. Each link list must be unique; links must be nonempty and at most 4096 UTF-8 bytes each.",
                 "An observation requires evidence_refs. Evidence must be exposed public task evidence: event IDs or read_reference artifact URIs; --evidence accepts event IDs only.",
+                "Copy evidence reference values from completed read results or authorized historical recovery; do not manually retype or guess-repair artifact hashes. A rejected citation update leaves the last checkpoint and note version unchanged.",
                 "Batch independently reusable facts as separate entries with only their supporting evidence and paths. All dependencies of one entry are validated together; keep genuinely cross-source conclusions together with every required dependency. Do not mechanically split claims or drop evidence to obtain matching status.",
                 "Prior findings are reused in place, not copied into this note. Their working_set reuse.source_note_command recovers the exact authorized source note. Checkpoint only new current-task learning; foreign IDs are not local evidence.",
                 "supersedes/conflicts_with must name existing or same-update finding IDs, never self. Supersession chains need separate revisions; superseded findings cannot be disputed.",

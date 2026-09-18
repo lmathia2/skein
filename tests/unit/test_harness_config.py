@@ -74,6 +74,7 @@ def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:
 
     assert composition.schema_version == 1
     assert FOUR_CODING_TOOLS == ("read", "bash", "edit", "write")
+    assert not config.notebook_ptc.emit_state_updates
     assert composition.server.protocol == "ag_ui_websocket_v1"
     assert composition.server.first_event_timeout_seconds == 120
     assert composition.server.idle_timeout_seconds == 180

@@ -124,6 +124,67 @@ def test_capability_help_degrades_to_signatures_then_targeted_pointer() -> None:
     assert len(json.dumps(pointer, sort_keys=True).encode()) <= 16_000
 
 
+def test_kernel_help_and_static_prompt_share_the_actual_execution_boundary():
+    from app.agent.config import NOTEBOOK_PTC_INSTRUCTION
+    from harness.ptc.repl.worker import WORKSPACE_EXECUTION_GUIDANCE, default_help_catalog
+
+    catalog = default_help_catalog()
+    assert catalog["kernel"]["workspace_execution"] == WORKSPACE_EXECUTION_GUIDANCE
+    assert NOTEBOOK_PTC_INSTRUCTION.endswith(WORKSPACE_EXECUTION_GUIDANCE)
+    with PersistentPythonWorker() as worker:
+        result = worker.execute("agent.help('kernel', details=True)", _Broker(), 5)
+        assert result.status == "ok"
+        assert len((result.value_repr or "").encode()) < 16_000
+        for name in catalog["kernel"]["blocked_direct_calls"]:
+            rejected = worker.execute(f"{name}('pass')", _Broker(), 5)
+            assert rejected.status == "error" and rejected.failure_stage == "source_validation"
+        for name in catalog["kernel"]["blocked_direct_modules"]:
+            rejected = worker.execute(f"import {name}", _Broker(), 5)
+            assert rejected.status == "error" and rejected.failure_stage == "source_validation"
+
+
+def test_prompt_source_mapping_survives_separate_answer_reads_without_refetching():
+    import hashlib
+
+    from app.agent.config import NOTEBOOK_PTC_INSTRUCTION
+
+    class ReadBroker(_Broker):
+        def read(self, path, offset=1, limit=400):
+            self.calls.append(("read", (path, offset, limit)))
+            text = self.files[path]
+            return {"status": "ok", "data": {"path": path, "text": text, "offset": offset,
+                    "returned_lines": 1, "complete": False, "next_offset": offset + 1},
+                    "read_reference": {"artifact_uri": "artifact://sha256/" + "a" * 64,
+                        "path": path, "sha256": hashlib.sha256(text.encode()).hexdigest(),
+                        "offset": offset, "returned_lines": 1}}
+
+        def parallel(self, operations):
+            return [self.read(**item["arguments"]) for item in operations]
+
+    broker = ReadBroker()
+    broker.files.update({"config.json": '{"price": 7}', "answer.json": '{"cost": 21}'})
+    # Execute the actual shipped prompt example, not a separately scripted analogue.
+    recipe = "source_pages = agent.parallel" + NOTEBOOK_PTC_INSTRUCTION.split(
+        "source_pages = agent.parallel", 1)[1].split("\nchanged =", 1)[0]
+    with PersistentPythonWorker() as worker:
+        captured = worker.execute("known_paths = ['config.json']\n" + recipe, broker, 5)
+        assert captured.status == "ok"
+        reused = worker.execute(
+            "answer_reads = {'answer.json': agent.fs.read('answer.json')}\n"
+            "check_results = json.loads(source_reads['config.json']['data']['text'])['price'] * 3\n"
+            "check_results == json.loads(answer_reads['answer.json']['data']['text'])['cost']", broker, 5)
+        assert reused.status == "ok" and reused.value_repr == "True"
+        descriptor = worker.execute(
+            "json.dumps(agent.state.describe('source_reads', selector=('config.json',)))", broker, 5)
+        assert descriptor.status == "ok"
+        # The source still has its original partial-range receipt; no full-file claim.
+        entry = next(row for row in reused.state_manifest if row.get("name") == "source_reads")
+        assert entry["read_reference"]["path"] == "config.json"
+        assert entry["read_reference"]["returned_lines"] == 1
+        assert worker.execute("source_reads['config.json']['data']['complete']", broker, 5).value_repr == "False"
+    assert broker.calls == [("read", ("config.json", 1, 400)), ("read", ("answer.json", 1, 400))]
+
+
 def test_worker_returns_mime_bundle_as_rich_display() -> None:
     with PersistentPythonWorker() as worker:
         result = worker.execute('{"image/png": b"png-bytes", "text/plain": "plot"}', _Broker(), 5)
@@ -152,6 +213,29 @@ def test_worker_exposes_bounded_state_metadata_without_values() -> None:
     assert "'size': 23000" in (catalog.value_repr or "")
     assert "'cell_id': 'cell-1'" in (catalog.value_repr or "")
     assert marker not in (catalog.value_repr or "")
+
+
+@pytest.mark.parametrize("code,stage,line", [
+    ("import json\nvalue = 7\njson.loads('not JSON')", "execution", 3),
+    ("def parse_data():\n    return json.loads('not JSON')\nparse_data()", "execution", 2),
+    ("value = 7\nif True:\n    missing = (", "parse", 3),
+    ("value = 7\nif False:\n    open('file')", "source_validation", 3),
+])
+def test_worker_error_location_is_in_submitted_source_not_parsed_data(code, stage, line):
+    with PersistentPythonWorker() as worker:
+        failed = worker.execute(code, _Broker(), 5)
+    assert failed.status == "error" and failed.failure_stage == stage
+    assert failed.error_line == line
+    assert failed.error_source == code.splitlines()[line - 1].strip()
+
+
+def test_prior_cell_function_failure_points_to_the_current_call_site():
+    with PersistentPythonWorker() as worker:
+        defined = worker.execute("def fail_later():\n    return 1 / 0", _Broker(), 5)
+        assert defined.status == "ok"
+        failed = worker.execute("marker = 7\nmarker += 1\n\nfail_later()", _Broker(), 5)
+    assert failed.status == "error" and failed.failure_stage == "execution"
+    assert failed.error_line == 4 and failed.error_source == "fail_later()"
 
 
 def test_worker_reports_errors_without_losing_prior_state() -> None:

@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from harness.adapters.adk import SteeringPlugin
 from harness.adapters.adk.context import ContextWindowPlugin, MemoryShadowPlugin
 from harness.adapters.adk.pi_compaction import pi_event_summarizer
+from harness.adapters.adk.tool_calls import InvalidToolArgumentsPlugin
 from harness.adapters.providers import AdkModelProviderRegistry, default_adk_model_provider_registry
 from harness.core.agent import (
     AdkHarnessAssembly,
@@ -653,6 +654,12 @@ class SkeinHarnessFactory:
         plugins.extend(
             [
                 metrics_plugin,
+                InvalidToolArgumentsPlugin(
+                    event_store=event_store,
+                    artifact_root=settings.state_root / "artifacts" / "sha256",
+                    redactor=SecretRedactor(known_secrets=known_secrets),
+                    default_task_id=settings.task_id_override,
+                ),
                 CodingToolArtifactPlugin(
                     event_store=event_store,
                     default_task_id=settings.task_id_override,

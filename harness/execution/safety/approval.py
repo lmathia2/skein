@@ -126,16 +126,58 @@ _DESTRUCTIVE_PATTERNS = (
     re.compile(r"(?:^|\s)git\s+clean\s+-[A-Za-z]*f"),
     re.compile(r"(?:^|\s)git\s+push\s+.*(?:--force|-f)(?:\s|$)"),
 )
-_SHELL_SPLIT = re.compile(r"\s*(?:&&|\|\||;|\n|(?<![>&])&(?![>&]))\s*")
 _HOST_ROOT_READ = re.compile(r"(?:^|\s)(?:du|find|ls)\s+/(?:\s|$)")
 _SHELL_SUBSTITUTION = re.compile(r"\$\(|`|[<>]\(")
 
 
-def _tokens(segment: str) -> list[str]:
-    try:
-        return shlex.split(segment, posix=True)
-    except ValueError:
-        return []
+def _shell_segments(command: str) -> list[str]:
+    """Separate commands without interpreting quoted/escaped argument contents.
+
+    This is only the segmentation boundary; shlex still validates each segment.
+    Expansion/substitution remains conservatively gated by the caller.
+    """
+    segments: list[str] = []
+    quote = ""
+    start = index = 0
+    while index < len(command):
+        char = command[index]
+        # In double quotes, backslash only quotes a small POSIX subset.
+        if char == "\\" and quote != "'" and (
+            not quote or command[index + 1:index + 2] in {'$', '`', '"', '\\', '\n'}
+        ):
+            index += 2
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "'\"":
+            quote = char
+        elif char in "#$()":
+            # Do not interpret comments, expansion, ANSI-C quotes or compound
+            # syntax as ordinary argv. These need explicit approval, not a
+            # guessed shell parse that could hide a subsequent executable.
+            raise ValueError("unsupported shell syntax")
+        elif (char in "<>" and command[index + 1:index + 2] == "&") or (
+            char == "&" and command[index + 1:index + 2] == ">"
+        ):
+            # Recognize an actual redirection pair here, not by looking behind
+            # a later &: an escaped > followed by & starts a background command.
+            index += 2
+            continue
+        elif char in ";\n|&":
+            if segment := command[start:index].strip():
+                segments.append(segment)
+            start = index + 1
+            # Both halves of &&/|| are one separator, not an argument prefix.
+            if char in "&|" and command[index + 1:index + 2] == char:
+                index += 1
+                start = index + 1
+        index += 1
+    if quote:
+        raise ValueError("unclosed shell quote")
+    if segment := command[start:].strip():
+        segments.append(segment)
+    return segments
 
 
 def _git_risk(tokens: list[str]) -> CommandRisk:
@@ -262,60 +304,58 @@ def classify_command(command: str, *, workspace: Path | None = None) -> CommandR
         return CommandRisk.UNKNOWN
 
     risks: list[CommandRisk] = []
-    for segment in _SHELL_SPLIT.split(normalized):
-        if not segment:
+    try:
+        commands = [shlex.split(segment, posix=True) for segment in _shell_segments(normalized)]
+    except ValueError:
+        return CommandRisk.UNKNOWN
+    for tokens in commands:
+        if not tokens:
+            risks.append(CommandRisk.UNKNOWN)
             continue
-        # Pipelines can hide exfiltration; classify each pipe segment separately.
-        pipe_segments = [part.strip() for part in segment.split("|") if part.strip()]
-        for pipe_segment in pipe_segments:
-            tokens = _tokens(pipe_segment)
-            if not tokens:
-                risks.append(CommandRisk.UNKNOWN)
-                continue
-            executable = tokens[0].rsplit("/", 1)[-1]
-            if executable == "sudo":
+        executable = tokens[0].rsplit("/", 1)[-1]
+        if executable == "sudo":
+            risks.append(CommandRisk.DESTRUCTIVE)
+        elif executable == "cd":
+            risks.append(_cd_risk(tokens, workspace))
+        elif executable == "git":
+            risks.append(_git_risk(tokens))
+        elif executable == "nb":
+            risks.append(_notebook_risk(tokens))
+        elif executable in {"pip", "pip3", "uv", "npm", "npx", "pnpm", "yarn", "cargo", "go"}:
+            risks.append(_package_risk(tokens))
+        elif executable in _NETWORK_COMMANDS:
+            risks.append(CommandRisk.NETWORK_ACCESS)
+        elif executable in _MUTATION_COMMANDS:
+            if executable == "rm" and any("r" in token and token.startswith("-") for token in tokens[1:]):
                 risks.append(CommandRisk.DESTRUCTIVE)
-            elif executable == "cd":
-                risks.append(_cd_risk(tokens, workspace))
-            elif executable == "git":
-                risks.append(_git_risk(tokens))
-            elif executable == "nb":
-                risks.append(_notebook_risk(tokens))
-            elif executable in {"pip", "pip3", "uv", "npm", "npx", "pnpm", "yarn", "cargo", "go"}:
-                risks.append(_package_risk(tokens))
-            elif executable in _NETWORK_COMMANDS:
-                risks.append(CommandRisk.NETWORK_ACCESS)
-            elif executable in _MUTATION_COMMANDS:
-                if executable == "rm" and any("r" in token and token.startswith("-") for token in tokens[1:]):
-                    risks.append(CommandRisk.DESTRUCTIVE)
-                else:
-                    risks.append(CommandRisk.WORKSPACE_MUTATION)
-            elif executable in _BUILD_COMMANDS:
-                risks.append(
-                    CommandRisk.DEPENDENCY_INSTALL
-                    if executable == "npx" and "--no-install" not in tokens[1:]
-                    else CommandRisk.BUILD_OR_TEST
-                )
-            elif executable in _SAFE_READ_COMMANDS:
-                if (executable == "find" and {
-                    "-delete",
-                    "-exec",
-                    "-execdir",
-                    "-ok",
-                    "-okdir",
-                } & set(tokens[1:])) or any(
-                    ".." in Path(token).parts for token in tokens[1:]
-                ):
-                    risks.append(CommandRisk.UNKNOWN)
-                else:
-                    risks.append(CommandRisk.READ_ONLY)
-            elif executable in {"gcloud", "kubectl", "terraform", "helm", "docker"}:
-                if any(word in _PUBLISH_WORDS for word in tokens[1:]):
-                    risks.append(CommandRisk.PUBLISH_OR_DEPLOY)
-                else:
-                    risks.append(CommandRisk.UNKNOWN)
+            else:
+                risks.append(CommandRisk.WORKSPACE_MUTATION)
+        elif executable in _BUILD_COMMANDS:
+            risks.append(
+                CommandRisk.DEPENDENCY_INSTALL
+                if executable == "npx" and "--no-install" not in tokens[1:]
+                else CommandRisk.BUILD_OR_TEST
+            )
+        elif executable in _SAFE_READ_COMMANDS:
+            if (executable == "find" and {
+                "-delete",
+                "-exec",
+                "-execdir",
+                "-ok",
+                "-okdir",
+            } & set(tokens[1:])) or any(
+                ".." in Path(token).parts for token in tokens[1:]
+            ):
+                risks.append(CommandRisk.UNKNOWN)
+            else:
+                risks.append(CommandRisk.READ_ONLY)
+        elif executable in {"gcloud", "kubectl", "terraform", "helm", "docker"}:
+            if any(word in _PUBLISH_WORDS for word in tokens[1:]):
+                risks.append(CommandRisk.PUBLISH_OR_DEPLOY)
             else:
                 risks.append(CommandRisk.UNKNOWN)
+        else:
+            risks.append(CommandRisk.UNKNOWN)
 
     priority = {
         CommandRisk.READ_ONLY: 0,

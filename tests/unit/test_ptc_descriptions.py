@@ -12,6 +12,28 @@ def source_result():
                                "offset": 40, "returned_lines": 1}}
 
 
+@pytest.mark.parametrize("kind,selector", [("result", ()), ("data", ("data",)), ("text", ("data", "text"))])
+def test_attested_read_forms_have_executable_content_locations(kind, selector):
+    from harness.ptc.repl.worker import project_live_binding
+
+    read = source_result()
+    namespace = {"reads": {"quote'\\key": read}}
+    state = _StateProxy(namespace, {})
+    state.register_read(read)
+    descriptor = state.describe("reads", ("quote'\\key", *selector))
+    assert descriptor["read_value_kind"] == kind
+    view = project_live_binding(descriptor)
+    assert eval(view["content_expression"], namespace) == read["data"]["text"]
+    assert view["read_reference"] == read["read_reference"]
+    assert view["freshness"] == "historical_snapshot"
+    assert "value_fingerprint" not in view and "value_fingerprint" in descriptor
+    assert "content_expression" not in project_live_binding({"name": "forged", "read_reference": read["read_reference"]})
+    read["data"]["text"] = "changed\n"
+    if kind != "text":
+        invalid = state.describe("reads", ("quote'\\key", *selector))
+        assert "read_value_kind" not in invalid and "content_expression" not in project_live_binding(invalid)
+
+
 @pytest.mark.parametrize("case", ["complete", "partial_source", "incomplete_page", "last_page", "base64", "blocked", "failed_result"])
 def test_recovery_recipe_decodes_only_complete_bytes_and_preserves_source_coverage(case):
     from app.agent.ptc import _state_update_notice

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -148,7 +150,27 @@ def test_docker_sandbox_builds_hardened_networkless_command(tmp_path: Path) -> N
     assert "no-new-privileges:true" in command
     assert "type=bind" in next(value for value in command if value.startswith("type=bind"))
     assert "python:3.12-slim" in command
+    assert "PYTHONPYCACHEPREFIX=/tmp/pycache" in command
     assert command[-1] == "pytest -q"
+
+
+@pytest.mark.skipif(not os.getenv("SKEIN_EVAL_DOCKER_IMAGE"), reason="explicit cached Docker image required")
+def test_docker_import_cache_is_outside_workspace_but_explicit_compile_output_remains(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "cache_fixture.py").write_text("value = 42\n")
+    sandbox = DockerSandbox(workspace, tmp_path / "artifacts", image=os.environ["SKEIN_EVAL_DOCKER_IMAGE"])
+    source = (
+        "import cache_fixture, pathlib, py_compile, sys; "
+        "assert cache_fixture.value == 42; "
+        "assert sys.pycache_prefix == '/tmp/pycache'; "
+        "assert pathlib.Path(cache_fixture.__cached__).is_file(); "
+        "assert pathlib.Path(cache_fixture.__cached__).is_relative_to('/tmp/pycache'); "
+        "py_compile.compile('cache_fixture.py', cfile='requested.pyc', doraise=True)"
+    )
+    result = sandbox.execute(SandboxRequest(command=shlex.join(["python", "-c", source]), timeout_seconds=30))
+    assert result.status == "ok" and result.exit_code == 0, result.stderr
+    assert sorted(path.name for path in workspace.iterdir()) == ["cache_fixture.py", "requested.pyc"]
 
 
 def test_docker_sandbox_execution_can_be_tested_without_docker(tmp_path: Path) -> None:

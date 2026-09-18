@@ -247,6 +247,113 @@ async def test_missing_note_has_one_soft_checkpoint_opportunity(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_checkpoint_reminder_retains_prefix_after_note_and_plugin_restart(tmp_path):
+    from harness.adapters.providers.openrouter_responses import build_openrouter_request_body
+    note = {"note": {"status": "unavailable", "version": 0}}
+    plugin, context, events, canonical = setup(tmp_path, note=note)
+    plugin.config = plugin.config.model_copy(update={"window_management": False})
+    raw = [text("Completed source evidence " + "x" * 9000)]
+    first = LlmRequest(contents=deepcopy(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=first)
+    assert "working-note checkpoint is pending" in _serialized(first.contents)
+    raw += [types.Content(role="model", parts=[types.Part.from_function_call(name="execute_code", args={})]),
+            types.Content(role="user", parts=[types.Part.from_function_response(
+                name="execute_code", response={"error": "code is required"})])]
+    note.update(note={"status": "ok", "version": 1}, note_excerpt="Completed source finding")
+    second = LlmRequest(contents=deepcopy(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=second)
+    assert _serialized(second.contents[:len(first.contents)]) == _serialized(first.contents)
+    before_wire = build_openrouter_request_body(first, model="openai/gpt-5.6-luna", reasoning_effort="max")
+    after_wire = build_openrouter_request_body(second, model="openai/gpt-5.6-luna", reasoning_effort="max")
+    assert after_wire["input"][:len(before_wire["input"])] == before_wire["input"]
+    assert _serialized(second.contents).count("working-note checkpoint is pending") == 1
+    restarted = ContextWindowPlugin(events=events, ledger=canonical, config=plugin.config,
+                                    handoff=lambda _: note, require_notes=True)
+    context.state = {key: value for key, value in context.state.items()
+                     if not key.startswith("context_checkpoint_requested:")}
+    replay = LlmRequest(contents=deepcopy(raw))
+    await restarted.before_model_callback(callback_context=context, llm_request=replay)
+    assert _serialized(replay.contents) == _serialized(second.contents)
+    assert not any(e.kind == EventKind.COMPACTION_CREATED for e in events.read("task"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["publication", "history", "content", "boundary", "duplicate", "task"])
+async def test_checkpoint_exposure_fails_closed_before_request_mutation(tmp_path, monkeypatch, fault):
+    from harness.adapters.adk.steering import _exposure_hash
+    plugin, context, events, _ = setup(tmp_path, note={"note": {"status": "unavailable"}})
+    plugin.config = plugin.config.model_copy(update={"window_management": False})
+    raw = [text("Retained history " + "x" * 9000)]
+    if fault == "publication":
+        append = events.append
+        def fail(task_id, kind, *args, **kwargs):
+            if kind == EventKind.NOTE_CHECKPOINT_EXPOSED:
+                raise OSError("publication failed")
+            return append(task_id, kind, *args, **kwargs)
+        monkeypatch.setattr(events, "append", fail)
+    else:
+        await plugin.before_model_callback(callback_context=context, llm_request=LlmRequest(contents=deepcopy(raw)))
+        if fault == "history":
+            raw = [raw[0], text("prior boundary changed")]
+            # Keep the root anchor, but contradict the original source prefix.
+            damaged = events.read("task")
+            event = next(e for e in damaged if e.kind == EventKind.NOTE_CHECKPOINT_EXPOSED)
+            payload = {**event.payload, "boundary": 2}
+            payload["content_hash"] = _exposure_hash(payload)
+        else:
+            damaged = events.read("task")
+            event = next(e for e in damaged if e.kind == EventKind.NOTE_CHECKPOINT_EXPOSED)
+            payload = dict(event.payload)
+            if fault == "content":
+                payload["text"] += "changed"
+            elif fault == "boundary":
+                payload["boundary"] = True
+                payload["content_hash"] = _exposure_hash(payload)
+        damaged = [e.model_copy(update={"payload": payload,
+                                       **({"task_id": "foreign"} if fault == "task" else {})})
+                   if e.event_id == event.event_id else e for e in damaged]
+        if fault == "duplicate":
+            damaged.append(event.model_copy(update={"event_id": "duplicate", "sequence": len(damaged) + 1}))
+        monkeypatch.setattr(events, "read", lambda _: damaged)
+    request = LlmRequest(contents=deepcopy(raw))
+    with pytest.raises((OSError, ValueError)):
+        await plugin.before_model_callback(callback_context=context, llm_request=request)
+    assert _serialized(request.contents) == _serialized(raw)
+    if fault == "publication":
+        assert not any(key.startswith("context_checkpoint_requested:") for key in context.state)
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_reminder_precedes_new_steering_and_leaves_only_at_cut(tmp_path):
+    from harness.adapters.adk.steering import SteeringPlugin
+    from harness.evidence.state import SteeringQueue
+    note = {"note": {"status": "unavailable"}}
+    plugin, context, events, _ = setup(tmp_path, note=note)
+    plugin.config = plugin.config.model_copy(update={"window_management": False})
+    queue = SteeringQueue(tmp_path / "steering.db")
+    steering = SteeringPlugin(queue=queue, event_store=events, lease_seconds=60, mark_context=True)
+    context.state["steering_owner"] = "owner"
+    raw = [text("Captured source " + "x" * 9000)]
+    first = LlmRequest(contents=deepcopy(raw))
+    await steering.before_model_callback(callback_context=context, llm_request=first)
+    await plugin.before_model_callback(callback_context=context, llm_request=first)
+    queue.enqueue("task", "Newest constraint: keep verification enabled")
+    second = LlmRequest(contents=deepcopy(raw))
+    await steering.before_model_callback(callback_context=context, llm_request=second)
+    await plugin.before_model_callback(callback_context=context, llm_request=second)
+    assert _serialized(second.contents[:len(first.contents)]) == _serialized(first.contents)
+    assert "Newest constraint" in _serialized(second.contents[-1:])
+    note.update(note={"status": "ok", "version": 1}, note_excerpt="Learned finding")
+    plugin.config = plugin.config.model_copy(update={"window_management": True})
+    third = LlmRequest(contents=deepcopy(raw))
+    await steering.before_model_callback(callback_context=context, llm_request=third)
+    await plugin.before_model_callback(callback_context=context, llm_request=third)
+    assert "working-note checkpoint is pending" not in _serialized(third.contents)
+    assert "Newest constraint" in _serialized(third.contents)
+    assert any(e.kind == EventKind.COMPACTION_CREATED for e in events.read("task"))
+
+
+@pytest.mark.asyncio
 async def test_phase_boundary_defers_soft_limit_but_hard_limit_compacts(tmp_path):
     plugin, context, events, _ = setup(tmp_path)
     plugin.config = ContextConfig(
@@ -578,6 +685,93 @@ def test_read_manifest_keeps_old_relevant_paths_and_direct_recovery_handles(tmp_
     assert len(manifest["reads_newest_first"]) == 32 and manifest["omitted_reads"] == 8
 
 
+@pytest.mark.parametrize("page_case", ["complete", "partial", "nonzero", "binary", "denied", "failed_read", "wrong_path", "wrong_hash", "wrong_range"])
+def test_normal_ptc_handoff_has_runnable_completed_read_recovery(tmp_path, page_case):
+    from harness.evidence.memory.models import ReadEvidence
+
+    _, _, events, _ = setup(tmp_path)
+    evidence = ReadEvidence(path="src/a.py", sha256="a" * 64, offset=3, returned_lines=2)
+    events.append("task", EventKind.CAPABILITY_COMPLETED, {
+        "operation": "fs.read", "status": "ok", "effect": "observed",
+        "read_evidence": evidence.model_dump(), "source_coverage": evidence.source_coverage(12),
+        "result_artifact_uri": "artifact://sha256/" + "b" * 64, "result_media_type": "application/json",
+    })
+    details = {"kernel": {"live": False}, "evidence_manifest": _evidence_manifest(events.read("task"), [])}
+    rendered = render_handoff(details, max_tokens=2000)
+    advisory = json.loads(rendered.split("Advisory memory (not execution authority):\n")[1])
+    read = next(e["value"] for e in advisory["entries"] if e["kind"] == "reads_newest_first")
+    assert "agent.artifacts.load(" in read["read_recovery"]["load_code"]
+    assert "saved_result = source_text = None" in advisory["completed_read_recovery"]["then_python"]
+    assert read["source_coverage"]["whole_file"] is False
+    saved = {"status": "ok", "data": {**evidence.model_dump(), "text": "raise AssertionError('source is data')\n# captured only\n"}}
+    if page_case == "failed_read":
+        saved["status"] = "error"
+    elif page_case == "wrong_path":
+        saved["data"]["path"] = "src/b.py"
+    elif page_case == "wrong_hash":
+        saved["data"]["sha256"] = "c" * 64
+    elif page_case == "wrong_range":
+        saved["data"]["offset"] = 4
+    page = {"status": "error" if page_case == "denied" else "ok", "data": {
+        "uri": read["artifact_uri"], "offset": int(page_case == "nonzero"),
+        "complete": page_case != "partial", "encoding": "base64" if page_case == "binary" else "utf-8",
+        "text": json.dumps(saved),
+    }}
+    def load(uri):
+        assert uri == read["artifact_uri"]
+        return page
+
+    namespace = {"json": json, "agent": SimpleNamespace(artifacts=SimpleNamespace(load=load)),
+                 "source_text": "stale binding", "source_citation": "stale citation"}
+    code = read["read_recovery"]["load_code"] + "\n" + advisory["completed_read_recovery"]["then_python"]
+    if page_case.startswith("wrong_"):
+        with pytest.raises(ValueError, match="source identity"):
+            exec(code, namespace)
+        assert namespace["source_citation"] is None
+    else:
+        exec(code, namespace)
+        assert namespace["source_text"] == (saved["data"]["text"] if page_case == "complete" else None)
+        assert namespace["source_citation"] == (read["artifact_uri"] if page_case == "complete" else None)
+
+    # Recipe is optional and PTC-only; no entry fragments or budget increase.
+    four_tool = render_handoff({"evidence_manifest": details["evidence_manifest"]}, max_tokens=2000)
+    assert "read_recovery" not in four_tool and "agent.artifacts.load(" not in four_tool
+    pointer_details = deepcopy(details)
+    del pointer_details["evidence_manifest"]["reads_newest_first"][0]["recovery_kind"]
+    pointer_tokens = estimate_tokens(render_handoff(pointer_details, max_tokens=2000))
+    bounded = render_handoff(details, max_tokens=pointer_tokens + 25)
+    assert read["artifact_uri"] in bounded and "read_recovery" not in bounded
+    assert estimate_tokens(bounded) <= pointer_tokens + 25
+    assert bounded.startswith(rendered.split("Advisory memory")[0])
+
+
+@pytest.mark.parametrize("change", [
+    {"status": "error"}, {"effect": "unknown"}, {"operation": "fs.write"},
+    {"result_media_type": "text/plain"}, {"result_artifact_uri": "artifact://sha256/short"},
+    {"result_artifact_uri": None},
+])
+def test_read_recovery_requires_completed_addressed_json_read(tmp_path, change):
+    _, _, events, _ = setup(tmp_path)
+    payload = {"operation": "fs.read", "status": "ok", "effect": "observed", "result_media_type": "application/json",
+               "result_artifact_uri": "artifact://sha256/" + "b" * 64,
+               "read_evidence": {"path": "a.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 1}}
+    events.append("task", EventKind.CAPABILITY_COMPLETED, {**payload, **change})
+    rendered = render_handoff({"kernel": {"live": False}, "evidence_manifest": _evidence_manifest(events.read("task"), [])}, max_tokens=2000)
+    assert "read_recovery" not in rendered
+
+
+@pytest.mark.parametrize("coverage", ["malformed", {"total_lines": 0}, {"total_lines": 1, "whole_file": False, "next_unread_offset": None}])
+def test_read_recovery_rejects_corrupt_captured_coverage(tmp_path, coverage):
+    _, _, events, _ = setup(tmp_path)
+    events.append("task", EventKind.CAPABILITY_COMPLETED, {
+        "operation": "fs.read", "status": "ok", "effect": "observed", "result_media_type": "application/json",
+        "result_artifact_uri": "artifact://sha256/" + "b" * 64, "source_coverage": coverage,
+        "read_evidence": {"path": "a.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 1},
+    })
+    with pytest.raises(ValueError):
+        _evidence_manifest(events.read("task"), [])
+
+
 @pytest.mark.parametrize("max_tokens", [600, 1300, 10000])
 def test_prompt_projection_roundtrips_selected_findings_and_scoped_versions(max_tokens):
     dependency = {"path": "policy.toml", "sha256": "a" * 64, "offset": 1, "returned_lines": 1,
@@ -730,6 +924,7 @@ async def test_work_batch_navigation_appends_once_and_replays_captured_bytes(tmp
     published = [e for e in events.read("task") if e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED]
     assert len(published) == 1
     payload = published[0].payload
+    assert payload["program"] == "work_batch_navigation@4"
     assert payload["source_watermark"] >= read.sequence
     assert payload["parameters"]["work_batch_id"] == "2"
     assert render_handoff(payload["inputs"], max_tokens=2000) == snapshot
@@ -822,6 +1017,40 @@ def test_boundary_prefers_focused_bindings_and_collapses_only_identical_read_ref
     assert names == ["annotated", "different_range", "different_version", "irrelevant"]
     assert advisory["upstream_omitted_count"] == 40
     assert details == original and render_handoff(details, max_tokens=2000) == rendered
+
+
+@pytest.mark.parametrize("access", ["sources['odd\\\"path.py']", "", None])
+def test_binding_prompt_projection_preserves_authority_and_one_complete_locator(access):
+    reference = {"path": 'odd"path.py', "sha256": "a" * 64, "offset": 19, "returned_lines": 2,
+                 "artifact_uri": "artifact://sha256/" + "b" * 64, "task_id": "source-task",
+                 "operation_id": "read-operation", "source_coverage": {
+                     "whole_file": False, "total_lines": 99, "next_unread_offset": 21}}
+    binding = {"name": "sources", "selector": ['odd"path.py'], "access_expression": access,
+               "inspect_expression": "agent.state.describe('sources', selector=('odd\\\"path.py',))",
+               "type": "dict", "binding_type": "dict", "size": 6, "module": "builtins",
+               "cell_id": "origin-cell", "replay": "never", "value_fingerprint": "f" * 64,
+               "description": "Captured source for the review calculation",
+               "freshness": "historical_snapshot", "read_reference": reference,
+               "future_uncertainty_field": {"must_survive": True}}
+    details = {"kernel": {"live": True, "kernel_epoch": "epoch"},
+               "unresolved_effects": {"count": 1, "operations": ["unresolved"]},
+               "notebook": {"availability": "live", "observation_kernel_epoch": "epoch",
+                            "observation_cell_id": "last-cell", "state": {"manifest": [binding]}}}
+    original = deepcopy(details)
+    rendered = render_handoff(details, max_tokens=2000)
+    required, body = rendered.split("\nAdvisory memory (not execution authority):\n")
+    metadata = json.loads(required.removeprefix("Required continuation metadata:\n"))
+    assert metadata["unresolved_effects"] == details["unresolved_effects"]
+    assert metadata["notebook"]["observation_kernel_epoch"] == "epoch"
+    value = json.loads(body)["entries"][0]["value"]
+    removed = {"module", "value_fingerprint"} | ({"name", "selector", "inspect_expression"} if access else set())
+    assert value == {key: val for key, val in binding.items() if key not in removed}
+    assert value["read_reference"] == reference
+    assert len(canonical_json(value)) < len(canonical_json(binding))
+    assert render_handoff(details, max_tokens=2000) == rendered and details == original
+    # A non-builtin value's module is useful type information, not redundant metadata.
+    binding["module"] = "custom.parser"
+    assert '"module":"custom.parser"' in render_handoff(details, max_tokens=2000)
 
 
 def test_boundary_redacts_recorded_inputs_and_rendered_snapshot(tmp_path):

@@ -9,8 +9,9 @@ from google.genai import types
 from evals.continuity import Continuation
 from evals.continuity_cases import CASES, DevelopmentContinuation
 from evals.continuity_oracle import ORACLE_COMMAND, HostOracleSandbox
-from evals.verified_continuity import run_verified_case
+from evals.verified_continuity import _live_worker_integrity, run_verified_case
 from harness.adapters.providers.openrouter_responses import OpenRouterResponsesLlm
+from harness.evidence.state import EventKind
 from harness.execution.sandbox import SandboxRequest, SandboxResult
 
 
@@ -24,9 +25,10 @@ async def test_root_review_control_survives_small_section_target_in_provider_req
     trial.command_image = os.getenv("SKEIN_EVAL_DOCKER_IMAGE")
     trial.fixture["goal"] += " Preserve complete source coverage and the original requested behavior." * 20
     calls, reviews, prefixes, navigation_packets, read_counts = 0, [], [], [], []
+    retained_access = None
 
     async def solve(self, request, stream=False):
-        nonlocal calls
+        nonlocal calls, retained_access
         calls += 1
         body = build_openrouter_request_body(request, model=self.model, reasoning_effort="max")
         prefixes.append(body.get("instructions"))
@@ -52,9 +54,11 @@ async def test_root_review_control_survives_small_section_target_in_provider_req
                         assert metadata["navigation"]["parameters"]["phase"] == "review"
                         entries = json.loads(advisory)["entries"]
                         retained = next(e["value"] for e in entries if e["kind"] == "live_bindings"
-                                        and e["value"].get("access_expression") == "reads[0]")
+                                        and e["value"].get("content_expression") == "reads[0]['data']['text']")
                         assert retained["read_reference"]["path"] == "config/route_00.toml"
                         assert retained["read_reference"]["artifact_uri"].startswith("artifact://sha256/")
+                        retained_access = retained["content_expression"]
+                        assert "value_fingerprint" not in retained and "inspect_expression" not in retained
                         navigation_packets.append(navigation)
                         read_counts.append(sum(bool(e.payload.get("read_evidence")) for e in trial.events.read(trial.task_id)))
         if calls == 1:
@@ -63,8 +67,12 @@ async def test_root_review_control_survives_small_section_target_in_provider_req
                     "agent.fs.write('answer.json', json.dumps({'port': source['active_port'], 'protocol': source['protocol']}))")
             part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
         elif calls == 3:
+            assert retained_access is not None
             part = types.Part(function_call=types.FunctionCall(name="execute_code", id="review-reuse", args={
-                "code": "print(agent.state.describe('reads', selector=(0,), preview=True))"}))
+                "code": f"review_text = {retained_access}\n"
+                        "review_source = tomllib.loads(review_text)['service']\n"
+                        "assert review_source == source\n"
+                        "print(review_source['protocol'])"}))
         else:
             part = types.Part(text=json.dumps({"status": "verify", "message": "Verify the source-backed answer."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
@@ -108,7 +116,7 @@ async def test_worker_loss_notice_supplies_direct_recovery_for_verified_answer(t
             assert failure["kernel"]["live"] is False and failure["effect"] == ("observed" if same_cell else "none")
             notice, _ = json.JSONDecoder().raw_decode(failure["model_text"].split(
                 "State updates (advisory; sources historical):\n", 1)[1])
-            assert notice["program"] == "ptc_state_updates@3"
+            assert notice["program"] == "ptc_state_updates@4"
             handle = next(row for row in notice["entries"] if row.get("historical_read", {}).get("path") == "config/route_00.toml")
             recovery_handles.append(handle)
             code = (
@@ -547,7 +555,8 @@ async def test_real_workflow_verifies_every_answer_and_reports_unsupported_earli
 
 
 @pytest.mark.asyncio
-async def test_verified_campaign_stops_queued_dispatch_after_failure(tmp_path, monkeypatch):
+@pytest.mark.parametrize("diagnostic", [False, True])
+async def test_verified_campaign_stops_queued_dispatch_after_failure(tmp_path, monkeypatch, diagnostic):
     import evals.verified_continuity as evaluation
 
     called = []
@@ -555,10 +564,124 @@ async def test_verified_campaign_stops_queued_dispatch_after_failure(tmp_path, m
         called.append(trial.root)
         raise RuntimeError("fixture infrastructure failed")
     monkeypatch.setattr(evaluation, "run_verified_case", fail)
-    rows = await evaluation.campaign(tmp_path, ["routing", "missing"], ["metadata", "findings"], 1)
+    rows = await evaluation.campaign(tmp_path, ["routing", "missing"], ["metadata", "findings"], 1,
+                                     diagnostic=diagnostic)
     assert len(called) == 1
     assert len(rows) == 4
     assert sum(r["terminal"] == "not_started_infrastructure_gate" for r in rows) == 3
+    assert all(row["diagnostic_reuse"] is diagnostic for row in rows)
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["screen_scope"] == ("diagnostic_reuse" if diagnostic else "development_or_mixed")
+    assert summary["promotion"] == "hold"
+
+
+def test_diagnostic_manifest_freezes_reuse_label_without_provider_dispatch(tmp_path, monkeypatch):
+    import sys
+
+    import evals.verified_continuity as evaluation
+    from evals.transfer_continuity import TRANSFER_CASES
+
+    output = tmp_path / "dry"
+    monkeypatch.setattr(sys, "argv", ["verified_continuity", "--output", str(output), "--diagnostic",
+                                     "--cases", *TRANSFER_CASES, "--arms", "no_recall", "findings"])
+    monkeypatch.setattr(evaluation, "dotenv_value", lambda *args: pytest.fail("dry run must not read a credential"))
+    evaluation.main()
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["version"] == "verified-continuity-v25" and manifest["diagnostic_reuse"] is True
+    assert manifest["planned_episodes"] == 6 and manifest["max_model_calls"] == 24
+    assert manifest["input_budget"] == 350_000 and manifest["promotion"] is False
+    assert not (output / "results.json").exists()
+
+
+def test_live_worker_manifest_is_isolated_and_bounded(tmp_path, monkeypatch):
+    import sys
+
+    import evals.verified_continuity as evaluation
+
+    output = tmp_path / "dry"
+    monkeypatch.setattr(sys, "argv", ["verified_continuity", "--output", str(output),
+                                     "--cases", "live_worker_repository", "live_worker_config",
+                                     "live_worker_missing_range", "--arms", "baseline", "locator"])
+    monkeypatch.setattr(evaluation, "dotenv_value", lambda *args: pytest.fail("dry run must not read a credential"))
+    evaluation.main()
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["version"] == "verified-continuity-v25"
+    assert manifest["planned_episodes"] == 6 and manifest["live_worker_contract"]["iteration_budget"] == 4
+    assert "on_demand" in manifest["live_worker_contract"]
+    assert manifest["live_worker_contract"]["excluded"] == [
+        "context compaction", "worker loss", "working notes", "prior recall"]
+
+
+def test_live_worker_integrity_rejects_failed_cell_and_epoch_change():
+    class Event:
+        def __init__(self, sequence, kind, epoch=None, *, preserved=False):
+            self.sequence, self.kind = sequence, kind
+            self.payload = ({"kernel_epoch": epoch} if epoch else {}) | {
+                "exception": {"state_preserved": preserved}}
+
+    clean = [Event(1, EventKind.REPL_CELL_SUBMITTED, "epoch-1"),
+             Event(2, EventKind.REPL_CELL_COMPLETED, "epoch-1")]
+    assert _live_worker_integrity(clean)["passed"]
+    rejected = [*clean, Event(3, EventKind.REPL_CELL_FAILED, "epoch-1", preserved=True)]
+    assert _live_worker_integrity(rejected)["passed"]
+    broken = [*clean, Event(3, EventKind.REPL_CELL_FAILED, "epoch-1"),
+              Event(4, EventKind.REPL_CELL_SUBMITTED, "epoch-2")]
+    report = _live_worker_integrity(broken)
+    assert not report["passed"] and report["kernel_epochs"] == ["epoch-1", "epoch-2"]
+    assert report["disruptive_cell_sequences"] == [3]
+
+
+@pytest.mark.asyncio
+async def test_live_worker_control_reuses_retained_value_and_reads_only_missing_range(tmp_path, monkeypatch):
+    from evals.live_worker_reuse import LiveWorkerContinuation
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = LiveWorkerContinuation(tmp_path / "trial", "live_worker_missing_range", "locator")
+    tail_offset = len(trial.fixture["files"]["settings.toml"].splitlines()) - 2
+    calls = 0
+
+    async def solve(self, request, stream=False):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            code = (
+                "import tomllib\n"
+                "settings_head = agent.fs.read('settings.toml', offset=1, limit=4)\n"
+                "dispatch_result = agent.fs.read('dispatch.toml')\n"
+                "assert settings_head['status'] == dispatch_result['status'] == 'ok'\n"
+                "print('LEARNING_COMPLETE')"
+            )
+        elif calls == 2:
+            code = "print('CHECKPOINT_READY_1')"
+        elif calls == 3:
+            code = (
+                "import json\n"
+                f"settings_tail = agent.fs.read('settings.toml', offset={tail_offset}, limit=3)\n"
+                "assert settings_tail['status'] == 'ok'\n"
+                "dispatch = tomllib.loads(dispatch_result['data']['text'])['service']\n"
+                "current = tomllib.loads(settings_tail['data']['text'])['current']\n"
+                "answer = {'total_quota': dispatch['workers'] * current['quota'], 'enabled': current['enabled']}\n"
+                "assert agent.fs.write('answer.json', json.dumps(answer))['status'] == 'ok'"
+            )
+        else:
+            code = None
+        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{calls}", args={"code": code}))
+                if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify the source-backed answer."})))
+        yield LlmResponse(content=types.Content(role="model", parts=[part]),
+                          usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
+                          custom_metadata={"provider_cost_usd": .001})
+
+    monkeypatch.setattr(OpenRouterResponsesLlm, "generate_content_async", solve)
+    result = await run_verified_case(trial)
+    assert result["terminal"] == "verified_completion", result
+    assert result["first_verification_passed"] and result["checkpoint_exercised"]
+    assert result["live_worker_integrity"]["passed"]
+    assert not result["published_checkpoint_sequences"] and len(result["answer_boundary_sequences"]) == 1
+    assert result["measurement"]["answer_contracts"]["boundary_kind"] == "evaluation.learning_checkpoint"
+    reads = [e.payload["read_evidence"] for e in trial.ledger.read(trial.task_id)
+             if e.kind == "capability.completed" and e.payload.get("operation") == "fs.read"]
+    assert [read["path"] for read in reads].count("dispatch.toml") == 1
+    assert [(read["offset"], read["returned_lines"]) for read in reads if read["path"] == "settings.toml"] == [(1, 4), (tail_offset, 3)]
 
 
 @pytest.mark.asyncio

@@ -174,10 +174,15 @@ Implementation ownership, dependencies, and acceptance gates are in the
         Actual failed-shell, pending/corrupt/no-effect boundaries and a deliberate
         missing-fence detection test pass; 878 full-suite checks plus final targeted
         and Docker checks pass. No new paid cohort has used the correction yet.
-      - [x] Run the frozen v13 completion-fence live regression: all four positive
-        first verifications pass with no unresolved execution; both failed-check
-        trials withhold and block. Preserve that voluntary blocking does not itself
-        exercise a forced completion claim. Move to new held-out fixtures next.
+  - [x] Run the frozen v13 completion-fence live regression: all four positive
+    first verifications pass with no unresolved execution; both failed-check
+    trials withhold and block. Preserve that voluntary blocking does not itself
+    exercise a forced completion claim. Move to new held-out fixtures next.
+  - [x] Isolate same-worker retained-value reuse from compaction and learned memory.
+    Across three four-family paired cohorts, the on-demand/no-notice path kept one
+    epoch in 12/12 trials and reused completed values for 30/30 delayed questions
+    with zero avoidable source rereads. Eager binding notices had no reread benefit,
+    lost the epoch in 2/12 trials, and cost 16.2% more; keep them opt-in.
   - [ ] Demonstrate evidence-use and actual reread improvements on new held-out
     continuations; distinguish first proposals, verifier rejection/recovery, and
     independently accepted outcomes. Earlier fixture loops bypassed outer verification.
@@ -314,6 +319,84 @@ Implementation ownership, dependencies, and acceptance gates are in the
               - [ ] Address observed PTC workspace-import/exec detours and review
                 reacquisition using existing execution and evidence-navigation paths;
                 measure on diagnostic cases before freezing another held-out panel.
+                - [x] Share the computation/workspace execution boundary between PTC
+                  instructions and kernel help; retain separate source/answer/check
+                  bindings in the shipped example and test its actual execution.
+                - [ ] Measure live uptake without treating consumed cases as held out.
+                  Six labeled diagnostic trials closed: SQL/findings verifies with
+                  zero source rereads, but findings overall verify only 1/3 versus
+                  control 3/3 and reread 293 versus 204 source lines. Qualification fails.
+                - [x] Correct data-relative exception positions being reported as
+                  notebook source lines; retain parser/source-validation locations.
+                  Also distinguish earlier-cell function frames from current source;
+                  diagnostics change without altering effects or recovery authority.
+                - [ ] Preserve useful blocked-approach evidence across cuts from the
+                  existing approval/receipt history, respecting later authorization
+                  and distinguishing no-effect rejections from unknown execution.
+                  First remove the reproduced policy false positives: all five
+                  routing Python attempts were split inside quoted program bodies.
+                - [x] Keep quoted/escaped shell separators inside arguments in the
+                  shared command classifier; retain real trailing-command risk checks
+                  and fail closed on unsupported syntax. Live benefit remains open.
+                  The bounded routing diagnostic exercises successful quoted project
+                  execution, but findings still fails the memory quality/cost gate.
+                - [x] Bound malformed provider tool-call arguments in the public
+                  history while retaining exact raw evidence and explicit non-execution;
+                  do not synthesize code or treat ADK argument rejection as success.
+                  Redaction takes precedence over exact retained bytes, with original
+                  hash/size and an explicit redacted flag. 73 focused checks pass,
+                  including real ADK/PTC streaming, parallel valid-call continuation,
+                  preserved heap, artifact recovery, usage and rejection metrics.
+                  Full regression: 1,212 passed/three skipped. The common-fix live
+                  pair verifies 2/2 but has equal rereads and 147.2% higher findings
+                  cost. Malformed recovery was not naturally exercised; no promotion.
+                - [x] Preserve a note-checkpoint reminder at its original request
+                  position across calls/restart, with bounded replay and prefix tests.
+                  The latest diagnostic loses one same-epoch prefix after its reminder.
+                  Implemented with the existing addressed-exposure pattern; 80 focused
+                  context/steering checks pass. Post-fix live qualification remains open.
+                - [x] Keep incidental Python bytecode out of the Docker workspace,
+                  matching local execution hygiene without relaxing scope verification
+                  or hiding deliberately requested build artifacts.
+                  Cached-Docker import/explicit-compilation checks pass; live benefit
+                  is exercised by first-verification success without bytecode cleanup
+                  in the common-fix pair. This does not qualify memory efficiency.
+                - [x] Reuse the complete-read artifact recovery recipe in ordinary
+                  cut handoffs, with exact binding/load guidance and unchanged
+                  freshness/range/epoch constraints. Both common-fix arms reread
+                  all 57 source lines after every cut despite available evidence.
+                  New deterministic PTC recovery passes all 119 focused checks and
+                  14 cached-Docker lifecycle cases without overlapping source reads;
+                  live recipe exposure is confirmed in all six diagnostic handoffs,
+                  but productive reuse and the reread-efficiency gate still fail.
+                - [ ] Reproduce and improve productive decoded artifact recovery and
+                  warm-worker value reuse from the ordinary-recovery live pair.
+                  Control loads six artifacts then rereads; findings ignores the
+                  delivered recipe and reacquires 57 lines twice within one epoch.
+                  Preserve historical scope, explicit freshness checks and verification.
+                  - [x] Reproduce the three-source warm-worker notice and expose
+                    attested source-content expressions through one shared bounded
+                    projection. Real PTC uses all three expressions without a fresh
+                    read; mutation/worker-loss/replay checks remain intact. Focused
+                    suite: 216 passed, one skipped. Live benefit remains untested.
+                - [x] Give malformed/missing current-task note citations accurate
+                  recovery guidance; prefer existing read-reference values over
+                  retyping hashes. Never guess-repair or relax citation authorization.
+                  All 36 focused note tests and 12 cached-Docker continuation checks
+                  pass; live recovery efficiency remains unqualified.
+                - [x] Trace completed-phase instructions versus current obligations
+                  after compaction/final review. The saved outgoing final review
+                  includes current steering and the explicit no-repeat instruction;
+                  a missing-delivery hypothesis is contradicted. Preserve the fixture
+                  and required verification in the next recovery diagnostic.
+                - [ ] Demonstrate avoidance of repeated finished preparation without
+                  dropping independently required checks. Repetition despite delivered
+                  guidance remains model behavior, not an established phase-state defect.
+                - [x] Reduce redundant navigation metadata without removing evidence,
+                  version/range identity, uncertainty or independently required checks.
+                  Prompt-only live-binding projection retains canonical descriptors;
+                  all twelve offline review snapshots retain prior selected evidence.
+                  Live reuse/cost qualification remains open.
               - [x] Preserve known no-effect file precondition rejections through direct
                 tools, receipts and PTC; check guards before creating parent directories
                 and keep post-mutation failures unknown. Discovered by the new panel's

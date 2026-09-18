@@ -42,7 +42,7 @@ from harness.ptc.notebook import (
     reduce_notebook,
 )
 from harness.ptc.repl import PersistentPythonWorker, default_help_catalog
-from harness.ptc.repl.worker import READ_RESULT_RECIPE
+from harness.ptc.repl.worker import READ_RESULT_RECIPE, project_live_binding
 from harness.verification.contracts import is_reusable_validation_command
 
 from .config import HarnessSettings
@@ -154,6 +154,7 @@ def _state_updates(previous: list[dict[str, Any]], current: list[dict[str, Any]]
                 continue
             old = before[identity]
             item = {"name": old["name"], "selector": old.get("selector", []), "availability": "association_invalidated"}
+        item = project_live_binding(item)
         if len(updates) < 8 and len(canonical_json([*updates, item]).encode()) <= max_bytes:
             updates.append(item)
     # Reserve invalidation notices first; optional recovery must not displace them.
@@ -201,7 +202,7 @@ def _state_updates(previous: list[dict[str, Any]], current: list[dict[str, Any]]
 def _state_update_notice(updates: list[dict[str, Any]], kernel_epoch: str, cell_id: str,
                          max_bytes: int, state_lost: bool) -> dict[str, Any]:
     historical = any(item.get("historical_read") for item in updates)
-    notice = {"program": "ptc_state_updates@3", "kernel_epoch": kernel_epoch,
+    notice = {"program": "ptc_state_updates@4", "kernel_epoch": kernel_epoch,
               "cell_id": cell_id, "entries": updates,
               "more": ("agent.artifacts.list(); agent.help('artifacts.load', details=True)"
                        if historical or state_lost else "agent.state.list(); agent.state.describe(name, preview=True)")}
@@ -217,7 +218,7 @@ def _state_update_notice(updates: list[dict[str, Any]], kernel_epoch: str, cell_
 
 
 _STATE_UPDATES_PROGRAM_HASH = hashlib.sha256((READ_RESULT_RECIPE + "".join(inspect.getsource(function) for function in (
-    _read_reference, _completed_attempt_reads, _state_updates, _state_update_notice))).encode()).hexdigest()
+    _read_reference, _completed_attempt_reads, project_live_binding, _state_updates, _state_update_notice))).encode()).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1172,7 +1173,7 @@ def build_notebook_session(
                                             result.status != "ok" and not state_preserved)
         terminal_payload["state_updates"] = updates
         terminal_payload["state_updates_view"] = {
-            "program": "ptc_state_updates@3", "program_hash": _STATE_UPDATES_PROGRAM_HASH,
+            "program": "ptc_state_updates@4", "program_hash": _STATE_UPDATES_PROGRAM_HASH,
             "source_watermark": state_events[-1].sequence if state_events else 0,
             "prior_state_event_id": prior_state_event.event_id if prior_state_event else None,
             "current_state_policy": "prior" if execution_started is False else

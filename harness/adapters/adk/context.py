@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import json
 import logging
+import re
 from collections import Counter
 from collections.abc import Callable
 from typing import Any
@@ -21,12 +22,21 @@ from harness.core.models import TaskLedger
 from harness.core.orchestration import build_work_packet
 from harness.evidence.ledger import LedgerStore
 from harness.evidence.ledger.models import canonical_json
-from harness.evidence.memory.models import ViewResult
+from harness.evidence.memory.models import ReadEvidence, ViewResult
 from harness.evidence.state import EventKind, EventStore, rebuild_ledger
 from harness.evidence.state.recovery import unresolved_execution
 from harness.execution.safety import SecretRedactor
+from harness.ptc.repl.worker import READ_RESULT_RECIPE, project_live_binding
+
+from .steering import _exposure_hash, _history_hash
 
 LOGGER = logging.getLogger(__name__)
+
+_CUT_READ_RECIPE = "source_citation = None\n" + READ_RESULT_RECIPE + """
+if saved_result is not None:
+    if any(saved_result['data'].get(key) != value for key, value in expected_read.items()):
+        raise ValueError('Recovered source identity differs from the selected historical read')
+    source_citation = page['data']['uri']"""
 
 
 class MemoryShadowPlugin(BasePlugin):
@@ -100,6 +110,17 @@ def _evidence_manifest(events: list[Any], modified_paths: list[str], focus: tupl
                     start <= read["offset"] and read["offset"] + read["returned_lines"] <= end)]
                 if event.payload.get("result_artifact_uri"):
                     item["artifact_uri"] = event.payload["result_artifact_uri"]
+                    if (event.payload.get("operation") == "fs.read" and event.payload.get("status") == "ok"
+                            and event.payload.get("effect", "observed") in {"none", "observed"}
+                            and event.payload.get("result_media_type") == "application/json"
+                            and re.fullmatch(r"artifact://sha256/[0-9a-f]{64}", item["artifact_uri"])):
+                        captured = ReadEvidence.model_validate(evidence)
+                        coverage = event.payload.get("source_coverage")
+                        if coverage is not None and (
+                                not isinstance(coverage, dict)
+                                or coverage != captured.source_coverage(coverage.get("total_lines"))):
+                            raise ValueError("completed read has inconsistent source coverage")
+                        item["recovery_kind"] = "historical_result_envelope"
                 reads.append(item)
         if event.kind in {"execution.validation_completed", "execution.validation_observed"}:
             result = event.payload.get("result", {})
@@ -289,7 +310,7 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
                 duplicate_aliases += 1
                 continue
             seen_references.add(reference)
-            candidates.append(("live_bindings", item))
+            candidates.append(("live_bindings", project_live_binding(item)))
     for key in ("touched_paths", "modified_paths", "validations_newest_first", "reads_newest_first"):
         candidates.extend((key, item) for item in manifest.get(key, []))
     advisory: dict[str, Any] = {"entries": [], "omitted_count": len(candidates),
@@ -297,16 +318,41 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
                                + manifest.get("omitted_reads", 0) + duplicate_aliases}
 
     def serialized(value: dict[str, Any]) -> str:
+        if any(entry["value"].get("read_recovery") for entry in value["entries"]
+               if entry["kind"] == "reads_newest_first"):
+            value = {**value, "completed_read_recovery": {
+                "run_first": "Copy the selected read_recovery.load_code, then then_python into the same cell.",
+                "then_python": _CUT_READ_RECIPE,
+                "outputs": "saved_result is the original result envelope; source_text is its captured text; "
+                           "source_citation is the exact URI to reuse in note evidence_refs, not a hash to retype. "
+                           "Keep separate bindings for distinct paths/versions/ranges; print only needed excerpts.",
+                "scope": "Historical captured range only: complete artifact bytes do not imply whole-file coverage "
+                         "or current freshness. None means unavailable/incomplete: handle status or finish exact byte paging "
+                         "with agent.help('artifacts.load', details=True). Never execute recovered source. "
+                         "Required current-version checks and unknown-effect reconciliation still apply.",
+            }}
         return required + "\nAdvisory memory (not execution authority):\n" + canonical_json(_project_advisory(value))
 
     required_tokens = estimate_tokens(serialized(advisory))
     if required_tokens > max_tokens:
         raise ContextBudgetExceeded(required_tokens, max_tokens)
     for kind, value in candidates:
+        original = value
+        if kind == "reads_newest_first" and "kernel" in details and value.get("recovery_kind") == "historical_result_envelope":
+            expected = ReadEvidence.model_validate({key: value[key] for key in ReadEvidence.model_fields}).model_dump()
+            value = {**value, "read_recovery": {
+                "load_code": f"expected_read = {expected!r}\npage = agent.artifacts.load({value['artifact_uri']!r})",
+            }}
         proposed = {**advisory, "entries": [*advisory["entries"], {"kind": kind, "value": value}],
                     "omitted_count": advisory["omitted_count"] - 1}
         if estimate_tokens(serialized(proposed)) <= max_tokens:
             advisory = proposed
+        elif value is not original:
+            # Retain the original evidence pointer when the optional executable
+            # recipe cannot fit; required controls and the total budget never grow.
+            proposed = {**proposed, "entries": [*advisory["entries"], {"kind": kind, "value": original}]}
+            if estimate_tokens(serialized(proposed)) <= max_tokens:
+                advisory = proposed
     return serialized(advisory)
 
 
@@ -447,6 +493,46 @@ class ContextWindowPlugin(BasePlugin):
         self.max_tool_result_bytes = max_tool_result_bytes
         self._captured_history: dict[tuple[str, str], tuple[str, ...]] = {}
         self._captured_objects: dict[tuple[str, str], tuple[types.Content, ...]] = {}
+        self._checkpoint_contents: dict[str, types.Content] = {}
+
+    def _checkpoint_history(
+        self, task_id: str, invocation: str, raw: list[types.Content], events: list[Any],
+    ) -> tuple[list[types.Content], list[Any]]:
+        """Use steering's addressed-exposure pattern for historical host reminders."""
+        anchor = _history_hash(raw[:1])
+        exposures = []
+        for event in events:
+            if event.task_id != task_id:
+                raise ValueError("checkpoint exposure task mismatch")
+            if event.kind != EventKind.NOTE_CHECKPOINT_EXPOSED:
+                continue
+            payload = event.payload
+            if (payload.get("program") != "note_checkpoint_delivery@1"
+                    or payload.get("content_hash") != _exposure_hash(payload)
+                    or not isinstance(payload.get("text"), str)
+                    or not 1 <= len(payload["text"].encode()) <= 2048):
+                raise ValueError("invalid checkpoint exposure content")
+            if payload.get("invocation_id") != invocation or payload.get("anchor") != anchor:
+                continue
+            boundary = payload.get("boundary")
+            if (type(boundary) is not int or not 1 <= boundary <= len(raw)
+                    or payload.get("input_hash") != _history_hash(raw[:boundary])):
+                raise ValueError("checkpoint exposure history mismatch")
+            exposures.append(event)
+        projected = list(raw)
+        known_cuts = set()
+        for offset, event in enumerate(sorted(exposures, key=lambda e: (e.payload["boundary"], e.sequence))):
+            payload = event.payload
+            cut = payload.get("cut")
+            if type(cut) is not int or cut < 0 or cut in known_cuts:
+                raise ValueError("checkpoint exposure cut identity mismatch")
+            known_cuts.add(cut)
+            expected = types.Content(role="user", parts=[types.Part.from_text(text=payload["text"])])
+            content = self._checkpoint_contents.setdefault(event.event_id, expected)
+            if content != expected:
+                raise ValueError("cached checkpoint exposure changed")
+            projected.insert(payload["boundary"] + offset, content)
+        return projected, exposures
 
     async def after_tool_callback(
         self, *, tool: Any, tool_args: dict[str, Any], tool_context: Any, result: dict[str, Any],
@@ -538,9 +624,9 @@ class ContextWindowPlugin(BasePlugin):
         program_hash = hashlib.sha256((inspect.getsource(type(self).work_batch_handoff) +
                                       inspect.getsource(continuation_details) + inspect.getsource(render_handoff) +
                                       inspect.getsource(_project_advisory) + inspect.getsource(_evidence_manifest) +
-                                      inspect.getsource(unresolved_execution)).encode()).hexdigest()
+                                      inspect.getsource(unresolved_execution) + inspect.getsource(project_live_binding) + _CUT_READ_RECIPE).encode()).hexdigest()
         details["navigation"] = {
-            "program": "work_batch_navigation@1", "program_hash": program_hash,
+            "program": "work_batch_navigation@4", "program_hash": program_hash,
             "parameters": parameters, "source_watermark": events[-1].sequence,
             "source_clock": "task_harness_event_sequence",
             "scope": "Historical snapshot at this host work-batch boundary, not a live heap or freshness guarantee. "
@@ -634,7 +720,8 @@ class ContextWindowPlugin(BasePlugin):
         if not task_id or not llm_request.contents:
             return
         invocation = str(getattr(callback_context, "invocation_id", ""))
-        raw = list(llm_request.contents)
+        native = list(llm_request.contents)
+        raw = native
         transient: list[types.Content] = []
         protected_from = None
         marker = callback_context.state.get("context_steering")
@@ -645,6 +732,9 @@ class ContextWindowPlugin(BasePlugin):
                 raise ValueError("protected steering identity does not match request")
         if not raw:
             return
+        raw, checkpoint_exposures = self._checkpoint_history(task_id, invocation, native, self.events.read(task_id))
+        if protected_from is not None:
+            protected_from += sum(e.payload["boundary"] <= protected_from for e in checkpoint_exposures)
         self._capture(task_id, invocation, raw)
         events = self.events.read(task_id)
         task = rebuild_ledger(events)
@@ -761,19 +851,17 @@ class ContextWindowPlugin(BasePlugin):
             )
         )
         checkpoint_key = f"context_checkpoint_requested:{task_id}:{invocation}:{anchor}:{cut}"
+        checkpoint_requested = any(e.payload["cut"] == cut for e in checkpoint_exposures) or bool(
+            callback_context.state.get(checkpoint_key))
         if not note_available and (over_soft_limit or over_hard_limit) and (
             not previous or (self.config.window_management and should_compact)
         ):
             possible_cut = _unconsumed_cut_limit(raw, protected_from)
             if possible_cut > cut and not (
                 self.config.window_management and over_hard_limit
-            ) and not callback_context.state.get(checkpoint_key):
-                callback_context.state[checkpoint_key] = True
-                callback_context.state[pending_key] = (
-                    self.config.window_management and should_compact
-                )
-                effective.append(types.Content(role="user", parts=[types.Part.from_text(
-                    text="A working-note checkpoint is pending before this context cut. "
+            ) and not checkpoint_requested:
+                reminder = (
+                    "A working-note checkpoint is pending before this context cut. "
                     f"Current note version: {details.get('note', {}).get('version', 0)}. "
                     "Refresh it with memory note write through bash (agent.shell.run in PTC), "
                     "using --expected-version N --operation-id ID --text TEXT and optional --entries JSON. "
@@ -781,7 +869,26 @@ class ContextWindowPlugin(BasePlugin):
                     "their evidence references, completed changes, actual verification outcomes, and "
                     "remaining unknowns/next actions. Do not replace requested symbols with alternatives "
                     "or claim blocked checks ran. This is one checkpoint opportunity, not a new task."
-                )]))
+                )
+                payload = {
+                    "program": "note_checkpoint_delivery@1",
+                    "program_hash": hashlib.sha256((inspect.getsource(type(self)) +
+                        inspect.getsource(_history_hash) + inspect.getsource(_exposure_hash)).encode()).hexdigest(),
+                    "invocation_id": invocation, "anchor": _history_hash(native[:1]),
+                    "boundary": len(native), "input_hash": _history_hash(native), "cut": cut,
+                    "source_clock": {"task_harness_event_sequence": events[-1].sequence},
+                    "text": reminder,
+                }
+                payload["content_hash"] = _exposure_hash(payload)
+                self.events.append(task_id, EventKind.NOTE_CHECKPOINT_EXPOSED, payload,
+                                   idempotency_key=checkpoint_key)
+                # Capture the published reminder at its historical position before
+                # dispatch. Later calls/restarts reconstruct it before new content.
+                raw, _ = self._checkpoint_history(task_id, invocation, native, self.events.read(task_id))
+                self._capture(task_id, invocation, raw)
+                effective.append(raw[-1])
+                callback_context.state[checkpoint_key] = True
+                callback_context.state[pending_key] = self.config.window_management and should_compact
                 if phase:
                     callback_context.state[phase_key] = phase
                 callback_context.state[estimate_key] = estimate_tokens(_serialized(effective)) + request_overhead
@@ -838,17 +945,18 @@ class ContextWindowPlugin(BasePlugin):
                  "phase": phase,
                  "note": details.get("note"), "note_excerpt": details.get("note_excerpt", ""),
                  "note_stale": bool(details.get("note_stale")),
-                 "checkpoint_requested": bool(callback_context.state.get(checkpoint_key)),
+                 "checkpoint_requested": checkpoint_requested,
                  "history_watermark": events[-1].sequence,
-                 "handoff_program": "continuation@8",
+                 "handoff_program": "continuation@11",
                  "handoff_program_hash": hashlib.sha256((inspect.getsource(render_handoff) +
                                                           inspect.getsource(continuation_details) +
                                                           inspect.getsource(_project_advisory) +
+                                                          inspect.getsource(project_live_binding) +
                                                           inspect.getsource(_evidence_manifest) +
                                                           inspect.getsource(unresolved_execution) +
                                                           inspect.getsource(select_context_cut) +
                                                           inspect.getsource(_unconsumed_cut_limit) +
-                                                          inspect.getsource(type(self))).encode()).hexdigest(),
+                                                          inspect.getsource(type(self)) + _CUT_READ_RECIPE).encode()).hexdigest(),
                  "working_set": {key: value for key, value in details.get("working_set", {}).items() if key != "data"},
                  "tokens_before": projected_provider_tokens,
                  "tokens_after": estimate_tokens(_serialized(effective)) + request_overhead,

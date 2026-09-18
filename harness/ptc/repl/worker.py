@@ -248,6 +248,15 @@ _PRELOADED_MODULES = ("json", "math", "re")
 _RESERVED_NAMES = frozenset({"agent", *_PRELOADED_MODULES})
 _MAX_HELP_BYTES = 16_000
 
+WORKSPACE_EXECUTION_GUIDANCE = """The PTC worker is a computation environment, not the workspace interpreter;
+workspace modules and project dependencies are not implicitly importable here.
+Parse captured data and write explicit calculations in the worker; do not exec/eval/compile
+retrieved source. Required project execution goes through agent.shell.run under its
+configured policy. Build generated command arguments with shlex.join([...]), not nested
+manual escaping. Check status and model_text on rejection: a blocked command did not run.
+Do not bypass a denial with worker imports, or substitute a reconstructed calculation
+when the task requires actual project execution. A calculation is not independent verification."""
+
 # JSON is preloaded. This example decodes only one complete UTF-8 artifact page;
 # it does not turn a partially captured source into a whole-file observation.
 READ_RESULT_RECIPE = """saved_result = source_text = None
@@ -495,6 +504,27 @@ def _value_fingerprint(value: Any) -> str | None:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def project_live_binding(item: dict[str, Any]) -> dict[str, Any]:
+    """Prompt-only projection; canonical descriptors retain validation metadata."""
+    redundant = {"value_fingerprint"}
+    if item.get("module") == "builtins":
+        redundant.add("module")
+    access = item.get("access_expression")
+    if isinstance(access, str) and access.strip():
+        redundant.update(("name", "selector", "inspect_expression"))
+    else:
+        access = item.get("name")
+    kind = item.get("read_value_kind")
+    suffix = {"result": "['data']['text']", "data": "['text']", "text": ""}.get(kind) if isinstance(kind, str) else None
+    content = {}
+    if item.get("read_reference") and suffix is not None and isinstance(access, str) and access.strip():
+        content["content_expression"] = access + suffix
+        # The attested form and exact content locator replace generic container
+        # shape and duplicate locators, not source scope, coverage or origin.
+        redundant.update(("name", "selector", "inspect_expression", "access_expression", "type", "size", "binding_type"))
+    return {**{key: value for key, value in item.items() if key not in redundant}, **content}
+
+
 class _StateProxy:
     def __init__(
         self,
@@ -503,7 +533,7 @@ class _StateProxy:
     ) -> None:
         self._namespace = namespace
         self._metadata = metadata
-        self._sources: dict[int, tuple[Any, str, dict[str, Any]]] = {}
+        self._sources: dict[int, tuple[Any, str, dict[str, Any], str]] = {}
         self._annotations: dict[tuple[str, tuple[str | int, ...]], tuple[Any, str, str]] = {}
 
     def register_read(self, result: Any) -> None:
@@ -512,15 +542,15 @@ class _StateProxy:
             return
         reference = result.get("read_reference")
         data = result.get("data")
-        if type(reference) is not dict or type(data) is not dict:
+        if type(reference) is not dict or type(data) is not dict or type(data.get("text")) is not str:
             return
         # Detach the attestation from all model-mutable result containers.
         reference = json.loads(json.dumps(reference))
-        for value in (result, data, data.get("text")):
+        for value, kind in ((result, "result"), (data, "data"), (data.get("text"), "text")):
             digest = _value_fingerprint(value)
             if digest is None:
                 continue
-            self._sources[id(value)] = (value, digest, reference)
+            self._sources[id(value)] = (value, digest, reference, kind)
             # ponytail: bounded live-value index, not whole-heap lineage tracking.
             while len(self._sources) > 128:
                 self._sources.pop(next(iter(self._sources)))
@@ -655,6 +685,7 @@ class _StateProxy:
         if source:
             if source[0] is value and digest is not None and source[1] == digest:
                 item["read_reference"] = json.loads(json.dumps(source[2]))
+                item["read_value_kind"] = source[3]
                 item["freshness"] = "historical_snapshot"
             else:
                 self._sources.pop(id(value), None)
@@ -733,8 +764,12 @@ def _execute_cell(
         if state_recovery == "snapshot"
         else None
     )
+    source_name = "<agent-cell>"
     try:
-        tree = ast.parse(code, filename="<agent-cell>", mode="exec")
+        # Source identity distinguishes frames from functions retained out of an
+        # earlier cell, including callers that use the default cell_id="unknown".
+        source_name = f"<agent-cell:{hashlib.sha256(code.encode('utf-8', errors='surrogatepass')).hexdigest()}>"
+        tree = ast.parse(code, filename=source_name, mode="exec")
         failure_stage = "source_validation"
         _validate_source(tree)
         failure_stage = "execution"
@@ -749,9 +784,9 @@ def _execute_cell(
                 tree.body.pop()
         with redirect_stdout(stdout), redirect_stderr(stderr):
             if tree.body:
-                exec(compile(tree, "<agent-cell>", "exec"), namespace)
+                exec(compile(tree, source_name, "exec"), namespace)
             value = (
-                eval(compile(ast.Expression(final_expression), "<agent-cell>", "eval"), namespace)
+                eval(compile(ast.Expression(final_expression), source_name, "eval"), namespace)
                 if final_expression is not None
                 else None
             )
@@ -793,11 +828,13 @@ def _execute_cell(
         if state_preserved:
             assert snapshot is not None
             _restore_snapshot(namespace, snapshot)
-        error_line = getattr(error, "lineno", None) or next(
+        # Runtime exceptions such as JSONDecodeError use lineno for their input
+        # data, not this cell. Only our parser/source guard owns a source lineno.
+        error_line = (getattr(error, "lineno", None) if failure_stage != "execution" else None) or next(
             (
                 frame.lineno
                 for frame in reversed(traceback.extract_tb(error.__traceback__))
-                if frame.filename == "<agent-cell>"
+                if frame.filename == source_name
             ),
             None,
         )
@@ -876,6 +913,9 @@ def default_help_catalog() -> dict[str, dict[str, object]]:
         "description": "Persistent CPython computation environment",
         "python": platform.python_version(),
         "preloaded_modules": list(_PRELOADED_MODULES),
+        "workspace_execution": WORKSPACE_EXECUTION_GUIDANCE,
+        "blocked_direct_calls": sorted(_BLOCKED_CALLS),
+        "blocked_direct_modules": sorted(_BLOCKED_MODULES),
     }
     return catalog
 

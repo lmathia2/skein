@@ -303,7 +303,9 @@ class Continuation:
         measured: dict[str, Any] = {"reads": audit_reads(events, cut_sequence=self.cut_sequence),
                     "exposure": audit_emissions(snapshots, self.records, cut_sequence=self.cut_sequence)}
         if initial_ranges := self.fixture.get("initial_ranges"):
-            first_cut = next((e.sequence for e in events if e.kind == EventKind.COMPACTION_CREATED), None)
+            boundary_kind = ("evaluation.learning_checkpoint" if self.fixture.get("checkpoint_mode") == "live_worker"
+                             else EventKind.COMPACTION_CREATED)
+            first_cut = next((e.sequence for e in events if e.kind == boundary_kind), None)
             preparation = audit_reads([e for e in events if first_cut is None or e.sequence < first_cut], cut_sequence=0)
             overshot = [r for r in preparation["reads"] if r["path"] in initial_ranges
                         and not (initial_ranges[r["path"]][0] <= r["offset"]
@@ -317,9 +319,11 @@ class Continuation:
                 "scope": "completed fs.read ranges and classified preparation routes; not semantic model dependence",
             }
         if self.fixture.get("stages"):
-            cuts = [e.sequence for e in events if e.kind == EventKind.COMPACTION_CREATED]
+            boundary_kind = ("evaluation.learning_checkpoint" if self.fixture.get("checkpoint_mode") == "live_worker"
+                             else EventKind.COMPACTION_CREATED)
+            cuts = [e.sequence for e in events if e.kind == boundary_kind]
             measured["checkpoint_intervals"] = [{
-                "cut_sequence": cut, "until_sequence": end,
+                "cut_sequence": cut, "until_sequence": end, "boundary_kind": boundary_kind,
                 "reads": audit_reads([e for e in events if e.sequence < end], cut_sequence=cut),
                 "exposure": audit_emissions(snapshots, [r for r in self.records if r["sequence"] < end], cut_sequence=cut),
             } for cut, end in pairwise([*cuts, events[-1].sequence + 1] if events else [])]

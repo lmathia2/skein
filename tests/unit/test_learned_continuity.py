@@ -35,6 +35,11 @@ async def test_model_authored_checkpoint_cut_and_recovery_use_real_workflow(tmp_
                 "assert invalid_note['status'] == 'error' and invalid_note['effect'] == 'none'\n"
                 "entries = [{'id': 'source-' + str(i), 'kind': 'observation', 'text': r['data']['text'], "
                 "'related_paths': [p], 'evidence_refs': [r['read_reference']['artifact_uri']]} for i, (p, r) in enumerate(sources.items())]\n"
+                "bad_entries = [{**entries[0], 'evidence_refs': [entries[0]['evidence_refs'][0][:-1]]}]\n"
+                "bad_citation = agent.shell.run('memory note write --text checkpoint --expected-version 0 --operation-id bad-citation --entries ' + shlex.quote(json.dumps(bad_entries)))\n"
+                "assert bad_citation['status'] == 'error' and bad_citation['effect'] == 'none'\n"
+                "assert bad_citation['data']['recovery']['issue'] == 'malformed_artifact_address'\n"
+                "assert bad_citation['data']['recovery']['strategy'] == 'recover_exact_current_task_reference'\n"
                 "note = agent.shell.run('memory note write --text checkpoint --expected-version 0 --operation-id learned-note --entries ' + shlex.quote(json.dumps(entries)))\n"
                 "assert note['status'] == 'ok'\nprint({'version': note['data']['version']})"
             )
@@ -91,7 +96,8 @@ async def test_model_authored_checkpoint_cut_and_recovery_use_real_workflow(tmp_
     assert "trace observation failed" not in caplog.text
     rejected = [e for e in trial.ledger.read(trial.task_id) if e.kind == "capability.failed"
                 and e.payload.get("discovery_kind") == "memory"]
-    assert len(rejected) == 1 and rejected[0].payload["effect"] == "none"
+    assert len(rejected) == 2 and all(e.payload["effect"] == "none" for e in rejected)
+    assert not any(e.kind in {"repl.cell_failed", "repl.cell_timeout"} for e in trial.ledger.read(trial.task_id))
 
 
 @pytest.mark.asyncio

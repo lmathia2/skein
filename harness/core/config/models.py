@@ -169,7 +169,7 @@ class ToolSurfaceConfig(FrozenModel):
 
 class NotebookPtcConfig(FrozenModel):
     enabled: bool = False
-    emit_state_updates: bool = True  # Representation ablation; does not change broker/state authority.
+    emit_state_updates: bool = False  # Opt-in representation ablation; handoffs retain state authority.
     serialization: Literal["native", "notebook", "jsonl"] = "native"
     state: Literal["native", "none", "replay_safe", "snapshot"] = "native"
     continuity: Literal["run", "conversation"] = "run"

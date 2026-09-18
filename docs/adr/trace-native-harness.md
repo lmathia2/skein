@@ -438,6 +438,10 @@ and range. Before returning those results to Python, the runtime registers bound
 fingerprints for the result mapping, its data mapping, and source text where supported.
 References are detached from model-mutable containers. Merely copying or constructing
 a dictionary with a `read_reference` field does not establish broker provenance.
+Registration also retains the exact `read_value_kind` (`result`, `data`, `text`)
+for supported successful text reads. Only an unchanged attested object exposes that
+form. Shared prompt projections derive its exact source-content expression; full
+state inspection retains the original locator, fingerprint and structural metadata.
 
 Descriptions and provenance require both the recorded object and a matching bounded
 content fingerprint. Reassignment clears the affected annotation; same-size in-place
@@ -483,7 +487,7 @@ now separately persists typed evidence-linked findings and explicit corrections 
 versioned memory notes, with a bounded `working_set@1` view; see the
 [finding contract](context-and-memory.md#delivered-finding-lifecycle-and-working-set-program).
 Annotations are not automatically converted to those durable findings. Stage 4 adds
-bounded changed-only state notices under `notebook_ptc.emit_state_updates`, with
+opt-in bounded changed-only state notices under `notebook_ptc.emit_state_updates`, with
 cell/epoch attribution and a selective-inspection pointer. At most eight entries are
 selected under the existing output budget; unchanged or irrelevant catalog metadata
 does not generate a notice. Lost associations are reported as invalidated, not as
@@ -501,6 +505,13 @@ and epoch match. Its metadata/described/findings representation choices support
 controlled comparison without changing broker authority. Focused tests cover the
 changed-only notices and whole-entry handoff construction; these checks do not establish
 that the complete continuity mechanism or its live quality gate has passed.
+
+Eager per-cell state notices are disabled by default. Two live four-family warm-worker
+cohorts produced zero avoidable source rereads in the no-notice arm; the notice arm did
+not improve that floor and increased aggregate cost in both cohorts. The canonical
+manifest, explicit `agent.state` inspection and phase handoff still expose the same
+attested bindings when needed. This decision is limited to an intact worker without a
+context cut; post-cut recovery and learned-memory qualification remain separate gates.
 
 ## Notebook contract
 
