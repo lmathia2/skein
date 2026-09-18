@@ -97,11 +97,12 @@ def test_projection_diagnostics_receipts_caps_and_retention():
     result = PythonExecutionResult(status='ok', stdout='x' * 100000, state_delta=('b',))
     outcome = {'operation': 'bash', 'command': 'test', 'status': 'error',
                'data': {'stdout': 'x', 'stderr': 'compiler failure', 'exit_code': 1}}
-    response = _ptc_response(result, 'r1', [outcome], {'b'})
+    response = _ptc_response(result, 'r1', [outcome], {'b'}, workspace_revision='abc')
     assert 'compiler failure' in response['text'] and '[exit 1]' in response['text']
     assert len(response['text'].encode()) <= 51200
     assert 'New variables' not in response['text']
     assert response['details']['broker_outcomes'][0]['selected_omitted_exit']
+    assert response['details']['workspace_revision'] == 'abc'
     assert _ptc_response(PythonExecutionResult(status='ok', value_repr='42'), 'value')['text'] == '=> 42'
     value = {'status': 'ok', 'data': {'path': 'x', 'changed': True, 'diff': '+new\n-old'}}
     outcome = {'operation': 'write', **value}
@@ -142,13 +143,17 @@ def test_head_tail_projection_and_review_trigger():
     assert clipped and projected.startswith('start') and projected.endswith('important failure at end')
     extension = str(__import__('pathlib').Path(__file__).parents[2] / 'scripts/pi_skein_ptc_extension.mjs')
     script = (f"import {{advanceEvidence, assemblePrompt, needsEvidenceReview}} from {extension!r};"
-              "let [m,v]=advanceEvidence([{operation:'bash',status:'ok'}],0,0);"
-              "if (m!==1 || v!==0) process.exit(1);"
-              "[m,v]=advanceEvidence([{operation:'verify',status:'ok'}],m,v);"
-              "if (m!==2 || v!==2) process.exit(1);"
+              "let [m,v]=advanceEvidence([{operation:'bash',status:'ok'}],'r0',undefined,'r0');"
+              "if (m!=='r0' || v!==undefined) process.exit(1);"
+              "[m,v]=advanceEvidence([{operation:'verify',status:'ok'}],m,v,'r0');"
+              "if (m!=='r0' || v!=='r0') process.exit(1);"
+              "[m,v]=advanceEvidence([{operation:'bash',status:'ok'}],m,v,'r0');"
+              "if (m!=='r0' || v!=='r0') process.exit(1);"
+              "[m,v]=advanceEvidence([{operation:'bash',status:'ok'}],m,v,'r1');"
+              "if (m!=='r1' || v!=='r0') process.exit(1);"
               "const p=assemblePrompt('verify(command: str)');"
-              "if (!p.includes('bash(...) never counts') || p.includes('agent.state') || p.includes('code(more=')) process.exit(1);"
-              "if (!needsEvidenceReview('', 2, 1) || !needsEvidenceReview('Known gap: x', 1, 1) || needsEvidenceReview('done; no known gaps', 1, 1)) process.exit(1)")
+              "if (!p.includes('call verify(...) once') || p.includes('agent.state') || p.includes('code(more=')) process.exit(1);"
+              "if (!needsEvidenceReview('', 'r1', 'r0') || !needsEvidenceReview('Known gap: x', 'r0', 'r0') || needsEvidenceReview('done; no known gaps', 'r0', 'r0')) process.exit(1)")
     subprocess.run(['node', '--input-type=module', '-e', script], check=True)
 
 

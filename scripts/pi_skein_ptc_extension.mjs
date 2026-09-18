@@ -16,7 +16,7 @@ export const promptComponents = {
   runtime: 'Run persistent CPython with workspace helpers available as plain functions. Variables/functions persist while the worker lives; committed plain-data variables recover after a restart. json, math, and re are preloaded.',
   workflow: 'Prefer one code call for multi-step work: call helpers, loop/filter/compute, reuse useful variables, and print only what the parent needs.',
   contract: 'Call helpers without await. stdout is returned; the final expression is shown as =>. Contract errors are Python exceptions; bash returns its exit status and verify raises on failure. Imports that access the host are restricted; use the helpers. Paths stay in the workspace; scratch files go in .ptc-scratch/.',
-  verification: 'Use verify(...) for the final required check after changes; bash(...) never counts as final verification. Custom probes must assert or exit nonzero on mismatch.',
+  verification: 'Use bash(...) for exploration and intermediate checks. After changes settle, call verify(...) once for the final required check; call it again only if the workspace revision changes. Custom probes must assert or exit nonzero on mismatch.',
   example: "source = read('src/app.py')\nprint([line for line in source.splitlines() if 'timeout' in line][:20])\nprint(verify('pytest -q', timeout_seconds=120))",
 }
 
@@ -25,18 +25,17 @@ export function assemblePrompt(signatures) {
     promptComponents.contract, promptComponents.verification, promptComponents.example].join('\n\n')
 }
 
-export function needsEvidenceReview(finalText, mutationGeneration, verifiedGeneration) {
+export function needsEvidenceReview(finalText, workspaceRevision, verifiedRevision) {
   const unresolved = finalText.replace(/\bno known gaps?\b/gi, '')
-  return mutationGeneration > verifiedGeneration || /known gaps?|remaining (?:gap|issue)|unimplemented|failing probe/i.test(unresolved)
+  return workspaceRevision !== verifiedRevision || /known gaps?|remaining (?:gap|issue)|unimplemented|failing probe/i.test(unresolved)
 }
 
-export function advanceEvidence(outcomes, mutationGeneration, verifiedGeneration) {
-  for (const outcome of outcomes) {
-    if ((outcome.operation === 'write' || outcome.operation === 'edit') && outcome.status === 'ok' && outcome.changed !== false) mutationGeneration++
-    if (outcome.operation === 'bash' || outcome.operation === 'verify') mutationGeneration++
-    if (outcome.operation === 'verify' && outcome.status === 'ok') verifiedGeneration = mutationGeneration
-  }
-  return [mutationGeneration, verifiedGeneration]
+export function advanceEvidence(outcomes, workspaceRevision, verifiedRevision, nextRevision) {
+  const lastVerify = outcomes.findLastIndex(outcome => outcome.operation === 'verify' && outcome.status === 'ok')
+  const effectAfterVerify = lastVerify >= 0 && outcomes.slice(lastVerify + 1)
+    .some(outcome => ['write', 'edit', 'bash'].includes(outcome.operation))
+  if (lastVerify >= 0 && !effectAfterVerify) verifiedRevision = nextRevision
+  return [nextRevision ?? workspaceRevision, verifiedRevision]
 }
 
 async function bridge(name, input) {
@@ -51,11 +50,14 @@ async function bridge(name, input) {
 
 export default async function (pi) {
   const signatures = await bridge('describe_contract', {})
-  let mutationGeneration = 0
-  let verifiedGeneration = 0
+  let workspaceRevision
+  let verifiedRevision
+  let verificationCalls = 0
+  let invalidatedVerificationCalls = 0
+  let verifiedCallsAtRevision = 0
   let reviewQueued = false
   pi.registerTool({
-    name: 'code', label: 'Skein PTC v4.1',
+    name: 'code', label: 'Skein PTC v4.2',
     description: assemblePrompt(signatures),
     promptSnippet: 'code: persistent Python with workspace helpers; batch and reuse state',
     parameters: schema,
@@ -65,8 +67,19 @@ export default async function (pi) {
         resultId !== undefined
           ? { result_id: resultId, offset: params.offset ?? 0, limit: params.limit ?? 51200 }
           : { code: params.code })
-      ;[mutationGeneration, verifiedGeneration] = advanceEvidence(
-        value.details?.broker_outcomes ?? [], mutationGeneration, verifiedGeneration)
+      const outcomes = value.details?.broker_outcomes ?? []
+      const nextRevision = value.details?.workspace_revision
+      if (workspaceRevision !== undefined && nextRevision !== undefined && workspaceRevision !== nextRevision) {
+        invalidatedVerificationCalls += verifiedCallsAtRevision
+        verifiedCallsAtRevision = 0
+      }
+      const successfulVerifies = outcomes.filter(outcome => outcome.operation === 'verify' && outcome.status === 'ok').length
+      verificationCalls += outcomes.filter(outcome => outcome.operation === 'verify').length
+      ;[workspaceRevision, verifiedRevision] = advanceEvidence(
+        outcomes, workspaceRevision, verifiedRevision, nextRevision)
+      if (successfulVerifies && verifiedRevision === workspaceRevision) verifiedCallsAtRevision += successfulVerifies
+      value.details = { ...(value.details ?? {}), evidence: { workspaceRevision, verifiedRevision,
+        verificationCalls, invalidatedVerificationCalls } }
       return { content: [{ type: 'text', text: value.text }], details: value.details ?? {} }
     },
   })
@@ -76,7 +89,7 @@ export default async function (pi) {
       const finalText = event.messages.filter(message => message.role === 'assistant')
         .flatMap(message => message.content ?? []).filter(part => part.type === 'text')
         .map(part => part.text).join('\n')
-      if (!needsEvidenceReview(finalText, mutationGeneration, verifiedGeneration)) return
+      if (!needsEvidenceReview(finalText, workspaceRevision, verifiedRevision)) return
       reviewQueued = true
       pi.sendMessage({ customType: 'ptc-evidence-review', display: true,
         content: 'Before finalizing, compare every requirement with concrete evidence. Run the required final check with verify(...). Do not finish while required behavior remains a known gap.' },
