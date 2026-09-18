@@ -127,12 +127,28 @@ default replay-safe policy discard it. Experimental snapshot rollback covers sel
 primitive/container values within the same live worker, not timeout or process loss.
 The [PTC ADR](trace-native-harness.md#state-policies) defines that limited scope.
 
+The entire submitted cell is parsed and source-validated before any line executes,
+including code in unreachable branches. Canonical results record `execution_started`;
+failed compact results expose it when known. A rejected cell explicitly reports that
+no assignment or capability ran. An existing same-name binding remains its old value,
+not the output of the rejected program. `state_preserved` alone never establishes
+non-execution: runtime failure with snapshot rollback can follow completed effects.
+Successful compact replies omit the redundant field to preserve normal egress bounds.
+
 A timeout during a broker call can leave an effect unknown even after the worker is
 discarded. Retaining a variable, restoring a snapshot, or replaying a notebook cannot
 resolve it. Automatic reconciliation is appropriate only where matching identities,
 receipts, and workspace evidence establish the outcome; otherwise continuation stays
 explicitly blocked. Current conservative blocking is not proof that every failure
 changed the workspace, and broader automatic reconciliation remains gated work.
+
+PTC preserves an explicitly classified effect from the host tool envelope. A reserved
+memory parser or pre-commit note-validation/budget rejection records `effect=none`,
+not an invented unknown shell effect. This is a completed rejection, not successful
+note construction. Missing effect metadata retains the conservative fallback; canonical
+append/publication errors and identity mismatches remain unknown. An idempotent retry
+can republish the original committed note without duplicating it, but a callback failure
+does not relabel that earlier write as a pre-execution rejection.
 
 The [continuity implementation](../design/ptc-memory-continuity-plan.md) now carries
 receipt-confirmed touched paths separately from the task-ledger modified-file list,
@@ -164,6 +180,40 @@ Verification uses the same workspace, sandbox, policy, approvals, redaction, and
 task identity as ordinary tools. A failing check becomes a durable counterexample for
 the next model invocation. A passing pre-existing baseline proves only no regression;
 it does not prove the requested behavior.
+
+A successful command requires an observed zero exit code and `ok` status. Missing
+exit codes are unknown, not success. Baseline-relative failure comparison requires
+matching command/category identities, completed positive failing exit codes, and
+untruncated diagnostics from both runs; timeout, blocked, signalled, or incomplete
+results cannot become no-regression evidence. Such comparisons remain limited to
+the failure identities recognized by the test-output parser, not a semantic oracle.
+Excluding baseline-relative results from criterion evidence preserves the original
+validation indices, so another command's success cannot satisfy the wrong row.
+
+Criterion selection is not itself proof of semantic relevance: the current general
+probe maps available successful checks to its row. A generic passing check cannot
+demonstrate an arbitrary source-grounded answer. Controlled memory evaluations must
+report first model proposals separately from independently accepted outcomes, and
+must test the production verification/re-entry boundary before claiming end-to-end
+evidence-backed completion. These are pending empirical/coverage gates, not grounds
+to require every file to be read in full.
+
+The offline PTC/workflow integration now verifies that a wrong answer with a passing
+self-authored read-back assertion is rejected by a required task-specific oracle.
+An unchanged second proposal stops without `task.finished`; a repair using just the
+required one-line source range completes only after that oracle passes. This tests
+the real verification/re-entry path with scripted model proposals, not live-model
+reliability or semantic completeness of generic discovered checks.
+
+The controlled development evaluator's required host-owned oracle also checks frozen
+decisive source path/version/ranges against completed task-local reads before the last
+managed answer write, and matches that write's content hash to the checked artifact.
+A correct guess with missing source evidence is rejected; reading later does not
+retroactively support an earlier write, but a subsequent answer submission can recover.
+Already completed applicable ranges count without new reads. Unknown/unmapped evidence
+does not pass, and corrupt evidence is an infrastructure error rather than a repairable
+wrong answer. This is an evaluation-specific acceptance contract, not a production
+requirement to use `fs.read` for every task or proof of arbitrary Python dataflow.
 
 Coding-mode completion additionally requires at least one changed repository path.
 This rejects unchanged-workspace completion; it is a necessary condition, not proof

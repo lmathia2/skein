@@ -91,6 +91,7 @@ class SkeinWorkflowDependencies:
     steering_batch_limit: int
     steering_enabled: bool
     steering_at_work_batch_boundary: bool
+    plugin_owns_handoff: bool = False
     approvals: ApprovalWaiter | None = None
     replies: PublicReplies | None = None
 
@@ -1186,13 +1187,18 @@ async def _orchestrate_owned(
             conversation=history,
             selected_skills=skill_runtime.text,
             repository_manifest=manifest.to_compact_text(),
-            compaction_summary=compaction_summary,
+            compaction_summary="" if deps.plugin_owns_handoff else compaction_summary,
             recent_events=_render_recent_events(deps, task_id),
             steering_messages=steering,
             max_tokens=deps.work_packet_tokens,
             section_token_limits=deps.work_packet_section_tokens,
         )
         dynamic_tokens = estimate_tokens(packet)
+        if deps.plugin_owns_handoff:
+            # The plugin supplies current worker/evidence state once. Keep a
+            # conservative pre-dispatch reserve; inner metrics inspect its final request.
+            dynamic_tokens += min(estimate_tokens(compaction_summary),
+                                  deps.work_packet_section_tokens.get("COMPACTED HISTORY", 3_000))
         total_context_estimate = deps.static_prefix_tokens + dynamic_tokens
 
         task_input_budget = min(

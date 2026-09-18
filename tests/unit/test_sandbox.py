@@ -135,8 +135,10 @@ def test_docker_sandbox_builds_hardened_networkless_command(tmp_path: Path) -> N
     )
 
     command = sandbox.build_command(SandboxRequest(command="pytest -q"))
+    assert command[command.index("--mount") + 1] == f"type=bind,src={workspace},dst=/workspace"
 
     assert command[:3] == ["docker", "run", "--rm"]
+    assert "--pull=never" in command
     assert command[
         command.index("--network") : command.index("--network") + 2
     ] == ["--network", "none"]

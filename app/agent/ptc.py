@@ -347,6 +347,8 @@ def build_notebook_session(
             else:
                 kind = EventKind.CAPABILITY_FAILED
                 effect = "none" if common["operation"] == "fs.read" else "unknown"
+            if result.get("effect") in {"none", "observed", "changed", "unknown", "native_untracked"}:
+                effect = result["effect"]
             refs = {
                 str(value)
                 for key in ("artifact_uri", "artifact_uris")
@@ -945,6 +947,9 @@ def build_notebook_session(
             "parse",
             "source_validation",
         }
+        execution_started = False if result.failure_stage in {"parse", "source_validation"} else (
+            True if result.status == "ok" or result.failure_stage == "execution" else None
+        )
         if result.status == "error" and not state_preserved:
             # A Python exception may follow successful assignments. Discard the
             # epoch so the next cell restores only previously committed safe cells.
@@ -1027,6 +1032,7 @@ def build_notebook_session(
         updates = _state_updates(prior_state, current_state,
                                  min(2048, active_ptc_config.max_output_bytes // 4))
         terminal_payload["state_updates"] = updates
+        terminal_payload["execution_started"] = execution_started
         if result.error_type is not None:
             terminal_payload["exception"] = redactor.redact({
                 "ename": result.error_type,
@@ -1086,6 +1092,12 @@ def build_notebook_session(
             )
             if part
         ))
+        if execution_started is False:
+            visible = (
+                "Cell rejected before execution: no lines, assignments, or capability calls ran. "
+                "Existing bindings are unchanged; a same-name value is NOT the result of this rejected cell. "
+                "Fix and resubmit the intended operation before using its result.\n" + visible
+            )
         bounded = bound_output(
             visible,
             max_chars=active_ptc_config.max_output_bytes,
@@ -1139,6 +1151,7 @@ def build_notebook_session(
             "state_count": result.state_count,
             "state_delta": list(result.state_delta),
             "failure_stage": result.failure_stage,
+            "execution_started": execution_started,
             "error_type": result.error_type,
             "error_line": result.error_line,
             "error_source": redactor.redact_text(result.error_source) if result.error_source else None,
@@ -1158,12 +1171,15 @@ def build_notebook_session(
         )
         for key in (
             "failure_stage",
+            "execution_started",
             "error_type",
             "error_line",
             "error_source",
             "state_preserved",
             "kernel",
         ):
+            if key == "execution_started" and result.get("status") == "ok":
+                continue  # Successful completion already establishes this; keep normal replies compact.
             if result.get(key) is not None:
                 compact[key] = result[key]
         return compact

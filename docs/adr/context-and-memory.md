@@ -30,6 +30,13 @@ Code-level requirements and test mappings are in the
 8. Evidence availability, source freshness, and confidence in a finding are separate
    axes. A live value can be stale; an artifact can outlive its binding; an agent's
    interpretation remains advisory even when it cites a valid receipt.
+9. Evaluation oracle data must not be available as a memory or repository source.
+   A readable hash of a low-entropy answer is not isolation. Controlled continuity
+   evaluations use a host-owned checker behind the normal managed command boundary,
+   with ordinary live shell commands isolated from host files. A contaminated trial
+   cannot qualify memory, even if its final artifact is correct. Seeded evidence
+   availability, model-written learning, and independently verified completion are
+   distinct gates.
 
 ## How a prompt is constructed
 
@@ -283,6 +290,15 @@ Updates are bounded to 64 retained entries and the existing note payload budget;
 oversized or invalid updates leave the last checkpoint intact. This is a bounded
 checkpoint, not an unbounded knowledge graph or another historical database.
 
+Reserved memory commands parse quoted multiline text as data; they never dispatch
+to a shell. NUL, shell composition, extra commands, duplicate/unknown flags, and
+missing required note fields remain rejected. Finding text is bounded to 1000
+characters/2000 UTF-8 bytes. Note-budget failures expose required and allowed serialized
+bytes, including derived source dependencies, and retain the previous checkpoint.
+The model should keep the note heading short and cite receipts instead of repeating
+their hashes/ranges inside every finding. These usability changes do not relax source
+authorization, freshness, note identities, or completion verification.
+
 `working_set@1` first selects the latest note per authorized source task at the requested
 evidence boundary, then ranks non-superseded entries deterministically: current task,
 explicit `--focus` task/path matches, disputes, open questions/actions, revision, and
@@ -311,6 +327,13 @@ and read recovery handles. Oversized entries are omitted whole, not head/tail-sp
 into invalid JSON; both rendering omissions and upstream selection omissions are counted.
 The selected header remains frozen for its context epoch and complete call/result
 interactions remain together in the exact tail.
+The installed context plugin owns handoff delivery. The workflow omits its duplicate
+persisted summary from the model packet in that configuration, while retaining a
+conservative pre-dispatch token reservation. Without that plugin (including shadow),
+the workflow still supplies its persisted summary. Ownership derives from actual
+factory wiring, not another user option. Metrics continue to run after reconstruction,
+and current kernel/effect state remains in the plugin's handoff. A real-workflow test
+guards against injecting the same handoff both beside and inside the initial packet.
 When an unconsumed result exceeds the soft packet target but fits the hard window,
 the plugin retains that published epoch and interaction. It cannot publish revised
 content under the same cut identity. Compaction resumes once a complete boundary can
@@ -416,6 +439,26 @@ count, whole-file flag, and next unread source offset, derived from the captured
 PTC read references, descriptors, direct-read receipts, and handoff indexes retain
 that distinction. Older artifacts without a file line count report unknown whole-file
 coverage; contradictory counts fail closed. Recovery never fetches uncovered lines.
+
+A nonempty note is not automatically a checkpoint for every later context cut. With
+working notes enabled, a new soft cut that would advance the history boundary offers
+one note-refresh opportunity if its version has not advanced since the previous cut.
+The old exact suffix remains visible for that opportunity. The request asks for
+newly learned findings, completed changes, actual verification outcomes, and remaining
+unknowns; notes remain advisory. Initial note prompting remains shared with the
+non-compacting control. An unconsumed result that prevents advancing the cut does
+not trigger an unnecessary refresh. At the hard threshold, or after an ignored
+opportunity, compaction can use the available checkpoint with explicit `note_stale`
+metadata rather than looping on a missing note. This means not refreshed for this
+cut, not that every cited source changed. Published headers remain frozen per epoch.
+The live quality/cost benefit of this refresh policy still requires measurement.
+
+PTC help and instructions distinguish native managed-command results from process
+results. For `memory query`, the capability's `data` contains the view envelope and
+its nested `data` contains the program body. Missing process stdout is not evidence
+that a memory view is empty. `state.describe` returns a descriptor directly, not a
+status/data envelope, and an unavailable binding raises `KeyError`. These document
+existing result shapes, rather than introducing another tool or envelope migration.
 
 The current handoff includes note metadata/excerpt, required kernel/effect state, and
 a bounded recent-read/validation manifest. A read entry identifies path, full-file

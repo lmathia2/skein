@@ -19,7 +19,65 @@ from harness.verification import (
 )
 from harness.verification.contracts import is_reusable_validation_command
 from harness.verification.managed import _fingerprint
-from harness.verification.runner import build_report
+from harness.verification.runner import build_report, passes_recorded_baseline
+
+
+def test_missing_exit_code_cannot_support_completion() -> None:
+    result = CommandResult(
+        category="test", command="pytest -q", strength="behavioral", stdout="1 passed"
+    )
+    report = build_report(
+        criteria=["Feature works"], results=[result], scope_violations=[],
+        changed_paths=["feature.py"],
+    )
+    assert not result.passed
+    assert not report.passed
+    assert report.criteria[0].evidence == []
+
+
+@pytest.mark.parametrize("position", [0, 1])
+def test_baseline_filter_preserves_original_validation_identity(position: int) -> None:
+    baseline = CommandResult(
+        category="test", command="pytest -q tests/test_legacy.py", exit_code=1,
+        stderr="FAILED tests/test_legacy.py::test_old - AssertionError",
+        strength="behavioral",
+    )
+    results = [CommandResult(
+        category="test", command="pytest -q tests/test_feature.py", exit_code=0,
+        strength="behavioral",
+    )]
+    results.insert(position, baseline)
+    report = build_report(
+        criteria=["legacy", "feature"],
+        criterion_validations={"legacy": [position], "feature": [1 - position]},
+        results=results, scope_violations=[], changed_paths=["feature.py"],
+        baseline_results={baseline.command: baseline},
+    )
+    assert not report.passed
+    assert not report.criteria[0].satisfied
+    assert report.criteria[0].evidence == []
+    assert report.criteria[1].satisfied
+    assert report.criteria[1].evidence[0].validation_index == 1 - position
+    assert report.criteria[1].evidence[0].reference == f"validation:{1 - position}"
+
+
+@pytest.mark.parametrize("side", ["current", "baseline"])
+@pytest.mark.parametrize("update", [
+    {"status": "timeout"}, {"status": "blocked"}, {"exit_code": None},
+    {"exit_code": -9}, {"truncated": True}, {"omitted_bytes": 10},
+    {"command": "pytest -q different.py"}, {"category": "custom"},
+])
+def test_incomplete_or_mismatched_run_cannot_pass_baseline(side, update) -> None:
+    baseline = CommandResult(
+        category="test", command="pytest -q", exit_code=1,
+        stderr="FAILED tests/test_legacy.py::test_old - AssertionError",
+    )
+    current = baseline.model_copy()
+    if side == "current":
+        current = current.model_copy(update=update)
+    else:
+        baseline = baseline.model_copy(update=update)
+    assert not passes_recorded_baseline(current, baseline)
 
 
 def test_report_binds_each_validation_only_to_selected_criterion_row() -> None:

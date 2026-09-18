@@ -396,9 +396,51 @@ async def test_pre_execution_failure_preserves_kernel_state(tmp_path: Path) -> N
         worker.close()
 
     assert failed["failure_stage"] == "parse"
+    assert failed["execution_started"] is False
     assert failed["state_preserved"] is True
     assert failed["error_line"] == 1
     assert restored["model_text"] == "42"
+
+
+@pytest.mark.asyncio
+async def test_rejected_late_dunder_access_does_not_produce_a_new_read_binding(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    reads = []
+    def read(**kwargs):
+        reads.append(kwargs)
+        return {"status": "ok", "data": {"text": "new source"}}
+    def unused(**kwargs):
+        raise AssertionError("unexpected capability")
+    events = JsonlEventStore(tmp_path / "state" / "events")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
+        cast(BaseLlm, "test-model"), ptc_config=config.notebook_ptc, event_store=events,
+        tools=AdkCodingTools(read=read, bash=unused, edit=unused, write=unused),
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        await worker.execute_code("r = {'status': 'ok', 'data': {'text': 'old note'}}")
+        rejected = await worker.execute_code(
+            "r = agent.fs.read('answer.json')\n"
+            "if False:\n    print(type(r).__name__)"
+        )
+        assert rejected["failure_stage"] == "source_validation"
+        assert rejected["execution_started"] is False and rejected["state_preserved"]
+        assert rejected["model_text"].startswith("Cell rejected before execution:")
+        assert not reads
+        old = await worker.execute_code("r['data']['text']")
+        assert old["model_text"] == "'old note'"
+        fresh = await worker.execute_code("r = agent.fs.read('answer.json')\nr['data']['text']")
+        assert fresh["model_text"] == "'new source'" and fresh["status"] == "ok"
+        assert "execution_started" not in fresh
+        assert len(reads) == 1
+        failed = next(e for e in events.read("task") if e.kind == EventKind.REPL_CELL_FAILED)
+        assert failed.payload["execution_started"] is False
+        assert failed.payload["capability_count"] == 0
+    finally:
+        worker.close()
 
 
 @pytest.mark.asyncio
@@ -435,6 +477,7 @@ async def test_snapshot_policy_restores_safe_heap_after_runtime_failure(tmp_path
 
     assert failed["state_preserved"] is True
     assert restored["model_text"] == "[1, 2]"
+    assert failed["execution_started"] is True
     assert reads == 1
 
 
@@ -1109,11 +1152,23 @@ async def test_ptc_descriptions_capture_broker_provenance_without_rereading(tmp_
             "agent.state.annotate('source', 'Module needed for the next edit')"
         )
         description = await worker.execute_code("agent.state.describe('source')")
+        citation = await worker.execute_code(
+            "contract = agent.help('fs.read', details=True)['fs.read']['result']\n"
+            "assert 'read_reference' in contract and 'read_reference' not in contract['data']\n"
+            "reference = source['read_reference']\n"
+            "assert set(contract['read_reference']) == set(reference)\n"
+            "assert reference['source_coverage']['whole_file'] is True\n"
+            "assert reference['artifact_uri'] != 'artifact://sha256/' + source['data']['sha256']\n"
+            "assert agent.state.describe('source')['read_reference'] == reference\n"
+            "print(reference['artifact_uri'])"
+        )
+        assert citation["status"] == "ok", citation
         source_events = [event for event in events.read("task")
                          if event.kind == EventKind.CAPABILITY_COMPLETED and
                          event.payload.get("operation") == "fs.read"]
         assert len(source_events) == 1
         assert source_events[0].payload["result_artifact_uri"] in description["model_text"]
+        assert source_events[0].payload["result_artifact_uri"] in citation["model_text"]
         assert "Module needed for the next edit" in description["model_text"]
         assert "historical source" not in description["model_text"]
         assert "register_read" not in (await worker.execute_code("dir(agent.state)"))["model_text"]

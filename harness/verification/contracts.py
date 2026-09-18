@@ -109,7 +109,7 @@ class CommandResult(BaseModel):
 
     @property
     def passed(self) -> bool:
-        return self.status == "ok" and self.exit_code in {0, None}
+        return self.status == "ok" and self.exit_code == 0
 
 
 __all__ = [

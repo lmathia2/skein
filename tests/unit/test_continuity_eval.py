@@ -7,6 +7,67 @@ from harness.adapters.providers.openrouter_responses import build_openrouter_req
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("placement", ("visible", "recoverable", "unread"))
+async def test_evidence_placement_changes_only_available_capture(tmp_path, monkeypatch, placement):
+    from evals.evidence_use import EvidenceContinuation
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = EvidenceContinuation(tmp_path / placement, placement)
+    try:
+        await trial.prepare()
+        request = await trial.request()
+        body = build_openrouter_request_body(request, model="openai/gpt-5.6-luna", reasoning_effort="max")
+        text = wire_text(body)
+        assert "taking SAFE_VALUE" in text
+        assert ("SAFE_VALUE = 11178" in text) == (placement == "visible")
+        assert "Checkpoint padding." not in text
+        reads = [e for e in trial.ledger.read(trial.task_id)
+                 if e.payload.get("read_evidence", {}).get("path") == trial.fixture["target"]]
+        assert len(reads) == 1
+        assert reads[0].payload["read_evidence"]["returned_lines"] == (10 if placement == "unread" else 24)
+        assert trial.measure()["reads"]["counts"].get("post_cut_reads", 0) == 0
+        uri = reads[0].payload["result_artifact_uri"]
+        recovered = await trial.cell(f"print(agent.shell.run('memory query --program read.recover --artifact-uri {uri}')['model_text'])")
+        payload = json.loads(recovered["model_text"])["data"]
+        assert ("SAFE_VALUE = 11178" in payload["text"]) == (placement != "unread")
+        shapes = await trial.cell(
+            "help_result = agent.help('shell.run', details=True)['shell.run']['result']\n"
+            "assert 'managed_cli' in help_result\n"
+            f"result = agent.shell.run('memory query --program read.recover --artifact-uri {uri}')\n"
+            "assert result['status'] == result['data']['status'] == 'ok'\n"
+            "body = result['data']['data']\n"
+            "assert 'text' in body and 'source_coverage' in body\n"
+            "descriptor = agent.state.describe('sources')\n"
+            "assert descriptor['name'] == 'sources' and descriptor['type'] == 'dict'\n"
+            "assert 'data' not in descriptor and 'status' not in descriptor\n"
+            "try:\n"
+            "    agent.state.describe('missing_binding')\n"
+            "except KeyError:\n"
+            "    pass\n"
+            "else:\n"
+            "    raise AssertionError('missing descriptor must raise KeyError')")
+        assert shapes["status"] == "ok"
+    finally:
+        await trial.close()
+
+
+@pytest.mark.asyncio
+async def test_evidence_diagnostic_stops_dispatch_on_infrastructure_failure(tmp_path, monkeypatch):
+    import evals.evidence_use as evaluation
+
+    called = []
+    async def fail(root, *args, **kwargs):
+        called.append(root)
+        return {"passed": False, "terminal": "provider_error"}
+    monkeypatch.setattr(evaluation, "run_case", fail)
+    rows = await evaluation.campaign(tmp_path, 3, 1)
+    assert len(called) == 1
+    assert len(rows) == 9
+    assert sum(r["terminal"] == "not_started_infrastructure_gate" for r in rows) == 8
+    assert json.loads((tmp_path / "summary.json").read_text())["deep_swe_gate"] == "hold"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("family", FAMILIES)
 @pytest.mark.parametrize("variant", (0, 1))
 async def test_seed_cut_recover_and_current_version_gate(tmp_path, monkeypatch, family, variant):

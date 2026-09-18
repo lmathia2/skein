@@ -118,6 +118,93 @@ def merged(ranges: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
     return result
 
 
+def audit_answer_evidence(
+    events: Iterable[LedgerEvent], *, required: list[ReadEvidence], answer_path: str = "answer.json",
+) -> dict[str, Any]:
+    """Audit completed source availability before each managed answer mutation.
+
+    Requirements are host-frozen path/version/ranges, not model citations. This
+    establishes availability in task history, NOT consumption, live heap survival,
+    current filesystem freshness, or semantic dependence of an answer on a read.
+    Write dispatch is observable; arbitrary Python answer construction is not.
+    """
+    ordered = sorted(events, key=lambda event: event.sequence)
+    if not required or any(read.returned_lines < 1 for read in required):
+        raise ValueError("nonempty decisive source ranges required")
+    if len(ordered) > 100_000 or len(required) > 128:
+        raise ValueError("answer evidence audit exceeds record budget")
+    if len({e.task_id for e in ordered}) > 1 or len({e.sequence for e in ordered}) != len(ordered):
+        raise ValueError("audit requires unique sequences from exactly one task")
+    requests = {}
+    reads: list[tuple[LedgerEvent, ReadEvidence]] = []
+    unmapped: list[int] = []
+    rows = []
+    for event in ordered:
+        payload = event.payload
+        operation = payload.get("operation")
+        identity = payload.get("operation_id")
+        if event.kind == "capability.requested" and identity:
+            if identity in requests:
+                raise ValueError("duplicate capability request identity")
+            requests[identity] = event
+        if event.kind not in {"capability.completed", "read.observed"}:
+            continue
+        if event.kind == "capability.completed" and payload.get("status") != "ok":
+            continue
+        if operation == "fs.read":
+            if payload.get("read_evidence"):
+                reads.append((event, ReadEvidence.model_validate(payload["read_evidence"])))
+            else:
+                unmapped.append(event.sequence)
+        # No guessed shell/program lineage. Recovery cannot enlarge a captured
+        # range; foreign/prior artifacts need an explicit scope-aware mapping.
+        elif operation not in {"fs.write", "fs.edit"}:
+            unmapped.append(event.sequence)
+        if answer_path not in {*payload.get("changed_paths", []), *payload.get("content_hashes", {})}:
+            continue
+        if operation not in {"fs.write", "fs.edit"}:
+            continue
+        request = requests.get(identity)
+        if request is None or request.payload.get("operation") != operation or request.payload.get("arguments_sha256") != payload.get("arguments_sha256"):
+            rows.append({"event_id": event.event_id, "sequence": event.sequence,
+                         "status": "unknown", "reason": "unmatched answer mutation request"})
+            continue
+        boundary = request.sequence
+        coverage = []
+        for need in required:
+            matches = [(e, read) for e, read in reads if e.sequence < boundary
+                       and (read.path, read.sha256) == (need.path, need.sha256)]
+            start, end = need.offset, need.offset + need.returned_lines
+            intervals = merged((max(start, read.offset), min(end, read.offset + read.returned_lines))
+                               for _, read in matches)
+            covered = sum(hi - lo for lo, hi in intervals)
+            coverage.append({**need.model_dump(), "covered_lines": covered,
+                             "complete": covered == need.returned_lines,
+                             "event_ids": [e.event_id for e, read in matches
+                                           if read.offset < end and read.offset + read.returned_lines > start]})
+        unknown_routes = [seq for seq in unmapped if seq < boundary]
+        complete = all(row["complete"] for row in coverage)
+        rows.append({"event_id": event.event_id, "sequence": event.sequence,
+                     "write_request_sequence": boundary,
+                     "answer_sha256": payload.get("content_hashes", {}).get(answer_path),
+                     "status": "available" if complete else "unknown" if unknown_routes else "missing",
+                     "requirements": coverage, "unmapped_route_sequences": unknown_routes})
+    return {"version": "answer-source-availability-v1", "answer_path": answer_path,
+            "task_id": ordered[0].task_id if ordered else None, "answers": rows,
+            "first_answer": rows[0]["status"] if rows else "no_managed_answer",
+            "last_answer": rows[-1]["status"] if rows else "no_managed_answer",
+            "all_answers_source_available": bool(rows) and all(row["status"] == "available" for row in rows),
+            "scope": "completed task-local source ranges before managed answer write dispatch; not semantic use",
+            "limitations": ["unmapped shell/artifact/prior-run routes", "untracked answer mutations",
+                            "requirements identify a frozen source version, not continuous freshness"],
+            "requirements_sha256": hashlib.sha256(json.dumps(
+                [read.model_dump() for read in required], sort_keys=True).encode()).hexdigest(),
+            "events_sha256": hashlib.sha256("\n".join(
+                event.model_dump_json() for event in ordered).encode()).hexdigest(),
+            "measurement_sha256": hashlib.sha256((inspect.getsource(audit_answer_evidence)
+                                                  + inspect.getsource(merged)).encode()).hexdigest()}
+
+
 def audit_reads(events: Iterable[LedgerEvent], *, cut_sequence: int) -> dict[str, Any]:
     """Compare reads after one cut with earlier evidence in that same task.
 

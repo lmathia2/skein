@@ -180,6 +180,37 @@ def test_registry_rejects_composition_validated_for_a_different_factory(
         )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode,windows", [("off", False), ("shadow", False), ("active", False), ("off", True)])
+async def test_handoff_owner_matches_installed_context_plugin(tmp_path, monkeypatch, mode, windows):
+    from app.agent import factory
+    from harness.adapters.adk.context import ContextWindowPlugin
+
+    captured = {}
+    original = factory.build_root_agent
+    def root(deps):
+        captured["deps"] = deps
+        return original(deps)
+    monkeypatch.setattr(factory, "build_root_agent", root)
+    payload = load_harness_composition().model_dump(mode="json")
+    config = payload["harness"]["config"]
+    config["memory"].update(enabled=mode != "off" or windows,
+                             implementation="trace_native", context_programs={"mode": mode})
+    config["context"]["window_management"] = windows
+    assembly = build_harness(parse_harness_composition(payload), RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"))
+    try:
+        plugin_present = any(isinstance(p, ContextWindowPlugin) for p in assembly.app.plugins)
+        assert captured["deps"].plugin_owns_handoff == plugin_present == (mode == "active" or windows)
+        if plugin_present:
+            names = [p.name for p in assembly.app.plugins]
+            assert names.index("context_windows") < next(i for i, name in enumerate(names) if "metrics" in name)
+    finally:
+        if assembly.close:
+            value = assembly.close()
+            if inspect.isawaitable(value):
+                await value
+
+
 def test_default_skein_factory_builds_from_composition_without_credentials(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

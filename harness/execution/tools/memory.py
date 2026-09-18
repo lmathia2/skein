@@ -30,6 +30,10 @@ _RESERVED = re.compile(r"^\s*memory(?:\s|$)")
 _NOTE_LOCK = threading.RLock()
 
 
+class _NoteRejected(ValueError):
+    """Invalid note input rejected before any canonical mutation."""
+
+
 def _public_note(event: Any) -> dict[str, Any]:
     return {"status": "ok", "event_id": event.event_id,
             **{key: value for key, value in event.payload.items() if key != "request_hash"}}
@@ -43,13 +47,13 @@ def _merge_findings(
                if MemoryFinding.model_validate(item["finding"]).status != "superseded"}
     available = {ref: row for row in rows for ref in (row["event_id"], *_artifact_references(row["payload"]))}
     if len({item.id for item in updates}) != len(updates):
-        raise ValueError("finding update IDs must be unique")
+        raise _NoteRejected("finding update IDs must be unique")
     known = set(entries) | {item.id for item in updates}
     for finding in updates:
         if not set(finding.evidence_refs) <= available.keys():
-            raise ValueError("finding cites unavailable public task evidence")
+            raise _NoteRejected("finding cites unavailable public task evidence")
         if not set((*finding.supersedes, *finding.conflicts_with)) <= known:
-            raise ValueError("finding links an unknown finding ID")
+            raise _NoteRejected("finding links an unknown finding ID")
         dependencies = {}
         for ref in finding.evidence_refs:
             read = available[ref]["payload"].get("read_evidence")
@@ -62,17 +66,17 @@ def _merge_findings(
     for finding in updates:
         for superseded in finding.supersedes:
             if superseded in {item.id for item in updates if item.supersedes}:
-                raise ValueError("supersession chains require separate revisions")
+                raise _NoteRejected("supersession chains require separate revisions")
             entries[superseded]["finding"]["status"] = "superseded"
             entries[superseded]["revision"] = revision
         for conflict in finding.conflicts_with:
             for identity in (finding.id, conflict):
                 if entries[identity]["finding"]["status"] == "superseded":
-                    raise ValueError("cannot dispute a superseded finding")
+                    raise _NoteRejected("cannot dispute a superseded finding")
                 entries[identity]["finding"]["status"] = "disputed"
                 entries[identity]["revision"] = revision
     if len(entries) > 64:
-        raise ValueError("working findings exceed 64 entries; retain earlier versions in history")
+        raise _NoteRejected("working findings exceed 64 entries; retain earlier versions in history")
     return [entries[key] for key in sorted(entries)]
 
 
@@ -120,15 +124,29 @@ class ContextProgramService:
         event = notes[-1]
         return _public_note(event)
 
+    def _publish_note(self, event: Any) -> dict[str, Any]:
+        response = _public_note(event)
+        if self.on_note:
+            try:
+                self.on_note(response)
+            except _NoteRejected as exc:
+                # A sink can invoke another note operation. Its rejection does
+                # not undo this already committed note or resolve publication.
+                raise ValueError(str(exc)) from exc
+        return response
+
     def note_write(self, *, text: str, expected_version: int, operation_id: str,
                    evidence_event_ids: tuple[str, ...] = (), entries: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         if self.mode != "active" or not self.working_notes:
-            return {"status": "denied", "reason": "working note writes disabled"}
+            return {"status": "denied", "reason": "working note writes disabled", "effect": "none"}
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", operation_id) or expected_version < 0:
-            raise ValueError("note requires a safe operation ID and nonnegative expected version")
+            raise _NoteRejected("note requires a safe operation ID and nonnegative expected version")
         if entries is not None and (not isinstance(entries, list) or len(entries) > 64):
-            raise ValueError("entries require a bounded array of typed findings")
-        updates = [MemoryFinding.model_validate(self.redactor.redact(item)) for item in entries or []]
+            raise _NoteRejected("entries require a bounded array of typed findings")
+        try:
+            updates = [MemoryFinding.model_validate(self.redactor.redact(item)) for item in entries or []]
+        except ValueError as exc:
+            raise _NoteRejected(str(exc)) from exc
         payload = {"version": expected_version + 1, "expected_version": expected_version,
                    "text": self.redactor.redact_text(text), "evidence_event_ids": list(evidence_event_ids)}
         request_hash = hashlib.sha256(canonical_json({**payload, "updates": [item.model_dump(mode="json") for item in updates]}).encode()).hexdigest()
@@ -140,33 +158,31 @@ class ContextProgramService:
                 if (prior.payload.get("request_hash") != request_hash if "request_hash" in prior.payload
                         else prior.payload != payload or bool(updates)):
                     raise ValueError("operation ID reused with different note content")
-                response = _public_note(prior)
-                if self.on_note:
-                    self.on_note(response)
-                return response
+                return self._publish_note(prior)
             notes = [event for event in events if event.kind == "memory.note"]
             current: dict[str, Any] = _public_note(notes[-1]) if notes else {"version": 0}
             if current.get("version") != expected_version:
-                return {"status": "conflict", "current_version": current.get("version")}
+                return {"status": "conflict", "current_version": current.get("version"), "effect": "none"}
             rows = [row for event in events if (row := project(event, self.redactor)) is not None]
             allowed = {row["event_id"] for row in rows}
             if not set(evidence_event_ids) <= allowed:
-                return {"status": "denied", "reason": "note cites unavailable task evidence"}
+                return {"status": "denied", "reason": "note cites unavailable task evidence", "effect": "none"}
             merged = _merge_findings(current.get("entries", []), updates, rows, expected_version + 1)
             if merged:
                 payload["entries"] = merged
             payload["request_hash"] = request_hash
-            if len(canonical_json(payload).encode()) > min(self.max_result_bytes // 2, 8000):
+            required_bytes = len(canonical_json(payload).encode())
+            budget_bytes = min(self.max_result_bytes // 2, 8000)
+            if required_bytes > budget_bytes:
                 return {"status": "unavailable", "reason": "note exceeds budget; last checkpoint retained",
-                        "current_version": expected_version}
+                        "current_version": expected_version, "effect": "none",
+                        "required_bytes": required_bytes, "budget_bytes": budget_bytes,
+                        "recovery": "Shorten note text/findings; cite receipts instead of duplicating source hashes and ranges. Retry at the same version with a new operation ID."}
             event = self.ledger.append(
                 task_id=self.task_id, source="context_note", source_id=f"{self.task_id}:{operation_id}",
                 kind="memory.note", payload=payload, status="completed", idempotency_key=key,
             )
-            response = _public_note(event)
-            if self.on_note:
-                self.on_note(response)
-            return response
+            return self._publish_note(event)
 
     def handoff(self, *, focus: tuple[str, ...] = ()) -> dict[str, Any]:
         """Small advisory metadata; caller allocates its existing dynamic budget."""
@@ -245,10 +261,13 @@ class ContextProgramService:
         if not _RESERVED.match(command):
             return None
         if self.mode != "active":
-            return {"status": "denied", "reason": "context programs are not active"}
+            return {"status": "denied", "reason": "context programs are not active", "effect": "none"}
+        dispatched = False
         try:
-            if len(command) > 16000 or any(char in command for char in "\x00\r\n"):
+            if len(command) > 16000 or "\x00" in command:
                 raise ValueError("invalid memory command")
+            # Quoted multiline note text is data. This grammar is interpreted
+            # in-process, never sent to a shell; extra commands still fail parsing.
             lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
             lexer.whitespace_split, lexer.commenters = True, ""
             tokens = list(lexer)
@@ -268,20 +287,25 @@ class ContextProgramService:
             if operation == "note":
                 if tokens[2] == "read" and not options:
                     return self.note_read()
-                if tokens[2] != "write" or set(options) - {"--text", "--expected-version", "--operation-id", "--evidence", "--entries"}:
+                if (tokens[2] != "write" or set(options) - {"--text", "--expected-version", "--operation-id", "--evidence", "--entries"}
+                        or not {"--text", "--expected-version", "--operation-id"} <= options.keys()):
                     raise ValueError("usage: memory note read|write --text TEXT --expected-version N --operation-id ID")
-                return self.note_write(text=options["--text"], expected_version=int(options["--expected-version"]),
-                                       operation_id=options["--operation-id"],
-                                       evidence_event_ids=tuple(filter(None, options.get("--evidence", "").split(","))),
-                                       entries=json.loads(options["--entries"]) if "--entries" in options else None)
+                arguments: dict[str, Any] = dict(text=options["--text"], expected_version=int(options["--expected-version"]),
+                                 operation_id=options["--operation-id"],
+                                 evidence_event_ids=tuple(filter(None, options.get("--evidence", "").split(","))),
+                                 entries=json.loads(options["--entries"]) if "--entries" in options else None)
+                dispatched = True
+                return self.note_write(**arguments)
             program = {"history": "history.page", "search": "history.page", "read": "event.read",
                        "event": "event.read", "query": "history.page",
                        "artifact": "artifact.read"}.get(operation)
             if program is None:
                 raise ValueError("unknown memory operation")
+            dispatched = True
             return self._query(options, program)
         except (ValueError, KeyError, IndexError, OSError, TimeoutError, OverflowError) as exc:
-            return {"status": "unavailable", "reason": self.redactor.redact_text(str(exc))[:512]}
+            return {"status": "unavailable", "reason": self.redactor.redact_text(str(exc))[:512],
+                    "effect": "none" if not dispatched or isinstance(exc, _NoteRejected) else "unknown"}
 
     def shadow(self) -> dict[str, Any]:
         """Fixed read-only probe; caller must not insert its output in model input."""

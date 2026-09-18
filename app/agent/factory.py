@@ -463,6 +463,7 @@ class SkeinHarnessFactory:
                         "status": "ok" if status in {"ok", "partial"} else "error",
                         "model_text": json.dumps(result, ensure_ascii=False, sort_keys=True),
                         "data": result,
+                        "effect": result.get("effect"),
                         "truncated": status == "partial", "ui_details": {"memory": True},
                     }
             return ordinary_bash(command, **kwargs)
@@ -539,6 +540,9 @@ class SkeinHarnessFactory:
             and self._execution_runtime_factory is None
             else None
         )
+        plugin_owns_handoff = canonical_ledger is not None and (
+            config.memory.context_programs.mode == "active" or config.context.window_management
+        )
         deps = SkeinWorkflowDependencies(
             settings=settings,
             event_store=event_store,
@@ -579,6 +583,7 @@ class SkeinHarnessFactory:
             steering_batch_limit=config.steering.batch_limit,
             steering_enabled=config.steering.enabled,
             steering_at_work_batch_boundary=("work_batch_boundary" in config.steering.safe_points),
+            plugin_owns_handoff=plugin_owns_handoff,
             approvals=approvals,
         )
         root_agent = build_root_agent(deps)
@@ -608,9 +613,8 @@ class SkeinHarnessFactory:
                 ),
             ]
         )
-        if canonical_ledger is not None and (
-            config.memory.context_programs.mode == "active" or config.context.window_management
-        ):
+        if plugin_owns_handoff:
+            assert canonical_ledger is not None
             receipt_store = ToolReceiptStore(settings.state_root / "managed-tools.db")
 
             def context_handoff(task: TaskLedger) -> dict[str, Any]:

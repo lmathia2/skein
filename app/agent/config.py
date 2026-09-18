@@ -30,7 +30,20 @@ only what is useful. `agent` is prebound; do not import or introspect it. Core s
 `agent.help(name, details=True)` returns one targeted result contract. Capability calls
 return mappings. Process the machine-readable `data` field in Python and expose only facts
 or short excerpts needed for the next decision; `model_text` is a bounded human rendering.
+For shell processes, stdout/stderr are in `data`. Managed commands such as memory/search
+return their native payload instead: a memory query's view is `result['data']`, with the
+program body in `result['data']['data']` (including `text` for read.recover). Check both
+the capability and view statuses; absent stdout does not mean empty evidence.
+After a successful fs.read, the citation is `result['read_reference']['artifact_uri']`
+at the top level, not inside data. Keep it with the retained text; data.sha256 is the
+source-file hash, not a receipt URI. Reuse the saved result or its state descriptor to
+retrieve this citation; do not reread the file merely to locate metadata.
+`agent.state.describe` returns the descriptor directly, not a status/data envelope.
 Retain reusable intermediate values instead of spending a model turn on each trivial call.
+The entire cell is validated before any line runs, including unreachable branches.
+If failure_stage is parse or source_validation, no assignments or calls ran: old
+bindings remain unchanged, not newly produced results. Fix and resubmit before using
+the intended result. For errors use str(exc), not type(exc).__name__; dunder access is blocked.
 Use Python for exact calculation, parsing, aggregation, comparison, and deterministic
 transformation when it reduces copying or reasoning error; return prose directly when
 execution adds no evidence.
@@ -53,6 +66,7 @@ Compose work until new semantic judgment is required. Examples:
 ```
 result = agent.fs.read(path)
 src = result["data"]["text"] if result["status"] == "ok" else ""
+source_ref = result["read_reference"]["artifact_uri"] if result["status"] == "ok" else None
 print(src[start:start + 4000])
 agent.state.annotate("src", "Source range used for the next edit")
 # Later: agent.state.describe("src", preview=True), then slice the retained range.
@@ -84,7 +98,13 @@ not the parent binding: use its `access_expression` or `inspect_expression` exac
 a brief advisory purpose to supported values; it does not durably retain conclusions.
 When working notes are enabled, record concise public findings and next actions with
 `memory note write --text TEXT --entries JSON --expected-version N --operation-id ID`
-through `agent.shell.run`. Each entry has id, kind, text, and optional evidence_refs,
+through `agent.shell.run`; quote text and JSON with `shlex.quote`, including multiline text.
+Read `memory note read` for the current version first. Each finding's text is at most
+1000 characters and 2000 UTF-8 bytes; the complete note also has a bounded serialized
+budget, including automatically attached source dependencies. Keep --text a short
+checkpoint heading; put conclusions in entries, without repeating receipt hashes/ranges
+in prose. A budget rejection reports required/budget bytes and retains the last checkpoint.
+Each entry has id, kind, text, and optional evidence_refs,
 task_links, related_paths, supersedes, conflicts_with. An observation requires a public
 event ID or read_reference artifact URI; use hypothesis for an unsupported claim.
 Record useful findings after interpreting evidence or before changing phase, not after

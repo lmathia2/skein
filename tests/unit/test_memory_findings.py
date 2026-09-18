@@ -101,7 +101,12 @@ def test_bounds_redaction_and_failed_update_keep_last_checkpoint(tmp_path):
     note = write(service, [{"id": "x", "kind": "hypothesis", "text": "password=topsecret123"}])
     assert "topsecret123" not in canonical_json(note)
     huge = [{"id": f"e{i}", "kind": "hypothesis", "text": "x" * 900} for i in range(9)]
-    assert write(service, huge, 1, "large")["status"] == "unavailable"
+    rejected = write(service, huge, 1, "large")
+    assert rejected["status"] == "unavailable" and rejected["effect"] == "none"
+    assert rejected["required_bytes"] > rejected["budget_bytes"]
+    assert service.note_read() == note
+    invalid = write(service, [{"id": "too-long", "kind": "hypothesis", "text": "x" * 1001}], 1, "invalid")
+    assert invalid["effect"] == "none"
     assert service.note_read() == note
     assert write(service, [{"id": "bad", "kind": "decision", "text": "x", "supersedes": ["absent"]}], 1, "bad")["status"] == "unavailable"
     assert service.note_read() == note

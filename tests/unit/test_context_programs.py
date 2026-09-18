@@ -1,3 +1,4 @@
+import shlex
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -126,10 +127,34 @@ def test_note_sink_repaired_on_retry(tmp_path: Path):
             raise OSError("sink publication failed")
     service = ContextProgramService(store, "task", working_notes=True, on_note=sink)
     command = "memory note write --text 'next step' --expected-version 0 --operation-id n1"
-    assert service.execute(command)["status"] == "unavailable"
+    failed = service.execute(command)
+    assert failed["status"] == "unavailable" and failed["effect"] == "unknown"
     assert service.execute(command)["version"] == 1
     assert calls[0] == calls[1]
     assert len([e for e in store.read("task") if e.kind == "memory.note"]) == 1
+
+
+def test_multiline_note_is_data_and_rejected_commands_have_no_effect(tmp_path: Path):
+    service = ContextProgramService(JsonlLedgerStore(tmp_path / "ledger"), "task", working_notes=True)
+    text = "Finding one\nFinding two\r\n$(not-a-process); literal shell text"
+    command = f"memory note write --text {shlex.quote(text)} --expected-version 0 --operation-id multiline"
+    note = service.execute(command)
+    assert note["status"] == "ok" and note["text"] == text
+    assert service.execute(command) == note
+    for invalid in ("memory note write --expected-version 1 --operation-id missing",
+                    "memory note read\nrm answer.json", "memory note read; rm answer.json",
+                    "memory note read\x00", "memory note read | anything"):
+        result = service.execute(invalid)
+        assert result["status"] == "unavailable" and result["effect"] == "none"
+        assert service.note_read() == note
+
+
+def test_nested_sink_rejection_cannot_relabel_a_committed_note(tmp_path: Path):
+    service = ContextProgramService(JsonlLedgerStore(tmp_path / "ledger"), "task", working_notes=True)
+    service.on_note = lambda note: service.note_write(text="invalid", expected_version=-1, operation_id="nested")
+    result = service.execute("memory note write --text checkpoint --expected-version 0 --operation-id outer")
+    assert result["status"] == "unavailable" and result["effect"] == "unknown"
+    assert service.note_read()["version"] == 1
 
 
 def test_artifact_requires_exposed_reference_and_bounds(tmp_path: Path):

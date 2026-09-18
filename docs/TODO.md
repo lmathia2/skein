@@ -60,6 +60,48 @@ Implementation ownership, dependencies, and acceptance gates are in the
     no-cost-increase gate. See the [continuity audit](audits/ptc-memory-continuity-2026-09-12.md).
   - [x] Separate recovery-page completion from source coverage and run the eight-case
     live diagnostic. Six passed; findings still failed missing-range evidence use.
+  - [x] Harden completion evidence: require observed zero exits, reject incomplete
+    baseline comparisons, and preserve original criterion-validation indices.
+  - [x] Exercise real PTC/workflow rejection and bounded recovery: a wrong answer
+    with a passing self-check cannot finish; a sufficient one-line source read plus
+    passing independent verification can finish without a whole-file read.
+  - [x] Request one fresh working-note checkpoint before each advancing soft cut;
+    retain exact evidence during that opportunity and mark bounded/hard-limit
+    fallback stale. A nonempty old note no longer implies a fresh checkpoint.
+  - [x] Clarify PTC result contracts for managed CLI view bodies versus process
+    stdout/stderr, and direct state descriptors versus status/data envelopes.
+  - [x] Expose rejected-cell non-execution separately from preserved heap state;
+    reproduce late source-validation rejection and require a corrected call before
+    a same-name binding can supply new evidence. Keep successful result egress bounded.
+  - [x] Route controlled continuations through real workflow verification/re-entry,
+    preserve first-verification and terminal accounting, and add six diverse
+    development fixtures with task-specific, integrity-checked external oracles.
+  - [x] Replace the exposed-file diagnostic oracle after contamination was observed;
+    keep expected answers in the host-owned checker and isolate live commands in
+    Docker through the existing runtime factory. Pass the real-workflow isolation
+    preflight and declare exact fixture output keys before further paid trials.
+  - [x] Audit decisive path/version/range availability before each managed answer
+    write, preserving first versus repaired answers and unknown retrieval routes.
+    Prove separately that a correct guess can pass the artifact oracle without
+    demonstrating source availability; neither verdict establishes semantic use.
+  - [x] Require source availability in the development oracle as well as correct
+    answer bytes; bind the verdict to the last managed answer hash. Prove rejected
+    guesses, bounded missing-range recovery, and reuse without forced rereads.
+  - [x] Remove duplicate workflow/plugin handoff delivery, using one factory-derived
+    owner while preserving off/shadow behavior, conservative budget reservation,
+    and post-reconstruction provider-request measurement.
+  - [x] Add charged model-written checkpoint development cases through the existing
+    runner, steering queue, and context plugin, with delayed questions and unavailable-
+    evidence abstention. Test source/checkpoint timing and recovery without seeded notes.
+  - [x] Repair quoted multiline note parsing, report note-budget requirements, and
+    preserve known pre-commit rejection effects in PTC without weakening unknown
+    append/publication failures. Verify through the model-written live screen.
+  - [x] Add an explicit note/recall-off control and unseeded worker-loss qualification
+    protocol, sharing PTC artifacts, safe restoration, context-cut policy, and
+    independent completed-source verification with treatment.
+  - [ ] Demonstrate evidence-use and actual reread improvements on new held-out
+    continuations; distinguish first proposals, verifier rejection/recovery, and
+    independently accepted outcomes. Earlier fixture loops bypassed outer verification.
 
 ## Project identity
 

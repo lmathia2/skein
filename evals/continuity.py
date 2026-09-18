@@ -31,9 +31,11 @@ from evals.runner import _atomic_write
 from harness.adapters.adk.context import ContextWindowPlugin
 from harness.adapters.providers.codex_responses import ProviderResponseError
 from harness.adapters.providers.openrouter_responses import OpenRouterResponsesLlm
+from harness.core.agent import HarnessRegistry
 from harness.core.config import RuntimeBindings, load_harness_composition, parse_harness_composition
 from harness.core.models import TaskLedger, TaskRequest
 from harness.evidence.ledger import LedgerBackedEventStore, open_ledger
+from harness.evidence.memory.models import ReadEvidence
 from harness.evidence.state import EventKind, JsonlEventStore
 from harness.execution.safety import SecretRedactor
 from scripts.run_harbor_eval import dotenv_value
@@ -126,6 +128,7 @@ class Continuation:
     def __init__(self, root: Path, family: str, variant: int, arm: str):
         self.root, self.arm = root, arm
         self.fixture = fixture(family, variant)
+        self.seed_read_limit = 10 if family == "partial" else 24
         self.workspace, self.state = root / "workspace", root / "state"
         self.composition = composition_for(arm)
         self.task_id = f"{family}-{variant}-{arm}"
@@ -133,8 +136,12 @@ class Continuation:
         self.history: list[types.Content] = []
         self.calls = 0
         self.assembly: Any = None
+        self.registry: HarnessRegistry | None = None
+        self.command_image: str | None = None
         self.cut_sequence = 0
         self.seed_cells = 0
+        self.seed_checkpoint = True
+        self.source_requirements: list[ReadEvidence] | None = None
         self.prior_root: Path | None = None
         self.redactor = SecretRedactor(known_secrets=(os.environ.get("OPENROUTER_API_KEY", ""),))
 
@@ -152,7 +159,7 @@ class Continuation:
             conversation_id="continuity-fixture", user_id="fixture-owner",
             prior_task_ids=("fixture-prior",) if prior else (),
             prior_state_roots=(self.prior_root,) if prior and self.prior_root is not None else (),
-        ))
+        ), registry=self.registry)
         self.agent = cast(LlmAgent, self.assembly.agents["coding_worker"])
         self.tool: Any = self.agent.tools[0]
         self.context = SimpleNamespace(agent_name="coding_worker", invocation_id="continuation",
@@ -201,7 +208,7 @@ class Continuation:
         self.history = [types.Content(role="user", parts=[types.Part.from_text(text=self.fixture["goal"])])]
         paths = list(self.fixture["files"])
         target = self.fixture["target"]
-        limit = 10 if self.fixture["family"] == "partial" else 24
+        limit = self.seed_read_limit
         await self.cell(
             f"sources = {{p: agent.fs.read(p, limit={limit}) for p in {paths!r}}}\n"
             f"agent.state.annotate('sources', 'Relevant module for the continuation; captured source version', "
@@ -306,8 +313,10 @@ def account_response(result: dict[str, Any], response: LlmResponse, estimated: i
     return (usage.prompt_token_count or estimated) if usage else estimated
 
 
-async def run_case(root: Path, family: str, variant: int, arm: str) -> dict[str, Any]:
-    trial = Continuation(root, family, variant, arm)
+async def run_case(
+    root: Path, family: str, variant: int, arm: str, *, trial: Continuation | None = None,
+) -> dict[str, Any]:
+    trial = trial or Continuation(root, family, variant, arm)
     result: dict[str, Any] = {"family": family, "variant": variant, "arm": arm, "passed": False,
                               "terminal": "call_limit", "model_calls": 0, "input_tokens": 0,
                               "cached_input_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0,
@@ -334,6 +343,8 @@ async def run_case(root: Path, family: str, variant: int, arm: str) -> dict[str,
                 result["terminal"] = "task_input_budget_exhausted"
                 break
             result["model_calls"] += 1
+            result["unaccounted_model_calls"] = result["model_calls"] - completed_calls
+            _atomic_write(root / "progress.json", json.dumps(result, indent=2))
             final = None
             async for response in model.generate_content_async(request):
                 if not response.partial:
@@ -341,6 +352,7 @@ async def run_case(root: Path, family: str, variant: int, arm: str) -> dict[str,
             if final is None or final.content is None:
                 raise RuntimeError("provider returned no final content")
             completed_calls += 1
+            result["unaccounted_model_calls"] = result["model_calls"] - completed_calls
             charged_input += account_response(result, final, estimated)
             if final.usage_metadata:
                 trial.context.state["context_provider_input_tokens"] = final.usage_metadata.prompt_token_count or 0

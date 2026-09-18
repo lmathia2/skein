@@ -100,7 +100,19 @@ def passes_recorded_baseline(
 ) -> bool:
     """Accept the same known failing tests as no-regression evidence only."""
 
-    if baseline is None or baseline.passed:
+    if (
+        baseline is None
+        or result.command != baseline.command
+        or result.category != baseline.category
+        or any(
+            run.status not in {"ok", "error"}
+            or run.exit_code is None
+            or run.exit_code <= 0
+            or run.truncated
+            or run.omitted_bytes
+            for run in (result, baseline)
+        )
+    ):
         return False
     current_failures = set(failure_identifiers(result))
     return bool(
@@ -129,10 +141,10 @@ def _required_strength(
 
 
 def _verified_references(
-    results: list[CommandResult],
+    results: list[tuple[int, CommandResult]],
     required_strength: VerificationStrength,
 ) -> tuple[list[EvidenceReference], Literal["none", "syntax", "static", "behavioral"]]:
-    passed = [result for result in results if result.passed]
+    passed = [result for _, result in results if result.passed]
     achieved: Literal["none", "syntax", "static", "behavioral"] = "none"
     for result in passed:
         if _STRENGTH_ORDER[result.strength] > _STRENGTH_ORDER[achieved]:
@@ -147,7 +159,7 @@ def _verified_references(
             strength=result.strength,
             artifact_uri=result.artifact_uri,
         )
-        for index, result in enumerate(results)
+        for index, result in results
         if result.passed
         and _STRENGTH_ORDER[result.strength] >= _STRENGTH_ORDER[required_strength]
     ]
@@ -194,8 +206,8 @@ def build_report(
         result.passed for result in effective if result.required
     )
     evidence_results = [
-        result
-        for result in effective
+        (index, result)
+        for index, result in enumerate(effective)
         if result.command not in baseline_relative_commands
     ]
     verified_references, achieved = _verified_references(evidence_results, required)

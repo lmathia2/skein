@@ -502,3 +502,367 @@ failed. This closes implementation of the explicit coverage contract, not the be
 quality gate. All results, limitations, and next diagnostic directions are in the
 [continuity audit](../audits/ptc-memory-continuity-2026-09-12.md). No paid expansion or
 default promotion follows these results.
+
+### Reliability goal: next staged work (2026-09-12)
+
+The user authorized bounded OpenRouter use with the existing key. Keep the failed
+cohorts and their gates unchanged; they are development evidence, not a held-out
+set to tune repeatedly until it passes. GLM is excluded. Do not require whole-file
+reads when an already completed, applicable range establishes the requested fact.
+
+1. **Completion authority (verification):** first close deterministic defects in
+   exit-status handling, incomplete baseline comparisons, and criterion-reference
+   identity. Implemented in `3e44987`, with failing-before/passing-after regressions.
+   General checks still do not prove arbitrary task semantics; test task-specific
+   verification and bounded re-entry separately from first model proposals.
+2. **Locate the evidence-use failure (evaluation):** freeze a nine-trial diagnostic,
+   `python -m evals.evidence_use`, before provider dispatch. Three independent
+   repetitions of the same missing-symbol task, with (a) all captured evidence
+   exposed by a completed PTC cell after the cut, (b) that same capture recoverable
+   through the existing memory/binding APIs, or (c) only the first ten lines
+   captured, requiring a genuine new read. Model/profile, task, and oracle stay
+   fixed; the visible arm is an evidence-placement intervention, not a matched-cost
+   promotion arm. Luna/max, six concurrent trials, 12 calls/200k input/8192 output
+   per call/900 seconds per trial. No feedback or outer verification in this
+   diagnostic: report correctness of first proposals explicitly. A failure with
+   visible evidence points beyond retrieval; visible success with recovery failure
+   isolates the recovery interface; missing-only failure isolates evidence sufficiency.
+   Stop queued dispatch on provider/infrastructure/measurement failures. No expansion
+   or promotion automatically follows even a perfect nine-trial result.
+3. **Improve the responsible component (PTC/memory/verification):** use stage 2
+   traces to choose the next change. Preserve what was learned with bounded,
+   evidence-linked findings, usable content access, and explicit remaining unknowns.
+   Test completion proposals against a host-owned task-specific oracle and exercise
+   production verification/re-entry; do not count reading back a model-written answer
+   as independent proof. Include genuinely sufficient partial evidence and reject
+   wrong-symbol, stale, unresolved, and self-confirming evidence. Keep first-pass
+   failures visible even when verification subsequently enables recovery.
+4. **Demonstrate benefit (evaluation):** freeze new development and held-out cases
+   before selecting a treatment. Proposed confirmation: 12 diverse cases × two
+   arms × three repetitions (72 bounded continuations), with discovery, partial
+   evidence, worker loss, changed versions, conflicting findings, and multi-file
+   conclusions. First test consumption of controlled findings; then test model-written
+   findings separately. Include positive baseline reread opportunities without
+   instructing the baseline to reread. Zero critical evidence/accepted-completion
+   failures, no paired correctness regression, at least 25% fewer avoidable reread
+   lines, and no aggregate provider-cost increase are required. Necessary new-range
+   or changed-version reads are not penalties. Missing accounting and zero baseline
+   rereads mean insufficient evidence. Report per-family results and uncertainty;
+   a small flawless sample is not a guarantee.
+5. **Coding quality (evaluation):** only after the prior gates, run the frozen
+   six-task DeepSWE 1.1 comparison above, then consider twenty tasks. Official reward,
+   harness acceptance, provider errors, and budget exhaustion remain separate.
+
+The immediate nine-trial diagnostic does not authorize automatic traversal of these
+stages after a failed gate; further improvements remain within the active goal, with
+bounded diagnostic runs and fresh evidence before any larger paid expansion.
+
+### Verified development continuations
+
+`evals.verified_continuity` now runs the production root ADK workflow, effect broker,
+verification, and bounded re-entry after verification failure. It wraps the existing
+provider only for fixed budgets and public response/usage capture; it does not replace
+the model/tool loop. `accepted` comes from `task.finished`, `passed` from the independent
+final artifact oracle, and first-verification outcomes remain separate. A correct file
+at a call limit is not a verified completion. No private reasoning or auth headers are
+retained. An ADK-swallowed provider/limit error must retain its real terminal category.
+
+The six new **development**, not held-out, fixtures are frozen in
+`evals.continuity_cases`: routing lookup (TOML), missing fields beyond a captured header,
+JSON evidence after worker restart, externally updated JSON, a recorded rejection of
+a Python fast-path constant, and a JSON/TOML two-file calculation. Both arms get
+identical source reads and seeded, evidence-linked findings; metadata versus findings
+changes the existing representation configuration only. Seed observations are not
+proof of autonomous note-writing quality. Covered reads remain optional to recover;
+the baseline is never instructed to reread.
+
+The first live step is a four-trial canary: `routing` and `missing`, each with metadata
+and findings. Luna/max, 12 calls/200k cumulative input/8192 output per call/900 seconds,
+up to six concurrent trials, and no blind retry after a streamed provider failure.
+All six fixture hashes are recorded before dispatch, but the other four cases are not
+launched automatically. Infrastructure, measurement, or false-acceptance failures stop
+queued dispatch; cost/reread/quality conclusions require paired completed measurements.
+
+The required task-specific unittest oracle is outside the model's workspace, returns
+no expected answer in failure diagnostics, and stores only its expected answer hash.
+Its integrity is checked after execution. The local command adapter is still not an
+adversarial OS sandbox: inspect submitted programs for oracle/parent-directory access
+and treat contamination or unmappable retrieval as insufficient evidence. Do not use
+this development screen as the held-out reliability panel or promote defaults from it.
+
+The first four-trial run (`verified-continuity-live-20260912-v1`, revision d82242c)
+produced one verified completion, two correct-but-call-limited artifacts, and one
+call-limited missing artifact. Both findings trials submitted `verify` at call 11,
+then spent call 12 updating notes during the required review. The inherited immediate
+6k cut setting produced 5–8 cuts per task; it is a repeated-cut stress treatment, not
+a clean single-checkpoint recovery screen. Source overlap was not reduced.
+
+Evaluator v2 forces only the seeded checkpoint at 6k, then restores a 20k work packet
+and phase-boundary timing before the real workflow starts. The existing 1,050,000
+ceiling is a diagnostic setting, not a verified provider-window claim. Deterministic
+tests require exactly one cut for these short source-derived continuations. Keep the
+old cohort intact; rerun the same four cases before expanding. Repeated-cut stress
+and natural-pressure qualification remain separate required stages, not waived gates.
+
+The citation-help canary passed all four real-workflow trials, but both arms had zero
+avoidable source rereads and findings cost 2.1% more. The following eight-trial lifecycle
+screen accepted only four trials. One correction trial read the external oracle and
+tried its hash against candidate outputs, invalidating that pair. Stop using a readable
+oracle file or a low-entropy expected-answer hash as an isolation boundary.
+
+Before another paid trial, evaluator v3 must pass the real-workflow Docker preflight:
+the ordinary command backend sees only the mounted workspace; one exact host-owned
+virtual test command evaluates the answer without publishing the expected value or
+oracle source. Both model-requested and outer checks use this adapter behind the same
+managed policy. The local guarded Python worker is unchanged. Record the actual image
+and runtime override, preflight its cached immutable ID, and forbid implicit pulls.
+Exact output keys are declared in the tasks. These common evaluator changes require
+fresh pairs; never splice their successes into the contaminated cohort.
+
+The isolated correction/join rerun after explicit rejected-cell guidance (2dee395)
+passed all four trials: findings 12 calls/$0.02419874/zero source reread lines versus
+metadata 17 calls/$0.03187776/nine reread lines. Treat this as a two-pair development
+pilot. Both arms already expose working notes and retrieval; it is not memory on/off.
+
+The deterministic audit now reports decisive source availability before each managed
+answer write dispatch, using host-frozen path/version/ranges and completed receipts.
+The observable write boundary is not arbitrary Python value-construction time. It
+separates first and repaired answers, rejects later/failed/wrong-version read support,
+and preserves unknown shell/artifact/prior-run routes. Latest pilot: all four first
+answers had their decisive ranges available, but this does not prove consumption.
+A correct-guess regression passes the independent artifact oracle without acquiring
+the missing fields; artifact correctness and evidence availability are separate gates.
+
+Evaluator v4 additionally enforces this declared availability gate through the same
+host-owned oracle used by model-requested and final checks. It matches current answer
+bytes to the last managed write, rejects a correct guess without sufficient preceding
+reads, and permits a new answer submission after bounded source recovery. Corrupt
+evidence remains an infrastructure failure. Applicable seeded ranges need not be read
+again. This is a necessary evidence condition, not proof of model use or a universal
+production source-provenance policy.
+
+The next paid diagnostic is frozen to four development trials: `missing` and `freshness`
+with metadata and findings, Luna/max, the existing 12-call/200k-input/900-second budgets,
+and cached Docker isolation. It tests required new-range and changed-version reads under
+the stricter oracle; it is not a held-out benefit test. Stop on infrastructure or false
+acceptance, preserve first-verification failures, and do not expand automatically.
+
+Next work: exercise model-written
+checkpoints and negative cases where missing evidence must not become a guessed answer.
+The source-gated canary completed 4/4, exposed duplicate workflow/plugin handoffs,
+and the single-owner rerun completed 3/4 with four correct source-backed artifacts.
+One metadata case hit its call ceiling after the model-requested check but before
+outer verification. Findings retained 2/2 completion with lower input/cost; neither
+arm had avoidable source rereads. Do not keep reusing this zero-opportunity panel
+as a reread-benefit experiment. The model-written stage must charge learning/note
+creation and recovery, retain first proposals and terminal distinctions, and include
+real reuse opportunities without ordering the control to reread.
+Freeze genuinely new held-out variants before their first provider call, retain matched
+terminal/cost accounting, and test repeated cuts separately. Hold DeepSWE until lifecycle,
+model-written checkpoints, source-evidence availability, and paired quality/cost/read
+gates are independently established. Seeded findings and a correct output do not prove
+that the model learned the facts or obtained missing evidence before answering.
+
+### Model-written checkpoint development screen
+
+`evals.learned_continuity` adds three new development cases to the same verified
+runner: delayed capacity lookup, a cross-file time-window calculation, and a missing
+referenced policy requiring abstention. The model receives eight small shard records
+and two policies, but not the final target/question until after its checkpoint.
+There are no host-seeded reads, notes, bindings, or import cells. Both metadata and
+findings arms retain the same broker, note/recovery APIs, source bytes and budgets.
+
+The evaluator observes completed path/version/range receipts before a nonempty
+model-authored note, then requests one bounded acknowledgement through the existing
+steering queue. Only after that later completed cell does it deliver the follow-up
+and apply one synthetic pressure cut through the production context plugin. This
+allows the note-writing interaction to leave the exact tail without dropping an
+unconsumed tool result. The hard window and packet capacities are unchanged; the
+temporary trigger ratio is restored after publication. This is controlled checkpoint
+stress, not natural context-pressure calibration. Learning, notes, acknowledgement,
+recovery, and verification all count against the same 12-call/200k-input budget.
+
+Positive completion requires correct bytes, decisive source receipts preceding the
+last answer write, and an answer written after the measured cut. The unavailable
+case has no accepted answer artifact, including JSON null: expected abstention requires
+a structured blocked proposal, a blocked workflow, an exercised checkpoint, no answer
+or workspace changes, and no recorded unknown effect. Budget/provider failures and
+unexercised checkpoints do not count as abstentions. This grades observable outcomes,
+not whether the model's explanation faithfully describes its internal reasoning.
+
+The first live screen is six trials: three cases × metadata/findings, Luna/max,
+concurrency six, existing 8192-output/900-second bounds, the cached immutable Docker
+image, and the same stop-on-infrastructure/false-acceptance policy. Freeze all fixture
+and driver hashes before dispatch. Report actual note construction, learning versus
+continuation calls, cut publication versus exercised continuation, first verification,
+source availability, rereads across routes, and terminal costs. These cases are not
+held out and do not authorize a broader paid benchmark or default promotion.
+
+#### First model-written diagnostic, 2026-09-12
+
+`.artifacts/learned-continuity-live-20260912-v1` ran the frozen six-trial screen at
+`104790b`. Metadata accepted lookup (8 calls), hit the call limit on join (12), and
+hit the call limit on unavailable policy (12). Findings accepted lookup (11) and
+join (8), and stopped blocked on unavailable policy (7). The latter is **not** a
+strict correct-abstention pass because a rejected oversized note had been recorded
+with an unknown effect. Five checkpoints were exercised; metadata join published a
+cut only after using all calls, so it has no measured continuation. All three accepted
+answers had decisive completed source captures before their first write. Both arms
+made zero post-cut source reads, so this cohort demonstrates no reread reduction.
+
+All 58 provider calls were accounted, with no extra wire attempts: metadata cost
+$0.05351007 and findings $0.05464529, total $0.10815536. Known cumulative live spend
+is $1.77933983 plus one older failed response with unavailable cost. These are
+development diagnostics, not held-out qualification. Optional run-start/run-success
+tracing failed while traversing the evaluator's public runtime object; canonical
+receipts and wire/cost artifacts remained available, but this is not a clean screen.
+
+The traces identify shared implementation fixes before repeating the same bounded
+screen: accept quoted multiline notes without shell dispatch; expose finding and
+serialized-note bounds; preserve explicit no-effect validation rejections in PTC;
+keep append/publication failures unknown; and keep evaluator runtime/oracle ownership
+private from context telemetry. Do not reinterpret old unknown receipts retroactively
+or enlarge budgets to convert exhausted trials into successes. Re-run the same six
+development trials only after deterministic rejection/publication and workflow tests
+pass, then decide whether a genuinely new held-out checkpoint family is warranted.
+
+#### Repaired model-written screen, 2026-09-12
+
+`.artifacts/learned-continuity-live-20260912-v2` froze `f147976`, including the shared
+memory/PTC correction `88d0c91`. All six trials exercised exactly one checkpoint,
+without seeded source reads/findings or optional trace-observation failures. Four
+answers passed the first independent verification, with decisive completed source
+ranges preceding their first answer write. Both missing-policy trials ended with a
+structured blocked proposal, no answer/source changes, and no unknown effect: two
+strict expected abstentions, not two successful answer artifacts.
+
+| Case | Metadata calls / cost | Findings calls / cost | Outcome in both arms |
+| --- | --- | --- | --- |
+| Delayed lookup | 12 / $0.02402929 | 9 / $0.01699556 | Verified answer |
+| Cross-file calculation | 10 / $0.01617652 | 9 / $0.01626616 | Verified answer |
+| Missing policy | 9 / $0.01505311 | 7 / $0.01391568 | Expected abstention |
+
+Metadata used 31 calls, 257,110 input tokens, and $0.05525892; findings used 25 calls,
+219,407 input tokens, and $0.04717740 (14.6% lower aggregate cost in this screen).
+Acquisition/note/acknowledgement accounted for 21 versus 18 calls; continuation for
+10 versus 7. Metadata explicitly recovered notes/state on the answer tasks and
+notes/read lookup on the unavailable case. Findings proceeded from the delivered
+checkpoint without an additional recovery tool call. All source acquisition preceded
+the cut and neither arm reread sources afterward. This demonstrates usable model-written
+continuity on these development cases, **not a reduction in rereads**, because the
+metadata baseline already had zero. Both arms have note and recovery APIs; this is not
+a memory-on/off comparison or evidence of generic semantic grounding.
+
+Memory-command rejections dropped from 12 in the preceding diagnostic cohort to 3;
+the three remaining metadata errors were two oversized findings and an invalid `plan`
+kind, all recorded as no-effect rejections. Budget guidance does not guarantee perfect
+note authoring. All 56 calls/costs were accounted, with no extra wire attempts. Cohort
+cost was $0.10243632; both model-written cohorts together cost $0.21059168. Known
+cumulative live spend is $1.88177615 plus the older response with unavailable cost.
+
+Next qualification remains held: freeze genuinely new worker-loss, changed-source,
+and repeated-checkpoint cases before dispatch, separate live-binding reuse from
+durable note/artifact recovery, and report unavoidable freshness reads separately.
+Do not force control rereads or count a zero-baseline comparison as improvement.
+Before claiming a memory-on/off effect, specify that separate ablation explicitly;
+the present metadata/findings experiment cannot establish it. No defaults, broad
+DeepSWE run, or held-out reliability gate is promoted by this six-trial result.
+
+### Frozen worker-loss qualification screen
+
+The next six trials are three previously unrun families in
+`evals/heldout_continuity.py` × `no_recall`/`findings`: signed settled-transaction
+aggregation over CSV batches, alias resolution to the latest **completed** deployment
+over TOML/JSON, and unit-normalized completed sensor measurements with a pending outlier.
+These fixtures are frozen for qualification, not used to tune production prompts or
+selection logic. A failed live case becomes diagnostic; do not repeatedly retune on
+these cases and keep calling their scores held out. They are still small controlled
+tasks, not DeepSWE or broad statistical reliability evidence.
+
+Both arms acquire sources and prepare their own public checkpoint before a delayed
+question. A completed `LEARNING_COMPLETE` marker plus completed source ranges opens
+one acknowledgement opportunity; findings also requires a preceding nonempty note.
+After that later completed cell, the evaluator records stop intent, closes the real
+idle worker through its existing lifecycle callback, verifies the old epoch is no
+longer live, and records the outcome **before** provider dispatch. The original ADK
+runner, tool, context plugin, source artifacts, and independent verifier remain in
+place. Safe data restoration remains enabled; effects are never replayed to force a
+test outcome. One synthetic cut retains the unconsumed acknowledgement interaction.
+
+`no_recall` disables working notes, prior-run recall, and model-visible memory programs.
+It does **not** erase the canonical trace or disable PTC's artifacts, safe restoration,
+state APIs, or deterministic evidence index. Both arms retain the same rich read-index
+capacity and PTC notices. This measures the added note/recall service, not deletion of
+all historical infrastructure. Because fresh reconstruction requires active notes by
+contract, both arms use the supported `handoff_tail` policy with the same zero
+historical-tail target. No configuration validation is bypassed. The control may
+publish or recover artifacts, retain replay-safe data, or read source files as needed;
+it is not instructed or mechanically forced to reread them.
+
+Freeze source, fixture, driver, and revision hashes before dispatch. Use Luna/max,
+concurrency six, 12 model calls/200k input/8192 output/900 seconds per task and the
+same cached immutable Docker image. All acquisition, preservation, acknowledgement,
+recovery, and verification calls count. Stop expansion on infrastructure, false
+acceptance, or measurement failure. No retries or budget enlargement convert a
+failed qualification into a pass. A no-recall run that never reaches its checkpoint
+is a protocol/budget failure, not an easy no-memory control win.
+
+Report paired first verification and accepted outcomes; checkpoint publication versus
+exercised continuation; actual pre/post worker epochs; post-cut source rereads versus
+artifact recovery and exposure; total and continuation calls; and fully accounted cost.
+The pilot gate requires all three treatment answers independently verified with
+completed decisive source evidence, all six interventions exercised, no false
+acceptance or unknown effects, and no aggregate cost regression. Reread benefit requires
+an observed nonzero matched baseline and a reduction without worse correctness, not
+merely zero treatment reads. Passing allows design of the next changed-source/repeated-
+cut qualification, not default promotion or automatic DeepSWE expansion.
+
+#### First worker-loss results and qualification limits
+
+`.artifacts/heldout-worker-loss-live-20260912-v1` froze `7fa9944`. All six real workers
+were observed live before their acknowledged stop and not live afterward; each trial
+exercised one cut. Initial provider model/instruction/tool/reasoning prefixes matched
+across all arms. No source acquisition or finding was host-seeded, no unknown effects
+were recorded, and all submitted answers had completed decisive source coverage before
+their first write. The independent verifier accepted five answers and rejected one.
+
+| Family | No-recall result / calls / source reread lines | Findings result / calls / source reread lines |
+| --- | --- | --- |
+| Rollout | Verified / 11 / 36 | Verified / 6 / 0 |
+| Units | Verified / 9 / 21 | Verified / 8 / 0 |
+| Settlements | Verified / 12 / 13 | Verifier rejected / 12 / 0 |
+
+The settlement comparison is **inconclusive for model quality**: the question named
+`settled_rows` without defining its type or meaning. Findings returned the correct
+1551-cent total and the three supporting row references; the hidden oracle expected
+the integer count 3. Do not relabel that answer accepted, but do not attribute its
+rejection to faulty memory either. Preserve the original fixture/results for audit;
+any corrected settlement contract is a diagnostic revision, not another first held-out
+attempt. Future output contracts must explicitly state field types and meanings before
+dispatch. The six-trial qualification gate is therefore **not cleared**.
+
+On the two unambiguous held-out pairs, both arms passed first independent verification.
+Findings used 14 calls/102,389 input tokens/$0.02404901 versus no-recall's
+20 calls/136,222 input tokens/$0.03206475: 30% fewer calls and 25% lower cost. There
+were 57 same-version source lines reread in control and zero in findings. Answer-file
+checks are not source rediscovery. Both findings continuations wrote directly from the
+delivered note evidence without a further source/artifact recovery call. This is a
+positive held-out worker-loss signal, not statistical reliability or freshness/repeated-
+cut qualification. Exact-line emitted duplicates also fell 28 to zero on these pairs;
+ambiguous/transformed source text remains outside that lower-bound exposure measure.
+
+The no-recall models attempted disabled `memory` commands before falling back to source
+reads, despite the context marking memory inaccessible. Artifact facilities were still
+available and the scripted control proved that recovery route works. Consequently the
+call/cost result includes routing/usability overhead; it does not isolate representational
+compression alone. Before a broader claim, improve capability-aware recovery guidance
+and check direct artifact recovery contracts without weakening the no-recall control.
+The richer arm also attempted an unsupported `todo` finding kind once; it recovered
+from a no-effect rejection. Both transaction models hit safely rejected `io` imports.
+
+Report the full planned cohort alongside the qualified subset: no-recall accepted 3/3
+at 32 calls/$0.05980777; findings accepted 2/3 at 26 calls/$0.04926377. All 58 calls,
+usage and cost were accounted with no extra wire attempts. Total cohort cost was
+$0.10907154; known cumulative live spend is $1.99084769 plus the older unpriced failed
+response. Raw `results.json`, `summary.json`, per-trial `measurement`, wire captures,
+and canonical ledgers remain unchanged. Defaults and paid DeepSWE expansion stay held.

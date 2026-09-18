@@ -104,9 +104,11 @@ async def test_compaction_handoff_carries_prior_read_evidence(tmp_path):
 
 @pytest.mark.asyncio
 async def test_three_fresh_epochs_restart_and_exact_history(tmp_path):
-    plugin, context, events, canonical = setup(tmp_path)
+    note = {"note": {"status": "ok", "version": 1}, "note_excerpt": "Preserve the constraint"}
+    plugin, context, events, canonical = setup(tmp_path, note=note)
     raw = [text("early exact evidence: PARSER-73")]
     for index in range(3):
+        note["note"]["version"] = index + 1
         raw.append(text(f"old-{index}:" + "x" * 9000))
         request = LlmRequest(contents=list(raw))
         await plugin.before_model_callback(callback_context=context, llm_request=request)
@@ -169,8 +171,46 @@ async def test_soft_pressure_preserves_epoch_until_unconsumed_result_can_be_cut(
     assert request.contents[0].model_dump(mode="json", exclude_none=True) == first.payload["header"]
     assert request.contents[-1] == raw[-1]
     raw.append(text("Result consumed; continue"))
+    pending = LlmRequest(contents=list(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=pending)
+    assert "working-note checkpoint is pending" in _serialized(pending.contents)
+    assert len([event for event in events.read("task") if event.kind == EventKind.COMPACTION_CREATED]) == 1
+    # One opportunity only: an ignored refresh falls back with explicit staleness.
     await plugin.before_model_callback(callback_context=context, llm_request=LlmRequest(contents=list(raw)))
     assert len([event for event in events.read("task") if event.kind == EventKind.COMPACTION_CREATED]) == 2
+    assert events.read("task")[-1].payload["note_stale"] is True
+    assert events.read("task")[-1].payload["checkpoint_requested"] is True
+
+
+@pytest.mark.asyncio
+async def test_next_cut_requests_updated_findings_then_publishes_the_new_note(tmp_path):
+    note = {"note": {"status": "ok", "version": 1}, "note_excerpt": "Original observation"}
+    plugin, context, events, _ = setup(tmp_path, note=note)
+    raw = [text("old:" + "x" * 9000)]
+    await plugin.before_model_callback(callback_context=context, llm_request=LlmRequest(contents=list(raw)))
+    raw.append(text("New completed evidence and changed output:" + "y" * 9000))
+    pending = LlmRequest(contents=list(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=pending)
+    assert pending.contents[-2] == raw[-1]
+    assert len([e for e in events.read("task") if e.kind == EventKind.COMPACTION_CREATED]) == 1
+    note.update(note={"status": "ok", "version": 2}, note_excerpt="New finding; validation still blocked")
+    refreshed = LlmRequest(contents=list(raw))
+    await plugin.before_model_callback(callback_context=context, llm_request=refreshed)
+    cut = events.read("task")[-1]
+    assert cut.kind == EventKind.COMPACTION_CREATED
+    assert cut.payload["note"]["version"] == 2
+    assert cut.payload["note_stale"] is False
+    assert "New finding; validation still blocked" in _serialized(refreshed.contents)
+
+
+@pytest.mark.asyncio
+async def test_missing_note_has_one_soft_checkpoint_opportunity(tmp_path):
+    plugin, context, events, _ = setup(tmp_path, note={"note": {"status": "unavailable"}})
+    raw = [text("old:" + "x" * 9000)]
+    await plugin.before_model_callback(callback_context=context, llm_request=LlmRequest(contents=list(raw)))
+    assert not any(e.kind == EventKind.COMPACTION_CREATED for e in events.read("task"))
+    await plugin.before_model_callback(callback_context=context, llm_request=LlmRequest(contents=list(raw)))
+    assert events.read("task")[-1].payload["note_stale"] is True
 
 
 @pytest.mark.asyncio

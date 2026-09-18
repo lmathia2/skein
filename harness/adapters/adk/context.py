@@ -119,7 +119,7 @@ def _evidence_manifest(events: list[Any], modified_paths: list[str], focus: tupl
 def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
     """Preserve control metadata and whole advisory entries, never JSON fragments."""
     critical = {key: details[key] for key in (
-        "history_boundary", "kernel", "unresolved_effects", "retrieval"
+        "history_boundary", "kernel", "unresolved_effects", "retrieval", "note_stale"
     ) if key in details}
     notebook = details.get("notebook", {})
     if notebook:
@@ -326,7 +326,7 @@ class ContextWindowPlugin(BasePlugin):
             _serialized(raw[:cut]).encode()
         ).hexdigest()):
             raise ValueError("context epoch does not match retained ADK history")
-        details = self.handoff(task)
+        details = dict(self.handoff(task))
         if self.config.continuity_representation != "findings":
             details.pop("working_set", None)
         note_available = not self.require_notes or (
@@ -334,6 +334,14 @@ class ContextWindowPlugin(BasePlugin):
             and int(details.get("note", {}).get("version", 0)) > 0
             and bool(str(details.get("note_excerpt", "")).strip() or details.get("note", {}).get("entry_count"))
         )
+        if self.require_notes and previous.get("note") and int(
+            details.get("note", {}).get("version", 0)
+        ) <= int(previous["note"].get("version", 0)):
+            # A checkpoint used for an earlier cut does not summarize the work
+            # about to be removed by the next cut, even if it is nonempty.
+            note_available = False
+        if self.require_notes:
+            details["note_stale"] = not note_available
         if not note_available and previous.get("note"):
             details["note"] = previous["note"]
             details["note_excerpt"] = previous.get("note_excerpt", "")
@@ -452,17 +460,29 @@ class ContextWindowPlugin(BasePlugin):
                 or phase_boundary or callback_context.state.get(pending_key, False)
             )
         )
-        if (over_soft_limit or over_hard_limit) and not note_available:
-            if self.config.window_management and over_hard_limit:
-                note_available = True
-            else:
+        checkpoint_key = f"context_checkpoint_requested:{task_id}:{invocation}:{anchor}:{cut}"
+        if not note_available and (over_soft_limit or over_hard_limit) and (
+            not previous or (self.config.window_management and should_compact)
+        ):
+            possible_cut = _complete_cuts(raw)[-2] if any(
+                part.function_response for part in raw[-1].parts or ()
+            ) else len(raw)
+            if possible_cut > cut and not (
+                self.config.window_management and over_hard_limit
+            ) and not callback_context.state.get(checkpoint_key):
+                callback_context.state[checkpoint_key] = True
                 callback_context.state[pending_key] = (
                     self.config.window_management and should_compact
                 )
                 effective.append(types.Content(role="user", parts=[types.Part.from_text(
-                    text="A working-note checkpoint is pending. Before further work, persist a nonempty "
-                    "working note with memory note write through bash (agent.shell.run in PTC). Include your "
-                    "findings, approach, remaining work, and evidence paths."
+                    text="A working-note checkpoint is pending before this context cut. "
+                    f"Current note version: {details.get('note', {}).get('version', 0)}. "
+                    "Refresh it with memory note write through bash (agent.shell.run in PTC), "
+                    "using --expected-version N --operation-id ID --text TEXT and optional --entries JSON. "
+                    "Preserve the exact task-relevant findings learned since the previous checkpoint, "
+                    "their evidence references, completed changes, actual verification outcomes, and "
+                    "remaining unknowns/next actions. Do not replace requested symbols with alternatives "
+                    "or claim blocked checks ran. This is one checkpoint opportunity, not a new task."
                 )]))
                 if phase:
                     callback_context.state[phase_key] = phase
@@ -518,6 +538,8 @@ class ContextWindowPlugin(BasePlugin):
                  if self.config.compaction_timing == "phase_boundary" else "soft_limit",
                  "phase": phase,
                  "note": details.get("note"), "note_excerpt": details.get("note_excerpt", ""),
+                 "note_stale": bool(details.get("note_stale")),
+                 "checkpoint_requested": bool(callback_context.state.get(checkpoint_key)),
                  "history_watermark": events[-1].sequence,
                  "handoff_program": "continuation@2",
                  "handoff_program_hash": hashlib.sha256((inspect.getsource(render_handoff) +

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from evals.memory_audit import audit_emissions, audit_reads, merged
+from evals.memory_audit import audit_answer_evidence, audit_emissions, audit_reads, merged
 from harness.evidence.ledger import JsonlLedgerStore
 from harness.evidence.memory.models import ReadEvidence
 
@@ -73,3 +73,63 @@ def test_structured_recovery_text_counts_as_exposure_without_decoding_arbitrary_
     result = audit_emissions(snapshots, records, cut_sequence=2)
     assert result["counts"]["post_cut_emitted_duplicate_lines"] == 2
     assert result["counts"]["provider_transmitted_mapped_lines"] == 2
+
+
+def test_answer_evidence_requires_completed_applicable_ranges_before_write(tmp_path):
+    store = JsonlLedgerStore(tmp_path / "ledger")
+    def event(kind, **payload):
+        return store.append(task_id="task", source="harness_event", source_id=str(len(store.read("task")) + 1),
+                            kind=kind, payload=payload)
+    need = ReadEvidence(path="source.py", sha256="a" * 64, offset=10, returned_lines=2)
+    def read(kind="capability.completed", **changes):
+        return event(kind, operation="fs.read", status="ok", read_evidence={**need.model_dump(), **changes})
+    def write(identity):
+        event("capability.requested", operation="fs.write", operation_id=identity, arguments_sha256=identity)
+        event("capability.completed", operation="fs.write", operation_id=identity, arguments_sha256=identity,
+              status="ok", changed_paths=["answer.json"], content_hashes={"answer.json": "b" * 64})
+    read(sha256="c" * 64)  # Wrong version is not support, even if the path matches.
+    read("capability.failed")
+    read("capability.requested")  # Pending is not completed evidence.
+    read(returned_lines=1)
+    write("first")
+    read(offset=11, returned_lines=1)  # Can support only a later answer.
+    write("repair")
+    result = audit_answer_evidence(store.read("task"), required=[need])
+    assert result["first_answer"] == "missing"
+    assert result["last_answer"] == "available"
+    assert not result["all_answers_source_available"]
+    assert result["answers"][0]["requirements"][0]["covered_lines"] == 1
+    assert result["answers"][1]["requirements"][0]["covered_lines"] == 2
+    assert audit_answer_evidence(store.read("task"), required=[need]) == result
+    # A read completing between write dispatch and its receipt is still too late.
+    later_need = need.model_copy(update={"path": "later.py"})
+    event("capability.requested", operation="fs.write", operation_id="concurrent", arguments_sha256="d")
+    read(path="later.py")
+    event("capability.completed", operation="fs.write", operation_id="concurrent", arguments_sha256="d",
+          status="ok", changed_paths=["answer.json"])
+    assert audit_answer_evidence(store.read("task"), required=[later_need])["last_answer"] == "missing"
+
+
+def test_answer_evidence_unmapped_routes_and_invalid_identity_stay_unknown(tmp_path):
+    store = JsonlLedgerStore(tmp_path / "ledger")
+    def event(kind, **payload):
+        return store.append(task_id="task", source="harness_event", source_id=str(len(store.read("task")) + 1),
+                            kind=kind, payload=payload)
+    need = ReadEvidence(path="source.py", sha256="a" * 64, offset=1, returned_lines=1)
+    event("capability.completed", operation="shell.run", status="ok")
+    event("capability.requested", operation="fs.write", operation_id="answer", arguments_sha256="a")
+    event("capability.completed", operation="fs.write", operation_id="answer", arguments_sha256="a",
+          status="ok", changed_paths=["answer.json"])
+    result = audit_answer_evidence(store.read("task"), required=[need])
+    assert result["first_answer"] == "unknown"
+    assert result["answers"][0]["requirements"][0]["covered_lines"] == 0
+    event("capability.completed", operation="fs.write", operation_id="unmatched", status="ok", changed_paths=["answer.json"])
+    assert audit_answer_evidence(store.read("task"), required=[need])["answers"][-1]["reason"] == "unmatched answer mutation request"
+    events = store.read("task")
+    with pytest.raises(ValueError, match="unique sequences"):
+        audit_answer_evidence([*events, events[0]], required=[need])
+    foreign = events[0].model_copy(update={"task_id": "other", "sequence": 100})
+    with pytest.raises(ValueError, match="exactly one task"):
+        audit_answer_evidence([*events, foreign], required=[need])
+    with pytest.raises(ValueError, match="nonempty"):
+        audit_answer_evidence(events, required=[])
