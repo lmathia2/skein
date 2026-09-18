@@ -7,6 +7,7 @@ import pytest
 from harness.evidence.ledger import JsonlLedgerStore
 from harness.evidence.ledger.models import canonical_json
 from harness.evidence.memory import ViewRequest
+from harness.evidence.memory.findings import source_freshness, source_observations
 from harness.evidence.memory.models import WorkingNoteInput
 from harness.execution.tools.memory import ContextProgramService
 
@@ -55,6 +56,51 @@ def test_note_schema_matches_write_validation_and_is_bounded_read_only(tmp_path)
     limited = service.execute("memory note schema")
     assert limited["status"] == "unavailable" and "input_schema" not in limited
     assert len(canonical_json(limited).encode()) <= 128
+
+
+@pytest.mark.parametrize("case", ["stable", "prior_unknown", "intervening_unknown", "wrong_operation", "wrong_task",
+                                  "missing_exit", "boolean_exit", "changed_workspace", "failed", "truncated", "malformed"])
+def test_successful_validation_retracts_only_its_own_provisional_source_invalidation(case):
+    need = {"path": "module.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 2}
+    rows = []
+    def add(kind, task="task", **payload):
+        rows.append({"task_id": task, "sequence": len(rows) + 1, "kind": kind, "payload": payload})
+    add("capability.completed", operation="fs.read", status="ok", read_evidence=need)
+    if case == "prior_unknown":
+        add("capability.failed", operation="shell.run", status="error", effect="unknown", workspace_may_have_changed=True)
+    add("capability.failed" if case == "failed" else "capability.completed", operation="shell.run",
+        operation_id="checked", status="error" if case == "failed" else "ok",
+        effect="unknown" if case == "failed" else "observed", workspace_may_have_changed=True)
+    if case == "intervening_unknown":
+        add("workspace.effect_observed", operation="shell.run", workspace_may_have_changed=True)
+    pending = source_freshness(need, source_observations(rows), "task")
+    assert pending["status"] == "revalidation_required"
+    result = {"status": "ok", "exit_code": None if case == "missing_exit" else False if case == "boolean_exit" else 0,
+              "truncated": case == "truncated"}
+    add("execution.validation_observed", task="other" if case == "wrong_task" else "task",
+        operation_id="different" if case == "wrong_operation" else "checked",
+        workspace_before="b" * 64, workspace_after="c" * 64 if case == "changed_workspace" else "b" * 64,
+        result=[] if case == "malformed" else result)
+    current = source_freshness(need, source_observations(rows), "task")
+    assert current["status"] == ("historical_snapshot" if case == "stable" else "revalidation_required")
+
+
+@pytest.mark.parametrize("case", ["write", "edit", "prior_unknown", "failed", "unknown", "missing_hash", "bad_hash", "shell"])
+def test_known_single_file_noop_does_not_invalidate_unrelated_findings(case):
+    need = {"path": "source.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 2}
+    rows = [{"task_id": "task", "sequence": 1, "kind": "read.observed",
+             "payload": {"operation": "fs.read", "status": "ok", "read_evidence": need}}]
+    if case == "prior_unknown":
+        rows.append({"task_id": "task", "sequence": 2, "kind": "capability.failed",
+                     "payload": {"operation": "shell.run", "effect": "unknown", "workspace_may_have_changed": True}})
+    hashes = {} if case == "missing_hash" else {"answer.json": "invalid" if case == "bad_hash" else "b" * 64}
+    rows.append({"task_id": "task", "sequence": len(rows) + 1,
+                 "kind": "capability.failed" if case == "failed" else "capability.completed",
+                 "payload": {"operation": "shell.run" if case == "shell" else "fs.edit" if case == "edit" else "fs.write",
+                             "status": "error" if case == "failed" else "ok", "effect": "unknown" if case == "unknown" else "observed",
+                             "changed_paths": [], "content_hashes": hashes, "workspace_may_have_changed": True}})
+    result = source_freshness(need, source_observations(rows), "task")
+    assert result["status"] == ("historical_snapshot" if case in {"write", "edit"} else "revalidation_required")
 
 
 def test_findings_survive_restart_text_updates_and_idempotent_retries(tmp_path):

@@ -11,7 +11,9 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from evals.memory_audit import audit_answer_evidence
+from evals.prior_evidence import PriorEvidence
 from harness.evidence.ledger.models import LedgerEvent
+from harness.evidence.memory.findings import source_freshness, source_observations
 from harness.evidence.memory.models import ReadEvidence
 from harness.execution.sandbox import CommandSandbox, SandboxRequest, SandboxResult
 
@@ -41,7 +43,7 @@ class AnswerSpec(BaseModel):
     _path = field_validator("path")(_answer_path)
 
 
-def completed_validations(events: list[LedgerEvent], command: str) -> list[LedgerEvent]:
+def completed_validations(events: list[LedgerEvent], command: str, required: list[ReadEvidence]) -> list[LedgerEvent]:
     """Match host-observed successful validation to its completed broker operation."""
     requests = {}
     terminals = {}
@@ -76,26 +78,34 @@ def completed_validations(events: list[LedgerEvent], command: str) -> list[Ledge
                 and result.get("status") == "ok" and type(result.get("exit_code")) is int and result["exit_code"] == 0
                 and not result.get("truncated") and not result.get("omitted_bytes")
                 and p.get("workspace_before") and p.get("workspace_before") == p.get("workspace_after")):
-            valid.append(event)
+            observations = source_observations([
+                {"task_id": e.task_id, "sequence": e.sequence, "kind": e.kind, "payload": e.payload}
+                for e in events if e.sequence < request.sequence and e.kind in {
+                    "capability.completed", "capability.failed", "read.observed", "workspace.effect_observed",
+                    "execution.validation_observed"}])
+            versions = [source_freshness(read.model_dump(), observations, event.task_id) for read in required]
+            if all(v["observation_sequence"] > 0 and v["status"] == "historical_snapshot" for v in versions):
+                valid.append(event)
     return valid
 
 
 def audit_answer_contracts(
     events: Iterable[LedgerEvent], specifications: list[AnswerSpec], cuts: list[int],
+    *, prior: PriorEvidence | None = None,
 ) -> dict[str, Any]:
     """Check each submitted artifact's own evidence and declared cut interval."""
     if not 1 <= len(specifications) <= 16 or len({spec.path for spec in specifications}) != len(specifications):
         raise ValueError("one to sixteen unique answer contracts required")
     if any(type(cut) is not int or cut < 1 for cut in cuts) or cuts != sorted(set(cuts)):
         raise ValueError("answer windows require increasing checkpoint sequences")
-    retained = list(events)
+    retained = sorted(events, key=lambda event: event.sequence)
     published_cuts = sorted(event.sequence for event in retained if event.kind == "compaction.created")
     if cuts != published_cuts:
         raise ValueError("answer windows must include every published checkpoint")
     reports = {}
     for spec in specifications:
-        audit = audit_answer_evidence(retained, required=spec.required, answer_path=spec.path)
-        validations = {command: completed_validations(retained, command) for command in spec.validations}
+        audit = audit_answer_evidence(retained, required=spec.required, answer_path=spec.path, prior=prior)
+        validations = {command: completed_validations(retained, command, spec.required) for command in spec.validations}
         start = cuts[spec.checkpoint] if spec.checkpoint < len(cuts) else None
         end = cuts[spec.checkpoint + 1] if spec.checkpoint + 1 < len(cuts) else None
         for answer in audit["answers"]:
@@ -111,7 +121,7 @@ def audit_answer_contracts(
                               "latest_supported": latest.get("status") == "available" and bool(latest.get("within_window")) and bool(latest.get("validations_completed")),
                               "all_submissions_supported": bool(audit["answers"]) and all(
                                   a["status"] == "available" and a["within_window"] and a["validations_completed"] for a in audit["answers"])}
-    return {"version": "multi-answer-evidence-v2", "artifacts": reports,
+    return {"version": "multi-answer-evidence-v3", "artifacts": reports,
             "all_latest_supported": all(a["latest_supported"] for a in reports.values()),
             "all_submissions_supported": all(a["all_submissions_supported"] for a in reports.values())}
 
@@ -183,7 +193,8 @@ class HostOracleSandbox:
             stdout="Host-owned answer check passed." if passed else "",
             stderr="" if passed else (
                 "Required source/validation evidence or the assigned checkpoint window was not established for a managed answer write. "
-                "Acquire completed evidence before submitting an answer; later evidence cannot justify earlier writes."
+                "A successful validation must be bound to the required source versions at its dispatch. Establish current source identity "
+                "before the required check and acquire completed evidence before submitting an answer; later evidence cannot justify earlier writes."
                 if evidence_missing else "Answer is missing, invalid, or does not match the requested source evidence."),
             duration_ms=int((time.monotonic() - started) * 1000),
         )

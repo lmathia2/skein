@@ -22,6 +22,7 @@ from harness.core.orchestration import build_work_packet
 from harness.evidence.ledger import LedgerStore
 from harness.evidence.ledger.models import canonical_json
 from harness.evidence.state import EventKind, EventStore, rebuild_ledger
+from harness.evidence.state.recovery import unresolved_execution
 from harness.execution.safety import SecretRedactor
 
 LOGGER = logging.getLogger(__name__)
@@ -623,10 +624,11 @@ class ContextWindowPlugin(BasePlugin):
                  "note_stale": bool(details.get("note_stale")),
                  "checkpoint_requested": bool(callback_context.state.get(checkpoint_key)),
                  "history_watermark": events[-1].sequence,
-                 "handoff_program": "continuation@5",
+                 "handoff_program": "continuation@6",
                  "handoff_program_hash": hashlib.sha256((inspect.getsource(render_handoff) +
                                                           inspect.getsource(_project_advisory) +
                                                           inspect.getsource(_evidence_manifest) +
+                                                          inspect.getsource(unresolved_execution) +
                                                           inspect.getsource(select_context_cut) +
                                                           inspect.getsource(type(self))).encode()).hexdigest(),
                  "working_set": {key: value for key, value in details.get("working_set", {}).items() if key != "data"},

@@ -44,7 +44,7 @@ from harness.evidence.state import (
     register_action_batch,
     verification_fingerprint,
 )
-from harness.evidence.state.recovery import validate_recovery_evidence
+from harness.evidence.state.recovery import unresolved_execution, validate_recovery_evidence
 from harness.evidence.telemetry import MetricsStore, TaskOutcomeSample
 from harness.execution.approvals.waiting import ApprovalWaiter
 from harness.execution.environment import RepositoryRuntime
@@ -573,8 +573,12 @@ async def _verify_task(
         }, idempotency_key=f"validation:{operation_id}:completed")
         return result
 
+    unresolved = unresolved_execution(
+        deps.event_store.read(ledger.task_id),
+        ToolReceiptStore(deps.settings.state_root / "managed-tools.db").for_task(ledger.task_id),
+    )
     command_results = []
-    for index, command in enumerate(plan.commands):
+    for index, command in enumerate([] if unresolved else plan.commands):
         operation_id = f"{ctx.get_invocation_context().invocation_id}:{ledger.iteration}:{index}"
         result = await execute_validation(command, operation_id)
         if deps.approvals is not None and result.status == "blocked" and result.approval_request_id:
@@ -631,6 +635,18 @@ async def _verify_task(
         baseline_results=baseline_results,
         require_changed_paths=ledger.mode == "coding",
     )
+    unresolved = unresolved_execution(
+        deps.event_store.read(ledger.task_id),
+        ToolReceiptStore(deps.settings.state_root / "managed-tools.db").for_task(ledger.task_id),
+    )
+    if unresolved:
+        report = report.model_copy(update={
+            "passed": False,
+            "unresolved_diagnostics": [*report.unresolved_diagnostics,
+                f"Execution reconciliation required for {len(unresolved)} unresolved records: "
+                + json.dumps(unresolved[:16], sort_keys=True)],
+            "recommended_next_action": "Reconcile unresolved execution evidence before completion; do not replay unknown effects.",
+        })
     return {
         "report": report.model_dump(mode="json"),
         "commands": [result.model_dump(mode="json") for result in command_results],

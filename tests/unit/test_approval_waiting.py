@@ -119,7 +119,7 @@ async def test_verification_uses_same_wait_and_never_blocks_the_event_loop(tmp_p
         changed_paths=lambda base: ["test.py"],
         fingerprint=lambda: "fixture-workspace",
     )
-    deps = SimpleNamespace(settings=SimpleNamespace(workspace=tmp_path), repository=repository, approvals=waiter,
+    deps = SimpleNamespace(settings=SimpleNamespace(workspace=tmp_path, state_root=state), repository=repository, approvals=waiter,
                            workspace_manager=None, event_store=JsonlEventStore(state / "events"),
                            validation_executor=lambda task: executor)
     ctx = SimpleNamespace(get_invocation_context=lambda: SimpleNamespace(invocation_id="verification-fixture"))

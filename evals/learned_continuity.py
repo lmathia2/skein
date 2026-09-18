@@ -11,7 +11,8 @@ from google.adk.plugins.base_plugin import BasePlugin
 from evals.continuity import Continuation
 from evals.continuity_oracle import AnswerSpec, audit_answer_contracts, check_answer_artifacts
 from evals.heldout_continuity import HELDOUT_CASES, heldout_fixture
-from evals.memory_audit import merged
+from evals.memory_audit import canonical_prior, merged
+from evals.qualification_continuity import QUALIFICATION_CASES, qualification_fixture
 from evals.repeated_continuity import REPEATED_CASES, repeated_fixture
 from evals.runner import _atomic_write
 from evals.staged_continuity import STAGED_CASES, staged_fixture
@@ -85,11 +86,11 @@ def learned_fixture(case: str) -> dict:
 
 class LearnedContinuation(Continuation):
     def __init__(self, root: Path, case: str, arm: str):
-        if arm == "no_recall" and case not in (*HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES):
+        if arm == "no_recall" and case not in (*HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES, *QUALIFICATION_CASES):
             raise ValueError("no-recall control requires an explicit held-out checkpoint protocol")
         super().__init__(root, "navigation", 0, "findings" if arm == "no_recall" else arm)
         self.arm = arm
-        if case in (*HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES):
+        if case in (*HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES, *QUALIFICATION_CASES):
             payload = self.composition.model_dump(mode="json")
             # Fresh reconstruction intentionally requires active note retrieval.
             # Use the supported tail policy in BOTH arms, with the shared zero
@@ -99,7 +100,8 @@ class LearnedContinuation(Continuation):
                 payload["harness"]["config"]["memory"].update(
                     working_notes=False, prior_runs=False, context_programs={"mode": "off"})
             self.composition = parse_harness_composition(payload)
-        self.fixture = (validation_fixture(case) if case in VALIDATION_CASES else
+        self.fixture = (qualification_fixture(case) if case in QUALIFICATION_CASES else
+                        validation_fixture(case) if case in VALIDATION_CASES else
                         repeated_fixture(case) if case in REPEATED_CASES else
                         staged_fixture(case) if case in STAGED_CASES else
                         heldout_fixture(case) if case in HELDOUT_CASES else learned_fixture(case))
@@ -110,10 +112,22 @@ class LearnedContinuation(Continuation):
     async def prepare(self) -> None:
         if self.root.exists():
             raise ValueError("refusing to overwrite a trial directory")
-        self.workspace.mkdir(parents=True)
+        if self.prior_root is not None and (self.prior_run is None
+                or self.prior_run.bindings.workspace.resolve() != self.workspace.resolve()
+                or self.prior_run.bindings.state_root.resolve() != self.prior_root.resolve()):
+            raise ValueError("shared qualification workspace requires its owned producer evidence")
+        self.workspace.mkdir(parents=True, exist_ok=self.prior_root is not None)
         for path, content in self.fixture["files"].items():
             _atomic_write(self.workspace / path, content)
-        self.open()
+        self.open(prior=self.prior_root is not None)
+        if self.prior_evidence is not None:
+            frozen = canonical_prior(self.prior_evidence)
+            _atomic_write(self.root / "prior-evidence.json", frozen)
+            self.ledger.append(task_id=self.task_id, source="evaluation", source_id="owned-prior-binding",
+                               kind="evaluation.prior_bound", payload={
+                                   "source_tasks": list(self.bindings.prior_task_ids),
+                                   "inputs_sha256": hashlib.sha256(frozen.encode()).hexdigest(),
+                                   "recall_enabled": self.composition.model_dump()["harness"]["config"]["memory"]["prior_runs"]})
         self.assembly.app.plugins.insert(0, _LearningCheckpoint(self))
         _atomic_write(self.root / "config.json", self.composition.model_dump_json(indent=2))
         _atomic_write(self.root / "fixture.json", json.dumps({
@@ -153,7 +167,7 @@ class _LearningCheckpoint(BasePlugin):
         if not specifications:
             return True
         cuts = [event.sequence for event in events if event.kind == "compaction.created"]
-        report = audit_answer_contracts(events, specifications, cuts)
+        report = audit_answer_contracts(events, specifications, cuts, prior=self._trial.prior_evidence)
         checks = check_answer_artifacts(self._trial.workspace, {
             spec.path: json.dumps(spec.expected, sort_keys=True, separators=(",", ":"), allow_nan=False)
             for spec in specifications})

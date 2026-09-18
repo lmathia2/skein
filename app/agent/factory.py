@@ -58,6 +58,7 @@ from harness.evidence.state import (
     ToolReceiptStore,
     rebuild_ledger,
 )
+from harness.evidence.state.recovery import unresolved_execution
 from harness.evidence.telemetry.adk_plugin import (
     HarnessMetricsPlugin,
     ModelPricing,
@@ -634,12 +635,10 @@ class SkeinHarnessFactory:
                             "exact byte paging and saved-result decoding. Recovered evidence is historical, "
                             "not proof of current source freshness."
                         )
-                unresolved = [receipt for receipt in receipt_store.for_task(task_id)
-                              if receipt.status == "started"]
+                unresolved = unresolved_execution(event_store.read(task_id), receipt_store.for_task(task_id))
                 details["unresolved_effects"] = {
                     "count": len(unresolved),
-                    "operations": [{"id": item.tool_call_id, "status": item.status}
-                                   for item in unresolved[:16]],
+                    "operations": unresolved[:16],
                 }
                 if worker.kernel_status is not None:
                     details["kernel"] = worker.kernel_status()

@@ -328,6 +328,145 @@ Full regression: 866 passed, two skipped; lint clean, typing zero errors with th
 existing warning. A frozen full-family stability repeat is next; these reused
 development fixtures cannot establish new held-out reliability or promote defaults.
 
+The 18-trial v12 full-family repeat finished for $0.30356570. Raw answer checks
+passed all 14 positives and all four negatives withheld answers, but a deeper audit
+found one **unsafe acceptance**: repository-three control finished with an unresolved
+failed shell operation after correct answers. Completion lacked the capability/cell
+uncertainty check used during recovery; the handoff saw only started tool receipts.
+The cohort fails the safety gate. Control's 68 post-cut artifact loads and 189 exact
+source-content re-emissions versus zero with findings remain diagnostic observations,
+not promotion evidence. All positive source-fetch reread counts were zero.
+See `.artifacts/continuity-stability-live-20260913-v1/analysis.md`.
+The implemented correction shares unresolved execution admission across completion,
+recovery and handoff (`continuation@6`), with independent evaluator classification
+in v13. The full regression passed 878 tests with two skips. Final targeted checks
+cover the handoff hash and abstention gate; three real Docker cases additionally
+exercise successful completion, rejection after an actual failed nested shell, and
+independent detection when the production fence is deliberately bypassed in a test.
+Lint is clean and typing has zero errors with the existing warning. No new paid
+cohort has run with this correction; fresh live qualification and defaults remain held.
+
+The subsequent frozen v13 safety check completed all six live trials for $0.08703809:
+four positive first verifications passed with completed support and no unresolved
+execution; both failed-check trials withheld answers and stayed blocked, retaining
+their unknown effects. They did not force a completion claim after failure; that
+boundary remains directly exercised by the Docker regressions. Repository three-use
+findings used 13 versus 19 calls, cost 39.0% less and removed 21 artifact loads/45
+exact source-content re-emissions. Both arms again had zero source-file rereads.
+See `.artifacts/completion-fence-live-20260913-v1/analysis.md`. The regression screen
+passes; genuinely new held-out cases and broad qualification are still required.
+
+Four new, not-yet-dispatched qualification fixtures now exercise 12/18-file imported
+transformation graphs with three separately verified worker-loss continuations, and
+two partial TOML captures whose selected profile was not initially available. They
+reuse the existing evaluator and both arms' normal artifact capabilities. Scripted
+models derive graph transformations from captured ASTs and recover only three needed
+new lines in the partial cases; correct guesses without those lines are rejected.
+The evaluator separately flags premature full-file acquisition or opaque preparation
+routes, so an easy correct answer cannot masquerade as an exercised missing-range
+test. All 12 focused local and cached-Docker checks pass, including deliberate
+over-acquisition. v14's dry manifest retains all 23 historical fixture hashes. These
+are the first two families of the broader held-out contract, not completed reliability
+qualification; new changed-source, conflicting-finding, validation and owned-prior
+families remain before the full panel can be frozen and dispatched.
+Final regression: 891 passed, two skipped; all 12 fresh-fixture Docker preflights
+pass, lint is clean and typing has zero errors with the existing warning.
+
 Deterministic unit and integration tests establish code contracts, not model quality.
 See [Package layout](package-layout.md), [Architecture](architecture.md), and
 [Harbor evaluation](evaluation-harbor.md).
+
+The fresh qualification panel now also has two guarded shipment/pricing revisions
+and two conflicting-candidate cases with deferred activation evidence. Both stop
+the real idle worker twice. The conflict variants exercise disputed finding links
+and explicit supersession; one includes a nominally completed activation with a
+mismatched candidate hash. These activation states are source data, not actual tool
+execution outcomes. Fresh actual-validation and owned-prior cases remain required.
+All 28 qualification checks pass locally, including 16 new checks that also pass
+in cached Docker. Stale answers are rejected before repair; an early correct guess
+remains an unsupported historical submission after a valid rewrite. Preparation
+over-acquisition is reported separately, not counted as successful delayed evidence
+use. The v15 dry manifest preserves all 27 preceding fixture hashes. No new live
+calls, default changes or qualification claims accompany these fixtures.
+Full regression: 907 passed, two skipped; lint/compile pass and typing reports zero
+errors with the existing runtime export warning.
+
+Fresh qualification now includes actual signed-batch validation: a successful check
+is preserved across a second worker loss without rerunning it, and a genuinely
+failing subprocess requires withholding the answer. The new negative cases exposed
+an evaluator gap: success on a temporary source version could justify an answer for
+a restored different version. Validation/source binding at dispatch now rejects it;
+an independent post-run audit flags unsupported acceptance even when the oracle
+evidence check is deliberately bypassed. All 32 validation Docker checks pass,
+including pending publication and the 18 new controls.
+
+The production finding reducer also stops a successful, host-confirmed unchanged
+validation from leaving its own provisional source invalidation behind. Earlier or
+intervening uncertainty is retained; execution reconciliation and completion fencing
+are unchanged. Eleven focused fault-boundary checks and real PTC validation tests
+cover it. No live improvement is claimed yet. The fifth fresh fixture family is
+implemented; explicitly owned prior recall and broader qualification remain open.
+Final regression: 936 passed, two skipped; all 32 validation Docker checks pass.
+Lint and compilation are clean; typing has zero errors with the existing warning.
+
+The frozen v16 six-trial live regression completed for $0.08178951: four positive
+first verifications have full source/window/validation support and no unresolved
+execution; both failed checks withhold answers and retain uncertainty. All ten
+worker-loss cuts were exercised. Repository findings used 15 versus 18 calls and
+cost 25.0% less, removing 15 artifact loads and 72 measured exact source-line
+re-emissions. Source-file rereads remained zero in both arms. Short validation cost
+22.0% more with findings; total positive cost fell 11.4%. No provider/measurement/
+accounting/false-acceptance errors occurred. The regression clears, not the held-out
+or promotion gate. No causal live saving is attributed to the invalidation fix:
+the live validation pair had no post-check cut. See
+`.artifacts/validation-binding-live-20260913-v1/analysis.md`; owned-prior coverage is next.
+
+Owned-prior admission testing exposed a second unnecessary freshness invalidation:
+an idempotent write/edit reports no changed paths and a known file hash, but was
+being treated as an unknown workspace-wide change. The shared finding reducer now
+recognizes successful observed single-file no-ops without invalidating unrelated
+findings. Earlier uncertainty, failed/unknown effects, missing or malformed hashes,
+and arbitrary shell commands remain conservative. Eight reducer boundary tests and
+actual PTC repeated-write/edit retrieval checks cover this correction. It changes
+advisory freshness only, not execution reconciliation or verification authority;
+no live cost/reread benefit has yet been measured for this fix.
+
+The controlled evaluator now has an optional owned-prior availability audit on all
+three answer paths: checkpoint admission, the host oracle and independent post-run
+classification. It requires explicit matching owner/conversation/workspace/state
+bindings, a completed verified producer with resolved effects, a canonical source
+manifest, and a completed managed retrieval before answer dispatch. Selected findings
+or complete captured read pages count only after a matching consumer file-version
+observation. This records derived availability, not semantic consumption or truth;
+current-task validation requirements and independent expected-answer checks remain.
+Metadata-only lookup, opaque artifact/shell routes and partial byte pages stay unmapped.
+Public view receipts may deduplicate across queries; each completed operation supplies
+its own availability boundary. Twenty-three actual PTC admission/integrity checks pass.
+Their host-supplied producer terminal is explicitly a unit fixture, not a fresh
+model-written producer episode. That two-run protocol, full frozen live panel and
+real-coding confirmation remain open. The v17 dry manifest retains all 33 preceding
+fixture hashes, includes the new audit source hash, and makes no provider calls.
+Final full regression: 965 passed, two skipped. The two subsequently added recovery-
+page checks also pass in the complete 23-check prior suite. Lint and compilation
+pass; typing has zero errors and the existing runtime export warning only.
+
+The sixth fresh family now uses two real verified tasks: an owned catalog audit and
+a distinct shipment calculation, with unchanged and changed selected-policy variants.
+Producer completion is actual root-workflow verification, not a host-inserted terminal.
+The consumer starts only after a source-supported first producer verification, clean
+accounting and resolved effects. Both arms pay for their own fresh producer. Runtime
+bindings and canonical producer snapshots are frozen outside the workspace; the old
+answer is preserved outside the new task, whose source revision is an explicit fixture
+boundary. Only decisive field/code ranges gate answers; incidental comments do not.
+
+Ten scripted root-workflow checks pass, including producer failure admission, a correct
+unsupported consumer guess and stale prior data. Three dispatch checks cover fresh
+repetitions, source-admission stopping and missing-cost stopping. Scripted unchanged
+consumer overlap is seven source lines in control versus two one-line identity checks
+with findings; changed-source reads are reported separately. These demonstrate the
+mechanism, not autonomous model quality or live savings. v18 supports three isolated
+repetitions and includes producer calls, tokens and cost in paired totals. All six
+families are implemented; the frozen live qualification and real-coding gates remain.
+Pre-dispatch checks: full regression 977 passed, two skipped; final focused prior/
+dispatch suite 13 passed locally and in cached Docker after tightening decisive
+ranges. Lint/compile pass; typing has zero errors and the existing export warning.

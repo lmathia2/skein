@@ -12,6 +12,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from evals import prior_evidence
+from evals.prior_evidence import PriorEvidence
 from harness.evidence.ledger import LedgerEvent
 from harness.evidence.memory.models import ReadEvidence
 
@@ -120,6 +122,7 @@ def merged(ranges: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
 
 def audit_answer_evidence(
     events: Iterable[LedgerEvent], *, required: list[ReadEvidence], answer_path: str = "answer.json",
+    prior: PriorEvidence | None = None,
 ) -> dict[str, Any]:
     """Audit completed source availability before each managed answer mutation.
 
@@ -170,6 +173,7 @@ def audit_answer_evidence(
                          "status": "unknown", "reason": "unmatched answer mutation request"})
             continue
         boundary = request.sequence
+        prior_reads = prior.reads_before(ordered, boundary) if prior is not None else []
         coverage = []
         for need in required:
             matches = [(e, read) for e, read in reads if e.sequence < boundary
@@ -177,11 +181,17 @@ def audit_answer_evidence(
             start, end = need.offset, need.offset + need.returned_lines
             intervals = merged((max(start, read.offset), min(end, read.offset + read.returned_lines))
                                for _, read in matches)
+            inherited = [item for item in prior_reads if
+                         (item["read_evidence"]["path"], item["read_evidence"]["sha256"]) == (need.path, need.sha256)]
+            intervals = merged([*intervals, *((max(start, item["read_evidence"]["offset"]),
+                                               min(end, item["read_evidence"]["offset"] + item["read_evidence"]["returned_lines"]))
+                                              for item in inherited)])
             covered = sum(hi - lo for lo, hi in intervals)
             coverage.append({**need.model_dump(), "covered_lines": covered,
                              "complete": covered == need.returned_lines,
                              "event_ids": [e.event_id for e, read in matches
-                                           if read.offset < end and read.offset + read.returned_lines > start]})
+                                           if read.offset < end and read.offset + read.returned_lines > start],
+                             **({"prior_evidence": inherited} if prior is not None else {})})
         unknown_routes = [seq for seq in unmapped if seq < boundary]
         complete = all(row["complete"] for row in coverage)
         rows.append({"event_id": event.event_id, "sequence": event.sequence,
@@ -189,12 +199,13 @@ def audit_answer_evidence(
                      "answer_sha256": payload.get("content_hashes", {}).get(answer_path),
                      "status": "available" if complete else "unknown" if unknown_routes else "missing",
                      "requirements": coverage, "unmapped_route_sequences": unknown_routes})
-    return {"version": "answer-source-availability-v1", "answer_path": answer_path,
+    return {"version": "answer-source-availability-v2" if prior is not None else "answer-source-availability-v1", "answer_path": answer_path,
             "task_id": ordered[0].task_id if ordered else None, "answers": rows,
             "first_answer": rows[0]["status"] if rows else "no_managed_answer",
             "last_answer": rows[-1]["status"] if rows else "no_managed_answer",
             "all_answers_source_available": bool(rows) and all(row["status"] == "available" for row in rows),
-            "scope": "completed task-local source ranges before managed answer write dispatch; not semantic use",
+            "scope": "completed task-local ranges and explicitly mapped owned prior findings/recovery before write dispatch; not semantic use"
+                     if prior is not None else "completed task-local source ranges before managed answer write dispatch; not semantic use",
             "limitations": ["unmapped shell/artifact/prior-run routes", "untracked answer mutations",
                             "requirements identify a frozen source version, not continuous freshness"],
             "requirements_sha256": hashlib.sha256(json.dumps(
@@ -202,7 +213,19 @@ def audit_answer_evidence(
             "events_sha256": hashlib.sha256("\n".join(
                 event.model_dump_json() for event in ordered).encode()).hexdigest(),
             "measurement_sha256": hashlib.sha256((inspect.getsource(audit_answer_evidence)
-                                                  + inspect.getsource(merged)).encode()).hexdigest()}
+                                                  + inspect.getsource(merged)
+                                                  + (inspect.getsource(prior_evidence) if prior is not None else "")).encode()).hexdigest(),
+            **({"prior_inputs_sha256": hashlib.sha256(canonical_prior(prior).encode()).hexdigest()}
+               if prior is not None else {})}
+
+
+def canonical_prior(prior: PriorEvidence) -> str:
+    """Freeze host authorization and producer evidence as audit inputs, not grants."""
+    return json.dumps({"current": prior.current.model_dump(mode="json"), "sources": [
+        {"bindings": source.bindings.model_dump(mode="json"),
+         "events": [event.model_dump(mode="json") for event in source.events],
+         "receipts": [receipt.model_dump(mode="json") for receipt in source.receipts]}
+        for source in prior.sources]}, sort_keys=True)
 
 
 def audit_reads(events: Iterable[LedgerEvent], *, cut_sequence: int) -> dict[str, Any]:

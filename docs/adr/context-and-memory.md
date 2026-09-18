@@ -421,6 +421,13 @@ the workflow still supplies its persisted summary. Ownership derives from actual
 factory wiring, not another user option. Metrics continue to run after reconstruction,
 and current kernel/effect state remains in the plugin's handoff. A real-workflow test
 guards against injecting the same handoff both beside and inside the initial packet.
+
+`continuation@6` supplies unresolved capability, cell, validation and tool-receipt
+records from the shared execution-admission projection, not only started SQLite
+receipts. A completed Python cell may contain an unknown nested effect. The count
+is unresolved records (a cell and its capability can describe the same uncertainty),
+with at most 16 addressed records inline; it is not a count of distinct side effects.
+This metadata cannot reconcile operations or authorize completion by itself.
 When an unconsumed result exceeds the soft packet target but fits the hard window,
 the plugin retains that published epoch and interaction. It cannot publish revised
 content under the same cut identity. Compaction resumes once a complete boundary can
@@ -448,6 +455,23 @@ can establish another observed version; it never upgrades historical evidence to
 unqualified claim of current filesystem freshness. Unobserved external changes remain
 outside this observation log and require a new workspace check. Prior-run findings keep
 their source scope and must not authorize a current-task mutation without fresh evidence.
+
+### Successful validation and advisory source freshness
+
+A completed PTC shell call provisionally marks workspace-dependent findings for
+revalidation. When the same operation subsequently has a host-observed successful
+validation with an explicit zero exit and equal nonempty before/after workspace
+fingerprints, the source-observation reducer retracts only that call's provisional
+invalidation. It preserves any earlier or intervening unknown observation. Missing,
+failed, malformed, truncated, differently owned or mismatched-operation observations
+do not clear it. This prevents unchanged successful checks from needlessly making
+all retained findings stale. Program source hashes include the changed reducer.
+
+This is an advisory source-freshness correction, not execution reconciliation.
+Unknown capability/cell effects, pending operations and the completion/recovery fence
+are untouched. Equal workspace fingerprints cannot reconcile an earlier unknown
+effect. Actual worker-loss tests and fault-boundary checks cover the distinction;
+live reread/cost improvement remains to be measured.
 
 ## Repeated-use evaluation
 
@@ -609,6 +633,12 @@ and counts checkpoint/retrieval overhead. A reduction in filesystem calls alone 
 justify promotion. Compare paired quality, calls, tokens, cost, and terminal reasons;
 budget exits, harness failures, provider failures, and verifier outcomes are not
 interchangeable. Compaction, notes, prior-run recall, and PTC earn activation separately.
+
+Known single-file no-ops retain their narrow scope: a successful observed managed
+write/edit with no changed paths and one valid content hash must not invalidate
+unrelated findings. An empty changed-path list alone does not establish this; failed
+or unknown effects and missing identity remain conservative. This is an advisory
+source-observation rule, not reconciliation of an earlier unknown operation.
 
 ## Rejected alternatives
 

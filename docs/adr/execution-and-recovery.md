@@ -198,6 +198,19 @@ build/type/lint/test checks, no new baseline-relative regression, no scope viola
 and no unresolved effect. The model's proposed evidence and self-authored tests can
 support the decision but cannot own it.
 
+The v12 live stability audit exposed an implementation gap: a completed Python cell
+with a failed nested shell (`effect=unknown`) could still reach `task.finished` after
+passing answer checks. Resume's open-capability check was not part of completion.
+The corrective contract uses one deterministic unresolved-execution projection for
+resume, completion and current handoff metadata. Pending capability/cell/validation
+intents and unknown terminal effects stay unresolved; unrelated successful commands,
+new answers, later checkpoints and workspace equality do not reconcile them. Missing
+or contradictory operation identity fails closed. Explicit known no-effect rejections
+remain distinct from unknown execution. Verification does not dispatch more commands
+when this evidence is unresolved. No general automatic shell reconciliation is added.
+The evaluator separately records unresolved execution and flags an accepted task as
+false acceptance even if its answer bytes are correct. Live qualification is pending.
+
 Verification uses the same workspace, sandbox, policy, approvals, redaction, and
 task identity as ordinary tools. A failing check becomes a durable counterexample for
 the next model invocation. A passing pre-existing baseline proves only no regression;
@@ -241,6 +254,18 @@ Coding-mode completion additionally requires at least one changed repository pat
 This rejects unchanged-workspace completion; it is a necessary condition, not proof
 that an arbitrary diff meets acceptance criteria. Analysis/answer modes do not inherit
 that coding-only requirement.
+
+The controlled validation oracle now additionally binds a successful check to the
+declared source versions observed before its broker dispatch. Previously, a passing
+check on a temporary input could be followed by restoration of another input version
+and a correct answer for that restored version; both arms incorrectly completed.
+The regression executes real managed writes and a real passing subprocess. Source
+observations at dispatch now reject that mismatch without requiring a rerun for an
+unchanged applicable check. The rule concerns explicitly declared fixture sources,
+not arbitrary semantic dependency discovery or continuous external-state freshness.
+The independent result audit also classifies accepted-but-unsupported latest answers
+as `false_acceptance`, while retaining the raw acceptance and artifact verdicts. A
+test deliberately bypassing only the oracle evidence check exercises that detection.
 
 ## Steering and cancellation
 

@@ -165,12 +165,61 @@ Implementation ownership, dependencies, and acceptance gates are in the
         completed evidence and all cuts exercised. Findings cost 12.1% less overall
         but 18.2% more on short validation. Artifact recovery fell 23 to zero;
         both arms had zero source rereads. No held-out qualification claim.
-      - [ ] Run the frozen full-family v12 stability repeat with actual validation
-        negatives; retain each family and short-task overhead separately. Do not
-        retune between trials or label reused fixtures held out.
+      - [x] Run the frozen full-family v12 stability repeat with actual validation
+        negatives. Fourteen positive answer checks passed and four negatives withheld,
+        but one accepted control retained an unknown shell effect: safety gate failed.
+        Preserve raw outcomes and all family costs; this is not qualification.
+      - [x] Close completion's unresolved-capability/cell gap, share admission with
+        resume and handoff, and independently flag unsafe acceptance in evaluation.
+        Actual failed-shell, pending/corrupt/no-effect boundaries and a deliberate
+        missing-fence detection test pass; 878 full-suite checks plus final targeted
+        and Docker checks pass. No new paid cohort has used the correction yet.
+      - [x] Run the frozen v13 completion-fence live regression: all four positive
+        first verifications pass with no unresolved execution; both failed-check
+        trials withhold and block. Preserve that voluntary blocking does not itself
+        exercise a forced completion claim. Move to new held-out fixtures next.
   - [ ] Demonstrate evidence-use and actual reread improvements on new held-out
     continuations; distinguish first proposals, verifier rejection/recovery, and
     independently accepted outcomes. Earlier fixture loops bypassed outer verification.
+    - [x] Implement fresh breadth and partial-capture variants through the existing
+      real workflow. Keep control artifacts, verify each answer, reject correct
+      unsupported guesses, and measure premature/opaque acquisition separately.
+      Twelve local and Docker checks pass; no new fixture has been dispatched live.
+    - [x] Add two changed-source and two conflicting-finding variants with guarded
+      revisions, deferred authoritative evidence and real worker-loss checkpoints.
+      Sixteen local/Docker checks cover conflict/supersession, stale-answer rejection
+      and repair, premature guesses and early-acquisition ineligibility. Not yet live.
+    - [x] Retract only a successful unchanged validation's own provisional source
+      invalidation; retain older/intervening uncertainty and execution fencing.
+      Eleven fault-boundary tests plus actual PTC validation coverage pass.
+    - [x] Add fresh actual-validation success/reuse and failure cases. Exercise
+      skipped/wrong-command checks, late answers, forced completion after failure,
+      and a successful check on the wrong source version. Bind validation to source
+      versions at dispatch and independently flag accepted-but-unsupported results.
+    - [x] Run the frozen v16 live regression: all four positive first verifications
+      pass and both failed checks withhold. Preserve the short-validation cost
+      regression and lack of a post-check live cut; no held-out qualification claim.
+    - [ ] Complete the owned-prior family and its independent source applicability
+      audit; freeze repetitions, full hashes and eligibility gates before the panel.
+      Five implemented families do not close S6.
+      - [x] Preserve unrelated finding freshness after successful single-file no-op
+        writes/edits with an observed hash; retain earlier or unbounded uncertainty.
+        Prior-retrieval regression exposed the bug; eight reducer boundary tests cover it.
+      - [x] Add an optional scope-aware prior evidence auditor to every answer gate.
+        Match completed managed retrievals, canonical source manifests and findings,
+        current version observations and answer dispatch boundaries. Keep metadata-only
+        lookup and opaque/partial routes unmapped; never inherit validation authority.
+        Twenty-three real-PTC admission/integrity checks pass; producer terminal state in
+        these unit fixtures is host-supplied, not fresh model qualification.
+      - [ ] Run distinct model-written producer/consumer episodes through the existing
+        verified workflow, freeze owned bindings and producer snapshots, and include
+        all producer calls/costs in the paired budget before paid qualification.
+        - [x] Implement two disjoint catalog/shipment pairs through the real root
+          workflow, with unchanged and changed-policy variants, actual producer
+          verification, owned snapshots and all preparation costs. Ten scripted
+          workflow checks pass; three repeat/admission/accounting-stop checks pass.
+        - [ ] Dispatch and analyze the clean frozen six-family, three-repetition
+          panel: 72 trials / 84 episodes, including twelve fresh producer episodes.
 
 ## Project identity
 

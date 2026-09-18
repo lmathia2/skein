@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from harness.evidence.ledger.models import canonical_json
@@ -11,6 +12,7 @@ from .models import MemoryFinding, ReadEvidence, ViewRequest
 
 def source_observations(rows: list[dict[str, Any]]) -> tuple[dict, dict, dict]:
     hashes, touched, unknown = {}, {}, {}
+    validation_candidates = {}
     for row in rows:
         task, sequence, payload = row["task_id"], row["sequence"], row["payload"]
         for path, digest in payload.get("content_hashes", {}).items():
@@ -21,10 +23,38 @@ def source_observations(rows: list[dict[str, Any]]) -> tuple[dict, dict, dict]:
             hashes[task, evidence.path] = (sequence, evidence.sha256)
         for path in payload.get("changed_paths", ()):
             touched[task, path] = sequence
+        # Successful single-file no-ops still identify the observed file hash.
+        # An empty changed-path list is not an unknown workspace-wide mutation.
+        known_noop = (row["kind"] == "capability.completed" and payload.get("operation") in {"fs.write", "fs.edit"}
+                      and payload.get("status") == "ok" and payload.get("effect") == "observed"
+                      and not payload.get("changed_paths") and len(payload.get("content_hashes", {})) == 1
+                      and all(isinstance(path, str) and path and isinstance(digest, str)
+                              and re.fullmatch(r"[0-9a-f]{64}", digest)
+                              for path, digest in payload["content_hashes"].items()))
         if payload.get("workspace_may_have_changed") and (
             payload.get("operation") not in {"fs.edit", "fs.write"} or not payload.get("changed_paths")
-        ):
+        ) and not known_noop:
+            previous = unknown.get(task, 0)
             unknown[task] = sequence
+            validation_candidates.pop(task, None)
+            if (row["kind"] == "capability.completed" and payload.get("operation") == "shell.run"
+                    and payload.get("status") == "ok" and payload.get("effect") == "observed"
+                    and payload.get("operation_id")):
+                validation_candidates[task] = (payload["operation_id"], sequence, previous)
+        if row["kind"] == "execution.validation_observed" and task in validation_candidates:
+            operation, terminal_sequence, previous = validation_candidates[task]
+            result = payload.get("result", {})
+            if (payload.get("operation_id") == operation and unknown.get(task) == terminal_sequence
+                    and sequence > terminal_sequence and isinstance(result, dict) and result.get("status") == "ok"
+                    and type(result.get("exit_code")) is int and result["exit_code"] == 0
+                    and not result.get("truncated") and not result.get("omitted_bytes")
+                    and isinstance(payload.get("workspace_before"), str) and payload["workspace_before"]
+                    and payload["workspace_before"] == payload.get("workspace_after")):
+                # Retract only this successful command's provisional invalidation.
+                # Earlier or intervening unknown effects remain unknown; this is
+                # advisory freshness, never execution reconciliation/admission.
+                unknown[task] = previous
+                validation_candidates.pop(task)
     return hashes, touched, unknown
 
 

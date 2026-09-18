@@ -27,6 +27,7 @@ from google.genai import types
 
 from app.agent.factory import build_harness
 from evals.memory_audit import audit_emissions, audit_reads
+from evals.prior_evidence import PriorEvidence, PriorRun
 from evals.runner import _atomic_write
 from harness.adapters.adk.context import ContextWindowPlugin
 from harness.adapters.providers.codex_responses import ProviderResponseError
@@ -143,6 +144,8 @@ class Continuation:
         self.seed_checkpoint = True
         self.source_requirements: list[ReadEvidence] | None = None
         self.prior_root: Path | None = None
+        self.prior_evidence: PriorEvidence | None = None
+        self.prior_run: PriorRun | None = None
         self.redactor = SecretRedactor(known_secrets=(os.environ.get("OPENROUTER_API_KEY", ""),))
 
     def open(self, *, prior: bool = False) -> None:
@@ -154,12 +157,15 @@ class Continuation:
             task = TaskLedger.from_request(TaskRequest(goal=self.fixture["goal"]), task_id=self.task_id,
                                           workspace_id="continuity-fixture", base_revision="fixture-v1")
             self.events.append(self.task_id, EventKind.TASK_CREATED, {"ledger": task.model_dump(mode="json")})
-        self.assembly = build_harness(self.composition, RuntimeBindings(
+        self.bindings = RuntimeBindings(
             workspace=self.workspace, state_root=self.state, task_id=self.task_id,
             conversation_id="continuity-fixture", user_id="fixture-owner",
             prior_task_ids=("fixture-prior",) if prior else (),
             prior_state_roots=(self.prior_root,) if prior and self.prior_root is not None else (),
-        ), registry=self.registry)
+        )
+        if self.prior_run is not None:
+            self.prior_evidence = PriorEvidence(self.bindings, (self.prior_run,))
+        self.assembly = build_harness(self.composition, self.bindings, registry=self.registry)
         self.agent = cast(LlmAgent, self.assembly.agents["coding_worker"])
         self.tool: Any = self.agent.tools[0]
         self.context = SimpleNamespace(agent_name="coding_worker", invocation_id="continuation",
@@ -295,6 +301,20 @@ class Continuation:
         _atomic_write(self.root / "exposure.json", json.dumps(exposure, ensure_ascii=False))
         measured: dict[str, Any] = {"reads": audit_reads(events, cut_sequence=self.cut_sequence),
                     "exposure": audit_emissions(snapshots, self.records, cut_sequence=self.cut_sequence)}
+        if initial_ranges := self.fixture.get("initial_ranges"):
+            first_cut = next((e.sequence for e in events if e.kind == EventKind.COMPACTION_CREATED), None)
+            preparation = audit_reads([e for e in events if first_cut is None or e.sequence < first_cut], cut_sequence=0)
+            overshot = [r for r in preparation["reads"] if r["path"] in initial_ranges
+                        and not (initial_ranges[r["path"]][0] <= r["offset"]
+                                 and r["offset"] + r["returned_lines"] <= sum(initial_ranges[r["path"]]))]
+            opaque = sum(preparation["operations"].get(kind, 0) for kind in ("search", "unclassified_shell"))
+            opaque += preparation["counts"].get("unaddressed_reads", 0)
+            measured["initial_capture"] = {
+                "version": "initial-capture-boundary-v1", "cut_sequence": first_cut,
+                "allowed_ranges": initial_ranges, "overshot_reads": overshot, "opaque_routes": opaque,
+                "respected": first_cut is not None and not overshot and opaque == 0,
+                "scope": "completed fs.read ranges and classified preparation routes; not semantic model dependence",
+            }
         if self.fixture.get("stages"):
             cuts = [e.sequence for e in events if e.kind == EventKind.COMPACTION_CREATED]
             measured["checkpoint_intervals"] = [{

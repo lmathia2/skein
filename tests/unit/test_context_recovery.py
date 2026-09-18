@@ -10,7 +10,7 @@ from harness.adapters.adk.runtime.ownership import WorkspaceOwner
 from harness.core.models.checkpoint import Checkpoint
 from harness.core.models.ledger import TaskLedger
 from harness.evidence.state import CheckpointStore, EventKind, JsonlEventStore, ToolReceiptStore
-from harness.evidence.state.recovery import validate_recovery_evidence
+from harness.evidence.state.recovery import unresolved_execution, validate_recovery_evidence
 from harness.execution.tools.adk_adapter import create_adk_tools
 
 
@@ -106,6 +106,72 @@ def test_failed_capability_is_a_terminal_recovery_event(tmp_path: Path) -> None:
             session_id="session",
             workspace_fingerprint="before",
         )
+
+
+@pytest.mark.parametrize("terminal,effect,blocked", [
+    (None, None, True),
+    (EventKind.CAPABILITY_FAILED, "none", False),
+    (EventKind.CAPABILITY_BLOCKED, "none", False),
+    (EventKind.CAPABILITY_COMPLETED, "observed", False),
+    (EventKind.CAPABILITY_COMPLETED, "unknown", True),
+    (EventKind.CAPABILITY_COMPLETED, "native_untracked", True),
+    (EventKind.CAPABILITY_FAILED, "unknown", True),
+])
+def test_execution_admission_uses_effect_not_terminal_kind(tmp_path, terminal, effect, blocked):
+    checkpoint, events = _evidence(tmp_path)
+    identity = {"operation_id": "op", "operation": "shell.run", "arguments_sha256": "args"}
+    events.append("task", EventKind.CAPABILITY_REQUESTED, identity)
+    if terminal:
+        events.append("task", terminal, {**identity, "effect": effect})
+    assert bool(unresolved_execution(events.read("task"))) is blocked
+    if blocked:
+        with pytest.raises(ValueError, match="reconciliation"):
+            validate_recovery_evidence(checkpoint, events.read("task"), [], invocation_id="invocation",
+                                       session_id="session", workspace_fingerprint="before")
+
+
+def test_execution_admission_keeps_unknown_cells_and_rejects_corrupt_identity(tmp_path):
+    _, events = _evidence(tmp_path)
+    identity = {"attempt_id": "cell", "cell_id": "cell"}
+    events.append("task", EventKind.REPL_CELL_SUBMITTED, identity)
+    events.append("task", EventKind.REPL_CELL_COMPLETED, {**identity, "effect": "unknown"})
+    # An unrelated successful verification is not an operation reconciliation.
+    events.append("task", "execution.validation_requested", {"operation_id": "check", "command_sha256": "command"})
+    events.append("task", "execution.validation_completed", {
+        "operation_id": "check", "command_sha256": "command", "result": {"status": "ok", "exit_code": 0}})
+    assert unresolved_execution(events.read("task")) == [{"kind": "cell", "id": "cell", "status": "unknown"}]
+    events.append("task", EventKind.CAPABILITY_REQUESTED, {"operation_id": "op", "arguments_sha256": "old"})
+    events.append("task", EventKind.CAPABILITY_COMPLETED, {"operation_id": "op", "arguments_sha256": "new", "effect": "none"})
+    with pytest.raises(ValueError, match="identity mismatch"):
+        unresolved_execution(events.read("task"))
+
+
+def test_pending_validation_needs_matching_complete_receipt(tmp_path):
+    _, events = _evidence(tmp_path)
+    identity = {"operation_id": "check", "command_sha256": "command"}
+    events.append("task", "execution.validation_requested", identity)
+    assert unresolved_execution(events.read("task")) == [{"kind": "validation", "id": "check", "status": "started"}]
+    events.append("task", "execution.validation_completed", {
+        **identity, "result": {"status": "ok", "exit_code": 0}})
+    assert unresolved_execution(events.read("task")) == []
+    events.append("task", "execution.validation_requested", {**identity, "operation_id": "missing-exit"})
+    events.append("task", "execution.validation_completed", {
+        **identity, "operation_id": "missing-exit", "result": {"status": "ok", "exit_code": None}})
+    assert unresolved_execution(events.read("task")) == [{"kind": "validation", "id": "missing-exit", "status": "unknown"}]
+
+
+def test_known_no_effect_receipt_rejection_is_not_unknown(tmp_path):
+    _, events = _evidence(tmp_path)
+    store = ToolReceiptStore(tmp_path / "tools.db")
+    store.begin(task_id="task", invocation_id="invocation", tool_call_id="call",
+                tool_name="write", arguments_hash="arguments")
+    assert unresolved_execution(events.read("task"), store.for_task("task"))
+    store.finish(task_id="task", tool_call_id="call", status="failed",
+                 result_json='{"status":"error","effect":"none"}')
+    assert unresolved_execution(events.read("task"), store.for_task("task")) == []
+    store.finish(task_id="task", tool_call_id="call", status="failed",
+                 result_json='{"status":"blocked","reconciliation_required":true}')
+    assert unresolved_execution(events.read("task"), store.for_task("task"))
 
 
 def test_operation_identity_allows_intentional_repeat_but_not_unknown_retry(tmp_path: Path) -> None:

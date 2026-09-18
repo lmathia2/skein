@@ -38,6 +38,7 @@ from evals.continuity_oracle import (
     audit_answer_contracts,
 )
 from evals.memory_audit import audit_answer_evidence
+from evals.qualification_continuity import QUALIFICATION_CASES, qualification_fixture
 from evals.repeated_continuity import REPEATED_CASES, repeated_fixture
 from evals.runner import _atomic_write
 from evals.validation_continuity import VALIDATION_CASES, validation_fixture
@@ -180,11 +181,11 @@ async def run_verified_case(trial: Continuation) -> dict[str, Any]:
                 cuts = [e.sequence for e in events if e.kind == EventKind.COMPACTION_CREATED]
                 if trial.fixture.get("stages") and [e.payload.get("cut_sequence") for e in checkpoints] != cuts:
                     return False
-                audit = audit_answer_contracts(events, specifications, cuts)
+                audit = audit_answer_contracts(events, specifications, cuts, prior=trial.prior_evidence)
                 return bool(set(answer_hashes) == set(audit["artifacts"]) and audit["all_latest_supported"]
                             and all(report["answers"][-1].get("answer_sha256") == answer_hashes[path]
                                     for path, report in audit["artifacts"].items()))
-            audit = audit_answer_evidence(events, required=required)
+            audit = audit_answer_evidence(events, required=required, prior=trial.prior_evidence)
             answers = audit["answers"]
             return bool(answers and answers[-1]["status"] == "available"
                         and answers[-1].get("answer_sha256") == answer_hashes["answer.json"]
@@ -273,6 +274,11 @@ async def run_verified_case(trial: Continuation) -> dict[str, Any]:
         result["verification_reports"] = reports
         result["first_verification_passed"] = reports[0]["passed"] if reports else None
         result["accepted"] = any(e.kind == EventKind.TASK_FINISHED for e in events)
+        from harness.evidence.state.receipts import ToolReceiptStore
+        from harness.evidence.state.recovery import unresolved_execution
+
+        result["unresolved_execution"] = unresolved_execution(
+            events, ToolReceiptStore(trial.state / "managed-tools.db").for_task(trial.task_id))
         if not trial.seed_checkpoint:
             result["learning_checkpoints"] = [e.payload for e in events if e.kind == "evaluation.learning_checkpoint"]
             result["checkpoint_reminders"] = [e.payload for e in events if e.kind == "evaluation.checkpoint_reminder"]
@@ -286,7 +292,7 @@ async def run_verified_case(trial: Continuation) -> dict[str, Any]:
             result["answer_artifacts"] = oracle.check_artifacts()
             result["passed"] = all(check["passed"] for check in result["answer_artifacts"].values())
         if result["accepted"]:
-            result["terminal"] = "verified_completion" if result["passed"] else "false_acceptance"
+            result["terminal"] = "verified_completion" if result["passed"] and not result["unresolved_execution"] else "false_acceptance"
         elif result["terminal"] == "workflow_stopped":
             result["terminal"] = "workflow_blocked"
         if trial.fixture.get("expect_abstention"):
@@ -296,7 +302,7 @@ async def run_verified_case(trial: Continuation) -> dict[str, Any]:
                 and result.get("last_proposal_status") == "blocked"
                 and any(e.kind == EventKind.TASK_BLOCKED for e in events) and not answer.exists()
                 and not answer.is_symlink()
-                and not any(e.payload.get("effect") == "unknown" for e in events)
+                and not result["unresolved_execution"]
                 and not subprocess.check_output(["git", "-C", str(trial.workspace), "status", "--porcelain", "--untracked-files=all"], text=True).strip()
             )
             if result["correct_abstention"]:
@@ -322,12 +328,18 @@ async def run_verified_case(trial: Continuation) -> dict[str, Any]:
                     and not answer.exists() and not answer.is_symlink())
             if required:
                 result["measurement"]["answer_evidence"] = audit_answer_evidence(
-                    events, required=required,
+                    events, required=required, prior=trial.prior_evidence,
                 )
             if specifications:
                 result["measurement"]["answer_contracts"] = audit_answer_contracts(
                     events, specifications, [e.sequence for e in events if e.kind == EventKind.COMPACTION_CREATED],
+                    prior=trial.prior_evidence,
                 )
+            if result["accepted"] and required:
+                supported = (result["measurement"]["answer_contracts"]["all_latest_supported"] if specifications else
+                             result["measurement"]["answer_evidence"]["last_answer"] == "available")
+                if not supported:
+                    result["terminal"] = "false_acceptance"
         except (ValueError, KeyError, OSError) as exc:
             result["measurement_error"] = str(exc)[:1000]
     result.update(wall_seconds=time.monotonic() - started,
@@ -338,27 +350,35 @@ async def run_verified_case(trial: Continuation) -> dict[str, Any]:
     return result
 
 
-async def campaign(output: Path, cases: list[str], arms: list[str], concurrency: int, sandbox_image: str | None = None) -> list[dict[str, Any]]:
+async def campaign(output: Path, cases: list[str], arms: list[str], concurrency: int, sandbox_image: str | None = None,
+                   repetitions: int = 1) -> list[dict[str, Any]]:
     from evals.continuity_cases import DevelopmentContinuation
     from evals.heldout_continuity import HELDOUT_CASES
     from evals.learned_continuity import LEARNED_CASES, LearnedContinuation
+    from evals.prior_continuity import run_owned_prior
     from evals.staged_continuity import STAGED_CASES
 
+    if type(repetitions) is not int or not 1 <= repetitions <= 3:
+        raise ValueError("one to three fresh-state repetitions required")
     semaphore = asyncio.Semaphore(concurrency)
     failed = asyncio.Event()
-    async def bounded(case: str, arm: str) -> dict[str, Any]:
+    async def bounded(case: str, arm: str, repetition: int) -> dict[str, Any]:
         async with semaphore:
-            root = output / f"{case}-{arm}"
+            root = output / (f"{case}-{arm}" + (f"-r{repetition}" if repetitions > 1 else ""))
             result: dict[str, Any]
             if failed.is_set():
                 result = {"family": case, "arm": arm, "accepted": False, "passed": False,
                           "terminal": "not_started_infrastructure_gate"}
             else:
                 try:
-                    async with asyncio.timeout(900):
-                        trial = LearnedContinuation(root, case, arm) if case in (*LEARNED_CASES, *HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES) else DevelopmentContinuation(root, case, arm)
-                        trial.command_image = sandbox_image
-                        result = await run_verified_case(trial)
+                    if case.startswith("qualification_prior_"):
+                        # Each episode has its own 900s bound and charged result.
+                        result = await run_owned_prior(root, case, arm, sandbox_image)
+                    else:
+                        async with asyncio.timeout(900):
+                            trial = LearnedContinuation(root, case, arm) if case in (*LEARNED_CASES, *HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES, *QUALIFICATION_CASES) else DevelopmentContinuation(root, case, arm)
+                            trial.command_image = sandbox_image
+                            result = await run_verified_case(trial)
                 except TimeoutError:
                     progress = root / "progress.json"
                     result = json.loads(progress.read_text()) if progress.exists() else {"family": case, "arm": arm}
@@ -367,12 +387,16 @@ async def campaign(output: Path, cases: list[str], arms: list[str], concurrency:
                     progress = root / "progress.json"
                     result = json.loads(progress.read_text()) if progress.exists() else {"family": case, "arm": arm}
                     result.update(accepted=False, passed=False, terminal="harness_or_fixture_error", error=type(exc).__name__)
-                if result["terminal"] in {"harness_or_fixture_error", "provider_error", "false_acceptance", "wall_time_limit"} or "measurement_error" in result:
+                if (result["terminal"] in {"harness_or_fixture_error", "provider_error", "false_acceptance", "wall_time_limit", "producer_not_qualified"}
+                        or "measurement_error" in result or any(result.get(key, 0) for key in
+                            ("unaccounted_model_calls", "usage_missing_calls", "cost_missing_calls", "extra_wire_attempts"))):
                     failed.set()
+            result["repetition"] = repetition
             _atomic_write(root / "result.json", json.dumps(result, indent=2))
             print(json.dumps({key: result.get(key) for key in ("family", "arm", "accepted", "passed", "terminal", "model_calls")}), flush=True)
             return result
-    rows = await asyncio.gather(*(bounded(case, arm) for case in cases for arm in arms))
+    rows = await asyncio.gather(*(bounded(case, arm, repetition) for repetition in range(1, repetitions + 1)
+                                 for case in cases for arm in arms))
     _atomic_write(output / "results.json", json.dumps(rows, indent=2))
     summary = {arm: {
         "planned": sum(r["arm"] == arm for r in rows),
@@ -383,7 +407,7 @@ async def campaign(output: Path, cases: list[str], arms: list[str], concurrency:
             "provider_cost_usd", "unaccounted_model_calls", "cost_missing_calls", "extra_wire_attempts")},
     } for arm in arms}
     _atomic_write(output / "summary.json", json.dumps({"arms": summary, "promotion": "hold",
-        "screen_scope": "repeated_evidence_use" if all(case in REPEATED_CASES for case in cases) else "staged_source_revision" if all(case in STAGED_CASES for case in cases) else "heldout_worker_loss" if all(case in HELDOUT_CASES for case in cases) else "development_or_mixed",
+        "screen_scope": "heldout_continuity" if all(case in QUALIFICATION_CASES for case in cases) else "repeated_evidence_use" if all(case in REPEATED_CASES for case in cases) else "staged_source_revision" if all(case in STAGED_CASES for case in cases) else "heldout_worker_loss" if all(case in HELDOUT_CASES for case in cases) else "development_or_mixed",
         "note": "Controlled workflow screen. Inspect paired reads/exposure, protocol exercise and every terminal reason; not broad reliability evidence."}, indent=2))
     return rows
 
@@ -399,12 +423,13 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--dotenv", type=Path, default=Path.home() / ".env")
-    parser.add_argument("--cases", nargs="+", choices=(*CASES, *LEARNED_CASES, *HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES), default=["routing", "missing"])
+    parser.add_argument("--cases", nargs="+", choices=(*CASES, *LEARNED_CASES, *HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES, *QUALIFICATION_CASES), default=["routing", "missing"])
     parser.add_argument("--arms", nargs="+", choices=("metadata", "findings", "no_recall"), default=["metadata", "findings"])
     parser.add_argument("--concurrency", type=int, choices=range(1, 7), default=6)
+    parser.add_argument("--repetitions", type=int, choices=range(1, 4), default=1)
     parser.add_argument("--sandbox-image", help="Already available immutable Docker image for live command isolation")
     args = parser.parse_args()
-    if "no_recall" in args.arms and any(case not in (*HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES) for case in args.cases):
+    if "no_recall" in args.arms and any(case not in (*HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES, *QUALIFICATION_CASES) for case in args.cases):
         parser.error("no_recall is only defined for held-out checkpoint cases")
     if args.live and not re.fullmatch(r"sha256:[0-9a-f]{64}", args.sandbox_image or ""):
         parser.error("live trials require --sandbox-image sha256:IMAGE_ID; preflight the cached image first")
@@ -422,17 +447,23 @@ def main() -> None:
                 | {case: heldout_fixture(case) for case in HELDOUT_CASES}
                 | {case: staged_fixture(case) for case in STAGED_CASES}
                 | {case: repeated_fixture(case) for case in REPEATED_CASES}
-                | {case: validation_fixture(case) for case in VALIDATION_CASES})
-    manifest = {"version": "verified-continuity-v12", "model": MODEL, "reasoning": "max",
-        "cases": args.cases, "arms": args.arms, "concurrency": args.concurrency,
-        "max_model_calls": max(fixtures[c].get("max_model_calls", MAX_CALLS) for c in args.cases),
-        "input_budget": max(fixtures[c].get("input_budget", INPUT_BUDGET) for c in args.cases), "max_output_tokens": 8192,
-        "case_budgets": {c: {"max_model_calls": fixtures[c].get("max_model_calls", MAX_CALLS),
-                             "input_budget": fixtures[c].get("input_budget", INPUT_BUDGET)} for c in args.cases},
-        "wall_seconds_per_case": 900, "promotion": False,
+                | {case: validation_fixture(case) for case in VALIDATION_CASES}
+                | {case: qualification_fixture(case) for case in QUALIFICATION_CASES})
+    manifest = {"version": "verified-continuity-v18", "model": MODEL, "reasoning": "max",
+        "cases": args.cases, "arms": args.arms, "concurrency": args.concurrency, "repetitions": args.repetitions,
+        "max_model_calls": max(fixtures[c].get("max_model_calls", MAX_CALLS) + fixtures[c].get("producer", {}).get("max_model_calls", 0) for c in args.cases),
+        "input_budget": max(fixtures[c].get("input_budget", INPUT_BUDGET) + fixtures[c].get("producer", {}).get("input_budget", 0) for c in args.cases), "max_output_tokens": 8192,
+        "case_budgets": {c: {"max_model_calls": fixtures[c].get("max_model_calls", MAX_CALLS) + fixtures[c].get("producer", {}).get("max_model_calls", 0),
+                             "input_budget": fixtures[c].get("input_budget", INPUT_BUDGET) + fixtures[c].get("producer", {}).get("input_budget", 0),
+                             "episodes": 2 if "producer" in fixtures[c] else 1} for c in args.cases},
+        "wall_seconds_per_case": 1800 if any("producer" in fixtures[c] for c in args.cases) else 900, "promotion": False,
+        "owned_prior": {"episodes_per_pair": 2, "max_calls_per_episode": 24, "input_budget_per_episode": 350_000,
+                        "wall_seconds_per_episode": 900, "producer_cost_included": True,
+                        "protocol": "distinct verified producer/consumer questions; fresh producer per arm; only completed owned sources admitted"},
+        "planned_episodes": sum(2 if c.startswith("qualification_prior_") else 1 for c in args.cases) * len(args.arms) * args.repetitions,
         "oracle": "host_owned_virtual_test", "sandbox_image": args.sandbox_image,
         "source_evidence_required": True,
-        "answer_contract": "Each declared artifact requires its expected JSON value, matching managed-write hash, completed decisive sources and any required successful validation before its write request, and its assigned cut window; every artifact is checked at final verification.",
+        "answer_contract": "Each declared artifact requires its expected JSON value, matching managed-write hash, completed decisive sources and any required successful validation before its write request, and its assigned cut window. Validation must have observed the declared source versions at dispatch; every artifact is checked at final verification and accepted-but-unsupported evidence is independently classified as false acceptance.",
         "arm_contract": {"no_recall": "Trace retained for control/measurement; working notes, prior recall and model-visible memory programs off. PTC, artifacts, safe restore and the findings-sized read index remain shared."},
         "context_policy": {"initial_checkpoint": "forced_immediate_6k",
                            "learned_checkpoint": "after model-authored note and acknowledged result; one synthetic pressure cut",
@@ -444,22 +475,22 @@ def main() -> None:
                            "max_context_tokens": 1_050_000, "provider_window_verified": False},
         "fixture_hashes": {case: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest() for case, value in fixtures.items()},
         "decisive_sources": {case: [read.model_dump() for read in decisive_sources(fixture(case))] for case in CASES}
-                            | {case: fixtures[case]["source_requirements"] for case in (*LEARNED_CASES, *HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES)},
+                            | {case: fixtures[case]["source_requirements"] for case in (*LEARNED_CASES, *HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES, *QUALIFICATION_CASES)},
         "git_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "git_diff_sha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD"])).hexdigest(),
         "driver_sha256": {name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-                          for name in ("verified_continuity.py", "continuity.py", "continuity_cases.py", "continuity_oracle.py", "memory_audit.py", "learned_continuity.py", "heldout_continuity.py", "staged_continuity.py", "repeated_continuity.py", "validation_continuity.py")},
-        "limitations": ["learned_*, heldout_*, staged_* and reuse_* charge model acquisition/checkpoint/acknowledgement; other cases use seeded findings", "Forced checkpoint, not natural pressure",
+                          for name in ("verified_continuity.py", "continuity.py", "continuity_cases.py", "continuity_oracle.py", "memory_audit.py", "prior_evidence.py", "prior_continuity.py", "learned_continuity.py", "heldout_continuity.py", "staged_continuity.py", "repeated_continuity.py", "validation_continuity.py", "qualification_continuity.py")},
+        "limitations": ["learned_*, heldout_*, staged_*, reuse_* and qualification_* charge model acquisition/checkpoint/acknowledgement; other cases use seeded findings", "Forced checkpoint, not natural pressure",
                         "Shell commands isolated in Docker; PTC retains its existing guarded local worker", "No automatic promotion or paid expansion"]}
     _atomic_write(args.output / "manifest.json", json.dumps(manifest, indent=2))
     if not args.live:
-        print(json.dumps({"manifest": str(args.output / "manifest.json"), "trials": len(args.cases) * len(args.arms), "live": False}))
+        print(json.dumps({"manifest": str(args.output / "manifest.json"), "trials": len(args.cases) * len(args.arms) * args.repetitions, "live": False}))
         return
     key = os.environ.get("OPENROUTER_API_KEY") or dotenv_value(args.dotenv, "OPENROUTER_API_KEY")
     if not key:
         raise ValueError("OPENROUTER_API_KEY is unavailable")
     os.environ["OPENROUTER_API_KEY"] = key
-    asyncio.run(campaign(args.output, args.cases, args.arms, args.concurrency, args.sandbox_image))
+    asyncio.run(campaign(args.output, args.cases, args.arms, args.concurrency, args.sandbox_image, args.repetitions))
 
 
 if __name__ == "__main__":

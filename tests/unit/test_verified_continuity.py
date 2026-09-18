@@ -44,6 +44,60 @@ def test_host_oracle_hides_expected_values_and_delegates_nonexact_commands(tmp_p
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failed_shell,bypass_fence", ((False, False), (True, False), (True, True)))
+async def test_correct_source_backed_answer_cannot_clear_unknown_shell_effect(tmp_path, monkeypatch, failed_shell, bypass_fence):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
+    trial = DevelopmentContinuation(tmp_path / "trial", "missing", "findings")
+    trial.command_image = os.getenv("SKEIN_EVAL_DOCKER_IMAGE")
+    if bypass_fence:
+        # Reproduce the old missing production fence. The independent evaluator
+        # must still reject this acceptance, rather than trust a passing report.
+        monkeypatch.setattr("app.agent.workflow.unresolved_execution", lambda *_: [])
+    calls = 0
+
+    async def solve(self, request, stream=False):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            code = (
+                "import tomllib\n"
+                "r = agent.fs.read('config/route_00.toml')\n"
+                "source = tomllib.loads(r['data']['text'])['service']\n"
+                "assert agent.fs.write('answer.json', json.dumps({'port': source['active_port'], 'protocol': source['protocol']}))['status'] == 'ok'\n"
+            )
+            if failed_shell:
+                # Real completed Python cell with a failed nested shell result,
+                # matching the live printf failure after otherwise correct work.
+                code += "print(agent.shell.run(\"printf '--STATUS--\\\\n'\"))\n"
+            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
+        else:
+            part = types.Part(text=json.dumps({"status": "verify", "message": "Verify the source-backed answer."}))
+        yield LlmResponse(content=types.Content(role="model", parts=[part]),
+                          usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
+                          custom_metadata={"provider_cost_usd": .001})
+
+    monkeypatch.setattr(OpenRouterResponsesLlm, "generate_content_async", solve)
+    result = await run_verified_case(trial)
+    assert result["passed"]  # Artifact correctness is intentionally insufficient.
+    assert result["measurement"]["answer_evidence"]["all_answers_source_available"]
+    assert result["accepted"] is (not failed_shell or bypass_fence), result
+    assert result["first_verification_passed"] is (not failed_shell or bypass_fence)
+    if failed_shell:
+        assert result["terminal"] == ("false_acceptance" if bypass_fence else "workflow_blocked")
+        assert any(e.kind == "capability.failed" and e.payload.get("effect") == "unknown"
+                   for e in trial.ledger.read(trial.task_id))
+        assert {"capability", "cell"} <= {item["kind"] for item in result["unresolved_execution"]}
+        from harness.evidence.state import rebuild_ledger
+
+        handoff = trial.plugin.handoff(rebuild_ledger(trial.events.read(trial.task_id)))
+        assert handoff["unresolved_effects"]["operations"] == result["unresolved_execution"]
+        assert handoff["unresolved_effects"]["count"] == len(result["unresolved_execution"])
+        if not bypass_fence:
+            assert all(any("reconciliation" in d for d in report["unresolved_diagnostics"])
+                       for report in result["verification_reports"])
+
+
+@pytest.mark.asyncio
 @pytest.mark.skipif(not os.getenv("SKEIN_EVAL_DOCKER_IMAGE"), reason="explicit cached Docker image required")
 async def test_host_oracle_with_real_docker_command_isolation(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture-key")
@@ -181,10 +235,8 @@ async def test_correct_guess_requires_source_evidence_before_rewritten_answer(tm
             code = (
                 "r = agent.fs.read('config/route_00.toml', offset=12, limit=2)\n"
                 "assert r['status'] == 'ok'\n"
-                f"assert agent.shell.run({ORACLE_COMMAND!r})['exit_code'] == 1\n"
                 "import tomllib\ns = tomllib.loads(r['data']['text'])\n"
                 "print(agent.fs.write('answer.json', json.dumps({'port': s['active_port'], 'protocol': s['protocol']})))\n"
-                f"assert agent.shell.run({ORACLE_COMMAND!r})['exit_code'] == 0\n"
             )
             part = types.Part(function_call=types.FunctionCall(name="execute_code", id="repair", args={"code": code}))
         else:
