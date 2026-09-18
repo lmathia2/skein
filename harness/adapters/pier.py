@@ -34,6 +34,7 @@ from typing_extensions import override
 
 from app.agent.factory import default_harness_registry
 from evals.runner import (
+    EvaluationError,
     EvaluationRunRequest,
     EvaluationRunResult,
     ReasoningEffort,
@@ -376,6 +377,26 @@ class HarborRepositoryRuntime(RepositoryRuntime):
         ).hexdigest()
 
 
+async def _package_workspace(environment: BaseEnvironment, repository: RepositoryRuntime,
+                             workspace: str, base_revision: str | None
+                             ) -> tuple[tuple[str, ...], bool]:
+    status = await environment.exec("git status --porcelain=v1", cwd=workspace, timeout_sec=30)
+    if status.return_code != 0:
+        raise RuntimeError((status.stderr or status.stdout or "git status failed").strip())
+    committed = False
+    if (status.stdout or "").strip():
+        added = await environment.exec("git add -A", cwd=workspace, timeout_sec=30)
+        if added.return_code != 0:
+            raise RuntimeError((added.stderr or added.stdout or "git add failed").strip())
+        commit = await environment.exec(
+            "git -c user.name=Skein -c user.email=skein@localhost "
+            "commit --no-gpg-sign -m 'Skein agent changes'", cwd=workspace, timeout_sec=60)
+        if commit.return_code != 0:
+            raise RuntimeError((commit.stderr or commit.stdout or "git commit failed").strip())
+        committed = True
+    return tuple(await asyncio.to_thread(repository.changed_paths, base_revision)), committed
+
+
 class SkeinPierAgent(BaseAgent):
     """Run Skein on the host while all coding operations stay in Pier."""
 
@@ -396,6 +417,7 @@ class SkeinPierAgent(BaseAgent):
         max_task_input_tokens: int = 2_000_000,
         max_output_tokens: int | None = None,
         wall_time_seconds: float = 1_800,
+        commit_workspace: bool | str = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, model_name=model_name, **kwargs)
@@ -410,6 +432,8 @@ class SkeinPierAgent(BaseAgent):
         self.max_task_input_tokens = max_task_input_tokens
         self.max_output_tokens = max_output_tokens
         self.wall_time_seconds = wall_time_seconds
+        self.commit_workspace = commit_workspace is True or str(commit_workspace).lower() in {
+            "1", "true", "yes"}
         self._workspace: str | None = None
 
     @staticmethod
@@ -450,6 +474,7 @@ class SkeinPierAgent(BaseAgent):
             bridge,
             files,
         )
+        base_revision = (await asyncio.to_thread(repository.manifest)).base_revision
         state_root = self.logs_dir / "skein-state"
         shadow = self.logs_dir / "workspace"
         shadow.mkdir(parents=True, exist_ok=True)
@@ -508,6 +533,23 @@ class SkeinPierAgent(BaseAgent):
             assembly_builder=assembly_builder,
             validate_workspace=False,
         )
+        if self.commit_workspace:
+            try:
+                changed_paths, committed = await _package_workspace(
+                    environment, repository, self._workspace, base_revision)
+                result = result.model_copy(update={
+                    "changed_paths": changed_paths,
+                    "metrics": {**result.metrics,
+                                "submission_commit_created": int(committed),
+                                "submission_changed_paths": len(changed_paths)},
+                })
+            except Exception as error:
+                result = result.model_copy(update={
+                    "status": "failed",
+                    "error": EvaluationError(
+                        code="submission_packaging_failed",
+                        message=f"Could not package the final workspace for Harbor: {error}"),
+                })
         self.logger.info("Skein evaluation loop finished with status %s", result.status)
         write_evaluation_result(result)
         self._populate_context(context, result)

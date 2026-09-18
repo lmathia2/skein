@@ -17,6 +17,9 @@ the standard restrictive approval policy.
 - Pier 0.3.1 for DeepSWE v1.1
 - default concurrency: 1; explicitly bounded campaign concurrency up to 8
 - retries: 0 for ordinary agent failures
+- task-native agent timeout and a wrapper watchdog that also reserves verifier time
+- effectively unlimited cumulative task input (1B tokens) and workflow iterations
+  (1,000) by default, so Skein does not normally stop before the benchmark does
 - task state: a fresh `agent/skein-state` directory per Harbor trial
 
 Install Harbor without changing the normal Skein runtime:
@@ -75,6 +78,10 @@ ledger row records the official reward, active and end-to-end seconds, input/cac
 reasoning tokens, cost, and the separate Skein terminal status. Official verifier reward
 defines task quality; an internal Skein budget or completion-policy stop remains a
 reliability diagnostic and does not cause the scored trial to be rerun.
+
+The runner's official-compatible defaults intentionally differ from Skein's bounded
+interactive profiles. Use `--max-task-input-tokens` or `--max-iterations` only for a
+separately labelled resource-policy ablation; those stops are not part of DeepSWE.
 
 Rerun the same command after an interruption. Completed task keys are skipped,
 an incomplete Pier job is resumed with `pier job resume`, and a finished

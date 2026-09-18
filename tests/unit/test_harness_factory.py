@@ -22,6 +22,7 @@ from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.factory import (
     SkeinHarnessFactory,
+    _compound_memory_call,
     build_harness,
     default_harness_registry,
 )
@@ -49,6 +50,52 @@ from harness.core.config import (
 from harness.core.models.agent_step import StructuredAgentStep
 from harness.evidence.state import EventKind, JsonlEventStore
 from harness.execution.tools.adk_adapter import AdkCodingTools
+
+
+def test_compound_virtual_memory_call_is_detected_without_matching_quoted_data() -> None:
+    assert _compound_memory_call("cd /app && memory note read")
+    assert _compound_memory_call("git status; memory query --program tools.usage")
+    assert not _compound_memory_call("memory note read")
+    assert not _compound_memory_call("rg '&& memory' app")
+
+
+@pytest.mark.asyncio
+async def test_compound_memory_call_blocks_before_ptc_shell_execution(tmp_path, monkeypatch) -> None:
+    from app.agent import factory
+
+    captured: dict[str, Any] = {}
+    original = factory.build_coding_worker
+
+    def worker(*args: Any, **kwargs: Any):
+        captured["bundle"] = original(*args, **kwargs)
+        return captured["bundle"]
+
+    monkeypatch.setattr(factory, "build_coding_worker", worker)
+    payload = load_harness_composition().model_dump(mode="json")
+    payload["harness"]["config"]["memory"].update(
+        enabled=True, implementation="trace_native", working_notes=True,
+        context_programs={"mode": "active"}
+    )
+    payload["harness"]["config"]["notebook_ptc"]["enabled"] = True
+    assembly = build_harness(
+        parse_harness_composition(payload),
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+    )
+    try:
+        execute = captured["bundle"].execute_code
+        assert execute is not None
+        result = await execute(
+            "blocked = agent.shell.run('cd /app && memory note read')\n"
+            "valid = agent.shell.run('memory note schema')\n"
+            "assert blocked['effect'] == 'none' and blocked['status'] == 'error'\n"
+            "assert valid['status'] == 'ok'"
+        )
+        assert result["status"] == "ok", result
+    finally:
+        if assembly.close:
+            value = assembly.close()
+            if inspect.isawaitable(value):
+                await value
 
 
 class _FakeHarnessConfig(BaseModel):
@@ -568,6 +615,56 @@ async def test_ptc_worker_yields_before_an_extra_model_call_after_read_only_chur
     assert [event.kind for event in recorded].count(
         EventKind.WORK_BATCH_YIELDED
     ) == 1
+    if worker.close is not None:
+        worker.close()
+
+
+@pytest.mark.asyncio
+async def test_ptc_worker_bounds_review_to_one_cell(tmp_path: Path) -> None:
+    events = JsonlEventStore(tmp_path / "events")
+    events.append(
+        "task-1",
+        EventKind.REPL_CELL_COMPLETED,
+        {"work_batch_id": "1", "effect": "observed", "cell_id": "review"},
+        idempotency_key="cell:review",
+    )
+    settings = settings_from_composition(
+        load_harness_composition(),
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
+    )
+    worker = build_coding_worker(
+        settings,
+        cast(BaseLlm, "test-model"),
+        ptc_config=NotebookPtcConfig(enabled=True, review_cells_per_batch=1),
+        event_store=events,
+    )
+    callback = worker.agent.canonical_before_model_callbacks[0]
+    context = SimpleNamespace(
+        state={
+            "task_id": "task-1",
+            "ptc_work_batch_id": "1",
+            "task_phase": "review",
+            "ptc_host_yield_pending": True,
+        }
+    )
+
+    response = await callback(
+        callback_context=cast(Any, context),
+        llm_request=LlmRequest(
+            model="test-model",
+            config=types.GenerateContentConfig(system_instruction="stable"),
+        ),
+    )
+
+    assert response is not None
+    assert context.state["ptc_host_yield_pending"] is False
+    assert events.read("task-1")[-1].payload == {
+        "work_batch_id": "1",
+        "cell_count": 1,
+        "reason": "review_cell_limit",
+        "workspace_changed": False,
+        "task_phase": "review",
+    }
     if worker.close is not None:
         worker.close()
 

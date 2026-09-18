@@ -48,6 +48,171 @@ def _enabled_composition():
 
 
 @pytest.mark.asyncio
+async def test_committed_plain_value_checkpoint_restores_without_new_source_read(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    state = tmp_path / "state"
+    events = JsonlEventStore(state / "events")
+    (tmp_path / "source.txt").write_text("learned finding\n", encoding="utf-8")
+    tools = create_adk_tools(tmp_path, state_root=state, search_mode="disabled")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=state, task_id="task")),
+        cast(BaseLlm, "test-model"), tools=tools, event_store=events,
+        ptc_config=config.notebook_ptc.model_copy(update={
+            "recover_committed_values": True, "snapshot_max_bytes": 100_000,
+        }),
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        learned = await worker.execute_code(
+            "source = agent.fs.read('source.txt')\n"
+            "assert source['status'] == 'ok'\n"
+            "finding = {'path': 'source.txt', 'text': source['data']['text']}"
+        )
+        assert learned["status"] == "ok"
+        checkpoints = [e for e in events.read("task") if e.kind == EventKind.REPL_STATE_CHECKPOINTED]
+        assert checkpoints[-1].payload["available"]
+        assert "finding" in checkpoints[-1].payload["selected_names"]
+        (tmp_path / "source.txt").write_text("changed version\n", encoding="utf-8")
+        assert (await worker.execute_code("partial = {'bad': True}\nmissing_name"))["status"] == "error"
+        reused = await worker.execute_code("print(finding['text'])")
+        assert reused["status"] == "ok" and "learned finding" in reused["model_text"]
+        observed = events.read("task")
+        reads = [e for e in observed if e.kind == EventKind.CAPABILITY_COMPLETED
+                 and e.payload.get("operation") == "fs.read"]
+        assert len(reads) == 1
+        restored = [e for e in observed if e.kind == EventKind.REPL_STATE_RESTORED][-1]
+        assert any(item["name"] == "finding" and item["freshness"] == "historical_checkpoint"
+                   for item in restored.payload["state"]["manifest"])
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("eager", (False, True))
+async def test_corrupt_committed_plain_checkpoint_fails_closed(tmp_path: Path, eager: bool) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    state = tmp_path / "state"
+    events = JsonlEventStore(state / "events")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=state, task_id="task")),
+        cast(BaseLlm, "test-model"), event_store=events,
+        ptc_config=config.notebook_ptc.model_copy(update={
+            "recover_committed_values": True, "eager_committed_restore": eager,
+        }),
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        assert (await worker.execute_code("saved = {'value': 42}"))["status"] == "ok"
+        digest = [e for e in events.read("task") if e.kind == EventKind.REPL_STATE_CHECKPOINTED][-1].payload[
+            "checkpoint_sha256"]
+        (state / "ptc-committed" / "sha256" / digest).write_text("tampered", encoding="utf-8")
+        if eager:
+            with pytest.raises(ValueError, match="checkpoint content mismatch"):
+                await worker.execute_code("missing_name")
+        else:
+            assert (await worker.execute_code("missing_name"))["status"] == "error"
+            with pytest.raises(ValueError, match="checkpoint content mismatch"):
+                await worker.execute_code("print(saved)")
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
+async def test_grounded_checkpoint_ranks_exact_source_and_reports_all_restored_names(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    state = tmp_path / "state"
+    events = JsonlEventStore(state / "events")
+    (tmp_path / "source.txt").write_text("grounded source\n", encoding="utf-8")
+    tools = create_adk_tools(tmp_path, state_root=state, search_mode="disabled")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=state, task_id="task")),
+        cast(BaseLlm, "test-model"), tools=tools, event_store=events,
+        ptc_config=config.notebook_ptc.model_copy(update={
+            "recover_committed_values": True, "ground_committed_bindings": True,
+            "snapshot_max_bytes": 100_000,
+        }),
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        created = await worker.execute_code(
+            "result = agent.fs.read('source.txt')\n"
+            "source_text_exact = result['data']['text']\n"
+            + "\n".join(f"a_{i:02d} = {i}" for i in range(75))
+        )
+        assert created["status"] == "ok", created
+        checkpoint = [e for e in events.read("task") if e.kind == EventKind.REPL_STATE_CHECKPOINTED][-1]
+        summaries = checkpoint.payload["binding_summaries"]
+        assert summaries["program"] == "committed_value_summaries@2"
+        assert summaries["bindings"][0]["name"] == "source_text_exact"
+        source_ref = summaries["bindings"][0]["historical_source_refs"][0]
+        assert source_ref["path"] == "source.txt"
+        assert source_ref["sha256"] == hashlib.sha256(b"grounded source\n").hexdigest()
+        assert source_ref["read_event_id"] in {e.event_id for e in events.read("task")
+                                                 if e.kind == EventKind.CAPABILITY_COMPLETED}
+        (tmp_path / "source.txt").write_text("new version\n", encoding="utf-8")
+        assert (await worker.execute_code("missing_name"))["status"] == "error"
+        assert (await worker.execute_code("print(source_text_exact)"))["status"] == "ok"
+        restored = [e for e in events.read("task") if e.kind == EventKind.REPL_STATE_RESTORED][-1]
+        assert restored.payload["restored_names"] == checkpoint.payload["selected_names"]
+        assert {item["name"] for item in restored.payload["state"]["manifest"]} == set(
+            checkpoint.payload["selected_names"])
+        assert (await worker.execute_code("probe = agent.fs.read('source.txt', offset=1, limit=1)"))["status"] == "ok"
+        current_read = [e for e in events.read("task") if e.kind == EventKind.CAPABILITY_COMPLETED
+                        and e.payload.get("operation") == "fs.read"][-1]
+        assert current_read.payload["read_evidence"]["sha256"] != source_ref["sha256"]
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
+async def test_eager_restoration_is_acknowledged_before_the_model_can_replan(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    state = tmp_path / "state"
+    events = JsonlEventStore(state / "events")
+    (tmp_path / "source.txt").write_text("retained source\n", encoding="utf-8")
+    tools = create_adk_tools(tmp_path, state_root=state, search_mode="disabled")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=state, task_id="task")),
+        cast(BaseLlm, "test-model"), tools=tools, event_store=events,
+        ptc_config=config.notebook_ptc.model_copy(update={
+            "recover_committed_values": True, "ground_committed_bindings": True,
+            "eager_committed_restore": True,
+        }),
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        assert (await worker.execute_code(
+            "read = agent.fs.read('source.txt')\nsaved_source_exact = read['data']['text' ]"
+        ))["status"] == "ok"
+        failed = await worker.execute_code("raise AttributeError('boom')")
+        assert failed["status"] == "error" and failed["kernel"]["live"]
+        assert "already restored" in failed["model_text"]
+        assert "saved_source_exact" in failed["model_text"] and "source.txt" in failed["model_text"]
+        observed = events.read("task")
+        failure = [e for e in observed if e.kind == EventKind.REPL_CELL_FAILED][-1]
+        restored = [e for e in observed if e.kind == EventKind.REPL_STATE_RESTORED][-1]
+        assert failure.sequence < restored.sequence
+        assert restored.payload["recovery_timing"] == "after_failed_cell"
+        assert failed["kernel"]["kernel_epoch"] == restored.payload["kernel_epoch"]
+        assert (await worker.execute_code("print(saved_source_exact)"))["status"] == "ok"
+        assert len([e for e in events.read("task") if e.kind == EventKind.CAPABILITY_COMPLETED
+                    and e.payload.get("operation") == "fs.read"]) == 1
+        timed_out = await worker.execute_code("while True: pass", timeout_seconds=1)
+        assert timed_out["effect"] == "unknown" and not timed_out["kernel"]["live"]
+        assert len([e for e in events.read("task") if e.kind == EventKind.REPL_STATE_RESTORED]) == 1
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
 async def test_quoted_workspace_program_uses_same_policy_in_direct_and_ptc(tmp_path: Path) -> None:
     composition = _enabled_composition()
     config = cast(SkeinConfig, composition.harness.config)
@@ -293,12 +458,17 @@ async def test_ptc_read_catalog_reuses_exact_and_partial_ranges_but_not_changed_
         exact = await worker.execute_code(
             f"same_source = agent.fs.read({str(workspace / 'source.txt')!r}, 1, 3)\n"
             "assert same_source['data']['text'] == source_module['data']['text']\n"
+            "assert same_source['read_handle'] == source_module['read_handle'] == 'read:1'\n"
+            "assert same_source['read_reference'] == source_module['read_reference']\n"
             "assert agent.state.cite(source_module['read_handle']) == source_module['read_reference']['artifact_uri']\n"
             "print(same_source['data']['text'])"
         )
         assert exact["status"] == "ok"
         assert original[:200] not in exact["model_text"]
         assert "source already retained as read:1" in exact["model_text"]
+        terminal = next(event for event in reversed(events.read("task"))
+                        if event.kind == EventKind.REPL_CELL_COMPLETED)
+        assert terminal.payload["state"]["retained_read_uses"] == ["read:1"]
 
         partial = await worker.execute_code("wider_source = agent.fs.read('source.txt', 1, 5)")
         assert partial["status"] == "ok"
@@ -326,6 +496,48 @@ async def test_ptc_read_catalog_reuses_exact_and_partial_ranges_but_not_changed_
     assert reads[2]["read_reuse"]["reused_ranges"] == [[1, 3]]
     assert reads[2]["read_reuse"]["source_read_ranges"] == [[4, 5]]
     assert "read_reuse" not in reads[3]
+
+
+@pytest.mark.asyncio
+async def test_read_catalog_survives_worker_epoch_loss_when_source_hash_matches(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "source.txt").write_text("one\ntwo\nthree\n", encoding="utf-8")
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    base = create_adk_tools(workspace, state_root=state_root, task_scope="task")
+    calls: list[tuple[int, int]] = []
+
+    def tracked_read(*, path: str, offset: int = 1, limit: int = 400):
+        calls.append((offset, limit))
+        return base.read(path=path, offset=offset, limit=limit)
+
+    events = JsonlEventStore(state_root / "events")
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=workspace, state_root=state_root, task_id="task")),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=tracked_read, bash=base.bash, edit=base.edit, write=base.write),
+        ptc_config=config.notebook_ptc.model_copy(update={"cross_epoch_read_reuse": True}),
+        event_store=events,
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    try:
+        first = await worker.execute_code("source = agent.fs.read('source.txt', 1, 3)")
+        lost = await worker.execute_code(
+            "agent.parallel([{'operation': 'shell.run', 'arguments': {'command': 'pwd'}}])"
+        )
+        second = await worker.execute_code("recovered = agent.fs.read('source.txt', 1, 3)")
+    finally:
+        worker.close()
+    assert first["status"] == "ok" and lost["status"] == "error" and second["status"] == "ok"
+    assert first["kernel"]["kernel_epoch"] != second["kernel"]["kernel_epoch"]
+    assert calls == [(1, 3), (1, 1)]
+    reads = [event.payload for event in events.read("task")
+             if event.kind == EventKind.CAPABILITY_COMPLETED and event.payload.get("operation") == "fs.read"]
+    assert reads[-1]["read_reuse"]["reused_lines"] == 3
+    assert reads[-1]["read_reuse"]["source_read_lines"] == 0
 
 
 @pytest.mark.asyncio
@@ -918,6 +1130,7 @@ async def test_successful_complete_ptc_shell_result_becomes_validation_evidence(
             "duration_ms": 12,
             "truncated": False,
             "omitted_bytes": 0,
+            "receipt_id": "a" * 64,
         }
 
     worker = build_coding_worker(
@@ -951,6 +1164,12 @@ async def test_successful_complete_ptc_shell_result_becomes_validation_evidence(
     assert len(observed) == 1
     assert observed[0].payload["command"] == "pytest -q"
     assert observed[0].payload["workspace_before"] == "stable"
+    completed = next(
+        event
+        for event in events.read("task")
+        if event.kind == EventKind.CAPABILITY_COMPLETED
+    )
+    assert completed.payload["receipt_id"] == "a" * 64
 
 
 @pytest.mark.asyncio
@@ -1439,6 +1658,65 @@ async def test_ptc_artifacts_are_task_scoped_reloadable_and_explicitly_publishab
 
 
 @pytest.mark.asyncio
+async def test_reserved_memory_command_request_cannot_invalidate_workspace_findings(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_root = tmp_path / "state"
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(state_root / "events")
+    base = create_adk_tools(workspace, state_root=state_root, task_scope="task")
+
+    def memory_command(command: str, **_: Any) -> dict[str, Any]:
+        assert command.startswith("memory ")
+        return {
+            "status": "ok",
+            "data": {"status": "ok"},
+            "effect": "none",
+            "ui_details": {"memory": True},
+        }
+
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=workspace, state_root=state_root, task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(
+            read=base.read,
+            bash=memory_command,
+            edit=base.edit,
+            write=base.write,
+        ),
+        ptc_config=config.notebook_ptc,
+        event_store=events,
+    )
+    assert worker.execute_code is not None
+    try:
+        result = await worker.execute_code(
+            "response = agent.shell.run('memory query --program working_set')\n"
+            "assert response['result_kind'] == 'managed'"
+        )
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert result["status"] == "ok"
+    memory_events = [
+        event for event in events.read("task")
+        if event.payload.get("operation") == "shell.run"
+    ]
+    assert [event.kind for event in memory_events] == [
+        EventKind.CAPABILITY_REQUESTED,
+        EventKind.CAPABILITY_COMPLETED,
+    ]
+    assert all(event.payload["discovery_kind"] == "memory" for event in memory_events)
+    assert all(event.payload["workspace_may_have_changed"] is False for event in memory_events)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("published", (False, True))
 async def test_artifact_publication_failure_retains_unknown_effect(tmp_path, monkeypatch, published):
     composition = _enabled_composition()
@@ -1833,3 +2111,40 @@ async def test_failed_cell_rolls_back_partial_namespace_mutation(tmp_path: Path)
 
     assert after_restart["model_text"] == "(9, 'agent.')"
     assert EventKind.REPL_STATE_RESTORED in [event.kind for event in events.read("task-2")]
+
+
+@pytest.mark.asyncio
+async def test_review_decision_guard_rejects_cell_before_worker_submission(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    state_root = tmp_path / "state"
+    events = JsonlEventStore(state_root / "events")
+    worker = build_coding_worker(
+        settings_from_composition(
+            composition,
+            RuntimeBindings(workspace=tmp_path, state_root=state_root, task_id="task"),
+        ),
+        cast(BaseLlm, "test-model"),
+        ptc_config=config.notebook_ptc,
+        event_store=events,
+    )
+    assert worker.execute_code is not None and worker.close is not None
+    tool_state = {"task_id": "task", "ptc_work_batch_id": "2", "review_decision_pending": True}
+    try:
+        result = await worker.execute_code(
+            "retained = 9",
+            tool_context=SimpleNamespace(
+                state=tool_state, invocation_id="inv", function_call_id="call"
+            ),
+        )
+        callback = worker.agent.before_model_callback
+        request = LlmRequest(model="test-model", contents=[])
+        assert await callback(SimpleNamespace(state=tool_state), request) is None
+        assert tool_state["review_decision_rejections"] == 1
+        tool_state["review_decision_rejections"] = 2
+        forced = await callback(SimpleNamespace(state=tool_state), request)
+        assert forced is not None and "status" in forced.content.parts[0].text
+    finally:
+        worker.close()
+    assert result["status"] == "blocked"
+    assert [event.kind for event in events.read("task")] == [EventKind.TOOL_CALL_REJECTED]

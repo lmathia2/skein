@@ -67,10 +67,11 @@ def test_emission_audit_separates_fetched_selected_and_provider_content():
         {"id": "artifact", "sequence": 4, "route": "artifact_output", "text": "unused_buffer = 723"},
         {"id": "read", "sequence": 5, "route": "direct_read", "text": "    10 | parser_limit = 431"},
         {"id": "provider", "sequence": 6, "route": "provider_request", "text": body + body},
+        {"id": "ptc_line", "sequence": 7, "route": "ptc_output", "text": "    10: parser_limit = 431"},
     ]
     result = audit_emissions(snapshots, records, cut_sequence=2)
-    assert result["counts"]["post_cut_emitted_duplicate_lines"] == 2
-    assert result["counts"]["post_cut_emitted_mapped_lines"] == 3
+    assert result["counts"]["post_cut_emitted_duplicate_lines"] == 3
+    assert result["counts"]["post_cut_emitted_mapped_lines"] == 4
     assert result["counts"]["provider_transmitted_mapped_lines"] == 4
     assert result["counts"]["provider_within_request_duplicate_lines"] == 2
     assert audit_emissions(snapshots, records, cut_sequence=2) == result

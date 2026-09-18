@@ -134,6 +134,7 @@ class WorkflowConfig(FrozenModel):
     """Only executable loop settings; topology belongs to the harness factory."""
 
     max_iterations: int = Field(default=40, ge=1, le=1_000)
+    max_verification_attempts: int = Field(default=6, ge=1, le=40)
     progress: ProgressConfig = ProgressConfig()
 
 
@@ -169,6 +170,10 @@ class ToolSurfaceConfig(FrozenModel):
 
 class NotebookPtcConfig(FrozenModel):
     enabled: bool = False
+    cross_epoch_read_reuse: bool = False  # Controlled current-hash-checked catalog ablation.
+    recover_committed_values: bool = False  # Controlled historical plain-value checkpoint ablation.
+    ground_committed_bindings: bool = False  # Controlled source-SHA binding handoff ablation.
+    eager_committed_restore: bool = False  # Controlled post-failure recovery acknowledgement ablation.
     emit_state_updates: bool = False  # Opt-in representation ablation; handoffs retain state authority.
     serialization: Literal["native", "notebook", "jsonl"] = "native"
     state: Literal["native", "none", "replay_safe", "snapshot"] = "native"
@@ -177,6 +182,7 @@ class NotebookPtcConfig(FrozenModel):
     max_timeout_seconds: int = Field(default=600, ge=1, le=3_600)
     max_output_bytes: int = Field(default=16_000, ge=1_024, le=1_000_000)
     snapshot_max_bytes: int = Field(default=1_000_000, ge=1_024, le=16_000_000)
+    review_cells_per_batch: int = Field(default=1, ge=1, le=16)
     no_progress_cells_per_batch: int = Field(default=24, ge=1, le=256)
     max_cells_per_batch: int = Field(default=48, ge=1, le=256)
     max_parallel_reads: int = Field(default=4, ge=1, le=16)
@@ -222,10 +228,16 @@ class NotebookPtcConfig(FrozenModel):
             )
         if self.continuity == "conversation" and not self.enabled:
             raise ValueError("conversation continuity requires notebook PTC")
+        if self.ground_committed_bindings and not self.recover_committed_values:
+            raise ValueError("grounded committed bindings require committed-value recovery")
+        if self.eager_committed_restore and not self.recover_committed_values:
+            raise ValueError("eager committed restoration requires committed-value recovery")
         if self.default_timeout_seconds > self.max_timeout_seconds:
             raise ValueError("default notebook PTC timeout cannot exceed its maximum")
         if self.no_progress_cells_per_batch > self.max_cells_per_batch:
             raise ValueError("no-progress cell limit cannot exceed the work-batch limit")
+        if self.review_cells_per_batch > self.max_cells_per_batch:
+            raise ValueError("review cell limit cannot exceed the work-batch limit")
         return self
 
 
@@ -293,6 +305,7 @@ class MemoryConfig(FrozenModel):
 
 class ContextConfig(FrozenModel):
     window_management: bool = False
+    delta_work_packets: bool = False  # Controlled live ablation; not promoted by default.
     continuity_representation: Literal["metadata", "described", "findings"] = "findings"
     reconstruction: Literal["handoff_tail", "fresh"] = "handoff_tail"
     compaction_timing: Literal["immediate", "phase_boundary"] = "immediate"
@@ -307,6 +320,7 @@ class ContextConfig(FrozenModel):
     ledger_tokens: int = Field(default=2_000, ge=200, le=16_000)
     manifest_tokens: int = Field(default=800, ge=100, le=8_000)
     compaction_tokens: int = Field(default=3_000, ge=0, le=64_000)
+    navigation_tokens: int | None = Field(default=None, ge=200, le=64_000)
     recent_event_tokens: int = Field(default=3_500, ge=0, le=64_000)
     conversation_tokens: int = Field(default=2_000, ge=0, le=16_000)
     steering_tokens: int = Field(default=1_000, ge=0, le=16_000)

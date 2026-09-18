@@ -30,7 +30,8 @@ _REUSABLE_COMMAND_PATTERN = re.compile(
     r"(?:^|[\s;&|])(?:python\s+-m\s+)?(?:pytest|unittest|vitest|jest)(?:\s|$)"
     r"|(?:^|[\s;&|])(?:go|cargo)\s+(?:test|check)(?:\s|$)"
     r"|(?:^|[\s;&|])(?:npm|pnpm|yarn)"
-    r"(?:\s+--?[\w-]+(?:[=\s]+[^\s;&|]+)?)*\s+(?:run\s+)?(?:test|check)(?:\s|$)"
+    r"(?:\s+--?[\w-]+(?:[=\s]+[^\s;&|]+)?)*\s+"
+    r"(?:run\s+(?:--workspace(?:=|\s+)[\w./@-]+\s+)?)?(?:test|check)(?:\s|$)"
     r"|(?:^|[\s;&|])(?:mvn|gradle|gradlew)(?:\s+[^;&|]+)?\s+test(?:\s|$)",
     re.IGNORECASE,
 )

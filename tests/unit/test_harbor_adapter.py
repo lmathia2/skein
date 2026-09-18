@@ -12,6 +12,7 @@ from harness.adapters.pier import (
     HarborRepositoryRuntime,
     HarborWorkspaceEnvironment,
     _AsyncBridge,
+    _package_workspace,
 )
 from harness.execution.environment import WorkspaceViolationError
 from harness.execution.sandbox import SandboxRequest
@@ -183,5 +184,32 @@ def test_harbor_runtime_keeps_files_commands_and_repository_in_task_environment(
 
         with pytest.raises(WorkspaceViolationError):
             await asyncio.to_thread(files.read_bytes, "../outside")
+
+    asyncio.run(exercise())
+
+
+def test_harbor_submission_packages_uncommitted_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=workspace, check=True)
+    (workspace / "app.py").write_text("value = 1\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=workspace, check=True)
+    subprocess.run(("git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                    "commit", "-qm", "initial"), cwd=workspace, check=True)
+
+    async def exercise() -> None:
+        environment = _Environment()
+        bridge = _AsyncBridge(asyncio.get_running_loop())
+        files = HarborWorkspaceEnvironment(environment, bridge, workspace.as_posix())
+        repository = await asyncio.to_thread(HarborRepositoryRuntime, environment, bridge, files)
+        base_revision = (await asyncio.to_thread(repository.manifest)).base_revision
+        fingerprint_before = await asyncio.to_thread(repository.fingerprint)
+        (workspace / "app.py").write_text("value = 2\n", encoding="utf-8")
+        assert await asyncio.to_thread(repository.fingerprint) != fingerprint_before
+        changed, committed = await _package_workspace(
+            environment, repository, workspace.as_posix(), base_revision)
+        assert committed and changed == ("app.py",)
+        assert subprocess.check_output(("git", "status", "--porcelain"), cwd=workspace) == b""
+        assert subprocess.check_output(("git", "show", "HEAD:app.py"), cwd=workspace) == b"value = 2\n"
 
     asyncio.run(exercise())

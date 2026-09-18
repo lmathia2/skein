@@ -111,6 +111,65 @@ def _read_reference(task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
             **evidence.model_dump(), "source_coverage": coverage}
 
 
+def _completed_source_versions(
+    events: list[HarnessEvent], task_id: str, source_sequence: int,
+) -> tuple[dict[str, str], ...]:
+    """Attest historical file versions from completed read receipts only."""
+    versions: dict[tuple[str, str], dict[str, str]] = {}
+    for event in events:
+        if (event.task_id != task_id or event.sequence > source_sequence
+                or event.kind != EventKind.CAPABILITY_COMPLETED
+                or event.payload.get("operation") != "fs.read"
+                or event.payload.get("status") != "ok"):
+            continue
+        reference = _read_reference(task_id, event.payload)
+        key = (reference["path"], reference["sha256"])
+        versions.setdefault(key, {
+            "path": reference["path"], "sha256": reference["sha256"],
+            "read_event_id": event.event_id,
+        })
+    return tuple(versions[key] for key in sorted(versions))
+
+
+def _committed_value_summaries(
+    values: dict[str, Any], manifest: tuple[dict[str, Any], ...], *,
+    source_versions: tuple[dict[str, str], ...] = (), grounded: bool = False,
+    max_bytes: int = 2400,
+) -> dict[str, Any]:
+    previous = {item.get("name"): item for item in manifest if isinstance(item, dict)}
+    by_sha: dict[str, list[dict[str, str]]] = {}
+    if grounded:
+        for source in source_versions:
+            by_sha.setdefault(source["sha256"], []).append(source)
+    candidates: list[tuple[tuple[int, int, str], dict[str, Any]]] = []
+    for name, value in sorted(values.items()):
+        shape = ({"lines": len(value.splitlines()), "characters": len(value)} if type(value) is str else
+                 {"keys": sorted(value)[:6], "items": len(value)} if type(value) is dict else
+                 {"items": len(value)} if type(value) is list else {})
+        description = str(previous.get(name, {}).get("description", ""))[:160]
+        entry = {"name": name, "type": type(value).__name__, "shape": shape,
+                 "description": description}
+        refs = by_sha.get(hashlib.sha256(value.encode()).hexdigest(), []) if type(value) is str else []
+        if refs:
+            entry["historical_source_refs"] = refs[:2]
+        if grounded:
+            size = len(canonical_json(value).encode())
+            priority = (0 if refs else 1 if type(value) is str and shape["lines"] >= 20
+                        else 2 if description else 3, -size, name)
+        else:
+            priority = (0, 0, name)
+        candidates.append((priority, entry))
+    entries: list[dict[str, Any]] = []
+    for _priority, entry in sorted(candidates, key=lambda item: item[0]):
+        if len(canonical_json([*entries, entry]).encode()) > max_bytes:
+            continue
+        entries.append(entry)
+    return {"program": "committed_value_summaries@2" if grounded else "committed_value_summaries@1",
+            "bindings": entries,
+            "omitted_count": len(values) - len(entries),
+            "scope": "Previously committed plain values; historical data, not current source freshness or completion evidence."}
+
+
 def _completed_attempt_reads(events: list[HarnessEvent], task_id: str, attempt_id: str) -> list[dict[str, Any]]:
     """Recover completed nested reads, never the failed cell's dirty bindings."""
     requests: dict[str, HarnessEvent] = {}
@@ -330,6 +389,7 @@ def build_notebook_session(
             "snapshot" if active_ptc_config.state == "snapshot" else "replay_safe"
         ),
         snapshot_max_bytes=active_ptc_config.snapshot_max_bytes,
+        capture_committed=active_ptc_config.recover_committed_values,
     )
     restored_kernel_epoch: str | None = None
     active_notebooks: dict[str, str] = {}
@@ -421,6 +481,10 @@ def build_notebook_session(
                     "search" if words[:1] in (["rg"], ["grep"], ["search"]) or words[:2] == ["git", "grep"]
                     else "memory" if words[:1] == ["memory"] else "unclassified_shell"
                 )
+                if common["discovery_kind"] == "memory":
+                    # Reserved memory commands run in-process and cannot mutate
+                    # the task workspace. Their request receipts must say so.
+                    common["workspace_may_have_changed"] = False
             active_event_store.append(
                 self.task_id,
                 EventKind.CAPABILITY_REQUESTED,
@@ -519,6 +583,13 @@ def build_notebook_session(
                 and not (common["operation"] == "shell.run" and (metadata.get("memory") is True or
                          str(metadata.get("virtual_operation", "")).startswith("search."))),
             }
+            receipt_id = result.get("receipt_id")
+            if common["operation"] == "shell.run" and isinstance(receipt_id, str) and re.fullmatch(
+                r"[0-9a-f]{64}", receipt_id
+            ):
+                # This is only an identity join. Memory independently validates
+                # the canonical receipt before using its workspace fingerprints.
+                payload["receipt_id"] = receipt_id
             if common["operation"] == "fs.read" and status == "ok":
                 data = result.get("data", {})
                 if isinstance(data, dict) and all(
@@ -549,7 +620,8 @@ def build_notebook_session(
             if "read_evidence" in payload and result_artifact_uri is not None:
                 result = {**result, "read_reference": _read_reference(self.task_id, payload)}
                 data = result.get("data", {})
-                key = (self.kernel_epoch, str(data.get("path", "")), str(data.get("sha256", "")))
+                scope = self.task_id if active_ptc_config.cross_epoch_read_reuse else self.kernel_epoch
+                key = (scope, str(data.get("path", "")), str(data.get("sha256", "")))
                 retained_reads.setdefault(key, []).append(result)
                 while sum(map(len, retained_reads.values())) > 64:
                     oldest = next(iter(retained_reads))
@@ -570,8 +642,9 @@ def build_notebook_session(
                 ).as_posix()
             except (OSError, ValueError):
                 catalog_path = path
-            if not any(epoch == self.kernel_epoch and saved_path == catalog_path
-                       for epoch, saved_path, _digest in retained_reads):
+            scope = self.task_id if active_ptc_config.cross_epoch_read_reuse else self.kernel_epoch
+            if not any(saved_scope == scope and saved_path == catalog_path
+                       for saved_scope, saved_path, _digest in retained_reads):
                 return active_tools.read(path=path, offset=offset, limit=limit)
             probe = active_tools.read(path=path, offset=1, limit=1)
             probe_data = probe.get("data", {}) if isinstance(probe, dict) else {}
@@ -580,7 +653,7 @@ def build_notebook_session(
                 for key, expected in (("path", str), ("sha256", str), ("total_lines", int))
             ):
                 return active_tools.read(path=path, offset=offset, limit=limit)
-            key = (self.kernel_epoch, probe_data["path"], probe_data["sha256"])
+            key = (scope, probe_data["path"], probe_data["sha256"])
             prior = retained_reads.get(key, [])
             if not prior:
                 return probe if offset == 1 and limit == 1 else active_tools.read(
@@ -632,6 +705,11 @@ def build_notebook_session(
 
             reused_lines = [line for line in range(start, end) if line in sources]
             reused_uris = sorted({sources[line] for line in reused_lines})
+            retained_reference = next((saved.get("read_reference") for saved in reversed(prior)
+                if isinstance(saved.get("data"), dict)
+                and saved["data"].get("offset") == start
+                and saved["data"].get("returned_lines") == end - start
+                and isinstance(saved.get("read_reference"), dict)), None) if not missing else None
             reuse = {
                 "reused_lines": len(reused_lines),
                 "source_read_lines": len(missing),
@@ -662,6 +740,8 @@ def build_notebook_session(
                 "ui_details": {"path": key[1], "total_lines": total, "read_reuse": reuse},
                 "read_reuse": reuse,
                 "effect": "observed",
+                **({"retained_read_reference": retained_reference}
+                   if retained_reference is not None else {}),
             }
 
         def _call(
@@ -1038,6 +1118,89 @@ def build_notebook_session(
                 return "changed"
             return "observed" if "observed" in self.effects else "none"
 
+    async def _restore_committed_checkpoint(
+        task_id: str, notebook_id: str, kernel_epoch: str, *, timing: str,
+    ) -> dict[str, Any] | None:
+        """Restore one attested successful-cell plain checkpoint, never failed-cell state."""
+        if not active_ptc_config.recover_committed_values or python_worker is None:
+            return None
+        checkpoint = next((event for event in reversed(notebook_events(task_id))
+                           if event.kind == EventKind.REPL_STATE_CHECKPOINTED), None)
+        if checkpoint is None or not checkpoint.payload.get("available"):
+            return None
+        identity = checkpoint.payload
+        source = next((event for event in notebook_events(task_id)
+                       if event.event_id == identity.get("source_event_id")), None)
+        if (checkpoint.task_id != task_id or identity.get("notebook_id") != notebook_id
+                or identity.get("grounded_bindings", False) != active_ptc_config.ground_committed_bindings
+                or source is None or source.kind != EventKind.REPL_CELL_COMPLETED
+                or source.sequence != identity.get("source_sequence")
+                or source.payload.get("cell_id") != identity.get("source_cell_id")
+                or source.sequence >= checkpoint.sequence):
+            raise ValueError("committed-value checkpoint identity mismatch")
+        digest = identity.get("checkpoint_sha256")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("committed-value checkpoint hash is invalid")
+        content = (settings.state_root / "ptc-committed" / "sha256" / digest).read_bytes()
+        if hashlib.sha256(content).hexdigest() != digest or len(content) != identity.get("bytes"):
+            raise ValueError("committed-value checkpoint content mismatch")
+        captured = json.loads(content)
+        if (not isinstance(captured, dict) or captured.get("schema") != "ptc-committed-plain-v1"
+                or captured.get("task_id") != task_id or captured.get("notebook_id") != notebook_id
+                or captured.get("source_event_id") != source.event_id
+                or captured.get("source_cell_id") != source.payload.get("cell_id")
+                or captured.get("source_sequence") != source.sequence
+                or not isinstance(captured.get("values"), dict)
+                or sorted(captured["values"]) != identity.get("selected_names")
+                or captured.get("omitted_names") != identity.get("omitted_names")):
+            raise ValueError("committed-value checkpoint captured history mismatch")
+        values = captured["values"]
+        source_versions = (_completed_source_versions(
+            notebook_events(task_id), task_id, source.sequence)
+            if active_ptc_config.ground_committed_bindings else ())
+        summaries = _committed_value_summaries(
+            values, tuple(source.payload.get("state", {}).get("manifest", [])),
+            source_versions=source_versions,
+            grounded=active_ptc_config.ground_committed_bindings)
+        if summaries != identity.get("binding_summaries"):
+            raise ValueError("committed-value checkpoint binding description mismatch")
+        if identity.get("binding_program_hash") != hashlib.sha256(
+            inspect.getsource(_committed_value_summaries).encode()).hexdigest():
+            raise ValueError("committed-value checkpoint binding program mismatch")
+        manifest = await run_managed_thread(python_worker.restore_plain, values, identity["source_cell_id"])
+        if (any(not isinstance(item.get("name"), str) for item in manifest)
+                or sorted(str(item["name"]) for item in manifest) != sorted(values)):
+            raise ValueError("worker restored an incomplete committed-value manifest")
+        by_name = {item["name"]: item for item in summaries["bindings"]}
+        restored_manifest = [
+            {**item, "description": by_name.get(item.get("name"), {}).get("description") or
+             canonical_json(by_name.get(item.get("name"), {}).get("shape", {})),
+             "historical_source_refs": by_name.get(item.get("name"), {}).get("historical_source_refs", []),
+             "freshness": "historical_checkpoint", "availability": "live_plain_historical"}
+            for item in manifest
+        ]
+        active_event_store.append(
+            task_id, EventKind.REPL_STATE_RESTORED,
+            {
+                "projection_notebook_id": notebook_id, "kernel_epoch": kernel_epoch,
+                "recovery_timing": timing,
+                "restored_cell_ids": [identity["source_cell_id"]],
+                "checkpoint_sha256": digest, "checkpoint_source_event_id": source.event_id,
+                "omitted_names": identity["omitted_names"], "restored_names": sorted(values),
+                "summary_omitted_names": sorted(set(values) - set(by_name)),
+                "state": {"manifest": restored_manifest, "count": len(values)},
+                "scope": "Previously committed plain values; historical, not source freshness or completion evidence.",
+            },
+            idempotency_key=f"repl-restore:{kernel_epoch}",
+        )
+        return {
+            "kernel_epoch": kernel_epoch, "recovery_timing": timing,
+            "bindings": summaries["bindings"], "restored_count": len(values),
+            "summary_omitted_count": summaries["omitted_count"],
+            "omitted_names": identity["omitted_names"],
+            "scope": "Historical plain values only; current source version and completion still require independent evidence.",
+        }
+
     async def _execute_code(
         code: str,
         timeout_seconds: int = active_ptc_config.default_timeout_seconds,
@@ -1078,40 +1241,40 @@ def build_notebook_session(
         work_batch_id = str(tool_context.state.get("ptc_work_batch_id", "")) if tool_context else ""
         kernel_epoch = await asyncio.to_thread(lambda: worker.kernel_epoch)
         if restored_kernel_epoch != kernel_epoch:
-            previous = reduce_notebook(notebook_events(task_id), notebook_id)
             restored_cells: list[str] = []
-            for prior_cell in previous.cells:
-                if not isinstance(prior_cell, NotebookCell):
-                    continue
-                if prior_cell.status != "completed" or prior_cell.replay_policy != "safe":
-                    continue
-                restored = await run_managed_thread(
-                    worker.execute,
-                    prior_cell.source,
-                    _RestoreBroker(),
-                    min(timeout_seconds, active_ptc_config.default_timeout_seconds),
-                    cell_id=prior_cell.cell_id,
-                    replay_policy=prior_cell.replay_policy,
-                )
-                if restored.status != "ok":
-                    return {
-                        "status": "blocked",
-                        "model_text": "Could not restore a replay-safe notebook cell",
-                        "cell_id": prior_cell.cell_id,
-                        "error_type": restored.error_type,
-                    }
-                restored_cells.append(prior_cell.cell_id)
-            if restored_cells:
-                active_event_store.append(
-                    task_id,
-                    EventKind.REPL_STATE_RESTORED,
-                    {
-                        "projection_notebook_id": notebook_id,
-                        "kernel_epoch": kernel_epoch,
-                        "restored_cell_ids": restored_cells,
-                    },
-                    idempotency_key=f"repl-restore:{kernel_epoch}",
-                )
+            recovery = await _restore_committed_checkpoint(
+                task_id, notebook_id, kernel_epoch, timing="before_cell")
+            if recovery is None:
+                previous = reduce_notebook(notebook_events(task_id), notebook_id)
+                for prior_cell in previous.cells:
+                    if not isinstance(prior_cell, NotebookCell):
+                        continue
+                    if prior_cell.status != "completed" or prior_cell.replay_policy != "safe":
+                        continue
+                    restored = await run_managed_thread(
+                        worker.execute,
+                        prior_cell.source,
+                        _RestoreBroker(),
+                        min(timeout_seconds, active_ptc_config.default_timeout_seconds),
+                        cell_id=prior_cell.cell_id,
+                        replay_policy=prior_cell.replay_policy,
+                    )
+                    if restored.status != "ok":
+                        return {
+                            "status": "blocked",
+                            "model_text": "Could not restore a replay-safe notebook cell",
+                            "cell_id": prior_cell.cell_id,
+                            "error_type": restored.error_type,
+                        }
+                    restored_cells.append(prior_cell.cell_id)
+                if restored_cells:
+                    active_event_store.append(
+                        task_id,
+                        EventKind.REPL_STATE_RESTORED,
+                        {"projection_notebook_id": notebook_id, "kernel_epoch": kernel_epoch,
+                         "restored_cell_ids": restored_cells},
+                        idempotency_key=f"repl-restore:{kernel_epoch}",
+                    )
             restored_kernel_epoch = kernel_epoch
         previous_attempt = next(
             (
@@ -1213,6 +1376,8 @@ def build_notebook_session(
             cell_id=cell_id,
             replay_policy=replay_policy,
         )
+        if active_ptc_config.recover_committed_values and result.status == "ok" and result.checkpoint_values is None:
+            raise ValueError("successful worker cell omitted its committed plain-value checkpoint")
         state_preserved = result.state_preserved or result.failure_stage in {
             "parse",
             "source_validation",
@@ -1284,6 +1449,7 @@ def build_notebook_session(
                 "count": result.state_count,
                 "delta": list(result.state_delta),
                 "manifest": redactor.redact(list(result.state_manifest)),
+                "retained_read_uses": list(result.retained_read_uses),
             },
         }
         if display_data is not None:
@@ -1332,14 +1498,72 @@ def build_notebook_session(
                 "source": result.error_source,
                 "state_preserved": state_preserved,
             })
-        active_event_store.append(
+        terminal_event = active_event_store.append(
             task_id,
             terminal_kind,
             terminal_payload,
             idempotency_key=f"repl-cell:{attempt_id}:terminal",
         )
+        if active_ptc_config.recover_committed_values and result.status == "ok":
+            values = result.checkpoint_values or {}
+            omitted_names = list(result.checkpoint_omitted_names)
+            captured = {
+                "schema": "ptc-committed-plain-v1", "task_id": task_id,
+                "notebook_id": notebook_id, "source_event_id": terminal_event.event_id,
+                "source_cell_id": cell_id, "source_sequence": terminal_event.sequence,
+                "values": values, "omitted_names": omitted_names,
+            }
+            content = canonical_json(captured).encode()
+            available = effect != "unknown" and len(content) <= active_ptc_config.snapshot_max_bytes
+            checkpoint_payload: dict[str, Any] = {
+                "notebook_id": notebook_id, "source_event_id": terminal_event.event_id,
+                "source_cell_id": cell_id, "source_sequence": terminal_event.sequence,
+                "kernel_epoch": kernel_epoch, "available": available,
+                "grounded_bindings": active_ptc_config.ground_committed_bindings,
+                "selected_names": sorted(values) if available else [],
+                "omitted_names": omitted_names if available else sorted(set([*omitted_names, *values])),
+            }
+            if available:
+                uri = put_artifact(settings.state_root / "ptc-committed" / "sha256", content)
+                source_versions = (_completed_source_versions(
+                    notebook_events(task_id), task_id, terminal_event.sequence)
+                    if active_ptc_config.ground_committed_bindings else ())
+                checkpoint_payload.update({
+                    "checkpoint_sha256": uri.removeprefix("artifact://sha256/"),
+                    "bytes": len(content),
+                    "binding_summaries": _committed_value_summaries(
+                        values, tuple(terminal_payload["state"]["manifest"]),
+                        source_versions=source_versions,
+                        grounded=active_ptc_config.ground_committed_bindings),
+                    "binding_program_hash": hashlib.sha256(
+                        inspect.getsource(_committed_value_summaries).encode()).hexdigest(),
+                })
+            else:
+                checkpoint_payload["reason"] = "unknown_effect" if effect == "unknown" else "checkpoint_budget"
+            active_event_store.append(
+                task_id, EventKind.REPL_STATE_CHECKPOINTED, checkpoint_payload,
+                idempotency_key=f"repl-checkpoint:{attempt_id}",
+            )
+        post_failure_recovery: dict[str, Any] | None = None
+        latest_committed_checkpoint = next((event for event in reversed(notebook_events(task_id))
+                                            if event.kind == EventKind.REPL_STATE_CHECKPOINTED), None)
+        if (active_ptc_config.eager_committed_restore and result.status == "error"
+                and not state_preserved and effect in {"none", "observed"}
+                and latest_committed_checkpoint is not None
+                and latest_committed_checkpoint.payload.get("available")):
+            new_epoch = await asyncio.to_thread(lambda: worker.kernel_epoch)
+            post_failure_recovery = await _restore_committed_checkpoint(
+                task_id, notebook_id, new_epoch, timing="after_failed_cell")
+            if post_failure_recovery is not None:
+                restored_kernel_epoch = new_epoch
         batch_key = (task_id, work_batch_id)
         batch_cells[batch_key] = batch_cells.get(batch_key, 0) + 1
+        if (
+            tool_context is not None
+            and tool_context.state.get("task_phase") == "review"
+            and batch_cells[batch_key] >= active_ptc_config.review_cells_per_batch
+        ):
+            tool_context.state["ptc_host_yield_pending"] = True
         if effect == "changed":
             batch_changed.add(batch_key)
             if tool_context is not None and tool_context.state.get("task_phase") in {"understand", "plan"}:
@@ -1388,11 +1612,23 @@ def build_notebook_session(
                 "Fix and resubmit the intended operation before using its result.\n" + visible
             )
         elif result.status != "ok" and not state_preserved:
-            visible = (
-                "Live bindings were discarded. Recover applicable completed read artifacts below; "
-                "they do not restore a failed calculation, prove current freshness, or reconcile unknown effects. "
-                "Do not replay effectful cells to rebuild variables.\n" + visible
-            )
+            if post_failure_recovery is not None:
+                visible = (
+                    "The failed cell's partial assignments were discarded, but previously committed plain "
+                    "bindings are already restored in the live worker before this response. Use the exact "
+                    "restored names below in your next cell instead of rereading a whole unchanged file. "
+                    "For a historical source ref, first read only offset=1 limit=1 and compare the current "
+                    "whole-file SHA; reacquire changed source. Restored values do not reconcile unknown effects "
+                    "or prove completion.\nRestored checkpoint: " + canonical_json(post_failure_recovery)
+                    + "\nOriginal error: " + visible
+                )
+            else:
+                visible = (
+                    "Live bindings were discarded. Recover applicable completed read artifacts below; "
+                    "they do not restore a failed calculation, prove current freshness, or reconcile unknown effects. "
+                    "Do not replay effectful cells to rebuild variables.\n" + visible
+                )
+        visible = redactor.redact_text(visible)
         bounded = bound_output(
             visible,
             max_chars=active_ptc_config.max_output_bytes,
@@ -1456,6 +1692,20 @@ def build_notebook_session(
         timeout_seconds: int = active_ptc_config.default_timeout_seconds,
         tool_context: ToolContext | None = None,
     ) -> dict[str, Any]:
+        if tool_context is not None and tool_context.state.get("review_decision_pending"):
+            tool_context.state["review_decision_rejections"] = int(
+                tool_context.state.get("review_decision_rejections", 0) or 0) + 1
+            active_event_store.append(
+                str(tool_context.state.get("task_id") or settings.task_id_override or "unscoped"),
+                EventKind.TOOL_CALL_REJECTED,
+                {"reason": "bounded_review_decision_requires_structured_response",
+                 "work_batch_id": str(tool_context.state.get("ptc_work_batch_id", "")),
+                 "effect": "none"},
+                idempotency_key=f"review-decision-tool-rejected:{tool_context.state.get('ptc_work_batch_id')}:{tool_context.state['review_decision_rejections']}",
+            )
+            return {"status": "blocked", "error": "The bounded review cell is already complete. "
+                    "Do not call another tool in this decision batch. Return status verify with "
+                    "completed claims, or status continue with the concrete defect and next targeted correction."}
         result = await _execute_code(code, timeout_seconds, tool_context)
         compact = compact_tool_result(
             result,
@@ -1513,6 +1763,18 @@ def build_notebook_session(
     async def before_model(callback_context: CallbackContext) -> LlmResponse | None:
         if callback_context is not None:
             state = callback_context.state
+            if (state.get("review_decision_pending") and
+                    int(state.get("review_decision_rejections", 0) or 0) > 1):
+                structured = {"status": "blocked", "message": "", "progress": [],
+                              "next_action": "Bounded review decision was not supplied.",
+                              "decisions": [],
+                              "questions": ["The model attempted another tool after its bounded review cell; "
+                              "a fresh structured verify/continue/block decision is required."],
+                              "discovered_constraints": [], "files_in_focus": [],
+                              "completion_claims": []}
+                return LlmResponse(content=types.Content(role="model", parts=[
+                    types.Part.from_text(text=json.dumps(structured))]),
+                    turn_complete=True, custom_metadata={"skein_work_batch_yield": True})
             task_id = str(state.get("task_id") or settings.task_id_override or "unscoped")
             work_batch_id = str(state.get("ptc_work_batch_id", ""))
             if work_batch_id:
@@ -1534,7 +1796,12 @@ def build_notebook_session(
                         batch_changed.add(batch_key)
                 count = batch_cells[batch_key]
                 reason = None
-                if count >= active_ptc_config.max_cells_per_batch:
+                if (
+                    state.get("task_phase") == "review"
+                    and count >= active_ptc_config.review_cells_per_batch
+                ):
+                    reason = "review_cell_limit"
+                elif count >= active_ptc_config.max_cells_per_batch:
                     reason = "max_cells"
                 elif (
                     count >= active_ptc_config.no_progress_cells_per_batch
@@ -1542,11 +1809,13 @@ def build_notebook_session(
                 ):
                     reason = "no_workspace_change"
                 if reason is not None:
+                    state["ptc_host_yield_pending"] = False
                     payload = {
                         "work_batch_id": work_batch_id,
                         "cell_count": count,
                         "reason": reason,
                         "workspace_changed": batch_key in batch_changed,
+                        "task_phase": str(state.get("task_phase", "")),
                     }
                     active_event_store.append(
                         task_id,

@@ -45,6 +45,7 @@ CONTRACT_FIELDS = (
     "config",
     "max_output_tokens",
     "max_task_input_tokens",
+    "max_iterations",
     "attempts",
     "concurrency",
     "harbor_retries",
@@ -385,11 +386,11 @@ def run_command(
         "--agent-kwarg",
         f"config={args.config}",
         "--agent-kwarg",
-        "max_iterations=24",
+        f"max_iterations={args.max_iterations}",
         "--agent-kwarg",
         f"max_task_input_tokens={args.max_task_input_tokens}",
         "--agent-kwarg",
-        "wall_time_seconds=5400",
+        f"wall_time_seconds={task['expected_runtime_seconds']}",
         "--n-concurrent",
         "1",
         "--n-attempts",
@@ -410,6 +411,8 @@ def run_command(
         command += ["--agent-kwarg", f"max_output_tokens={args.max_output_tokens}"]
     if args.provider == "openrouter":
         command += ["--agent-kwarg", f"api_key_env={args.api_key_env}"]
+    if task.get("benchmark") == "deep_swe":
+        command += ["--agent-kwarg", "commit_workspace=true"]
     return command
 
 
@@ -577,8 +580,14 @@ def main() -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--task-id", action="append", default=[])
     parser.add_argument("--timeout-seconds", type=int)
+    parser.add_argument("--max-iterations", type=int, default=1_000)
     parser.add_argument("--max-output-tokens", type=int, default=16_384)
-    parser.add_argument("--max-task-input-tokens", type=int, default=2_000_000)
+    parser.add_argument(
+        "--max-task-input-tokens",
+        type=int,
+        default=1_000_000_000,
+        help="cumulative Skein input ceiling; the default is effectively disabled",
+    )
     parser.add_argument(
         "--provider-defaults",
         action="store_true",
@@ -598,6 +607,8 @@ def main() -> int:
         parser.error("--limit must be positive")
     if args.timeout_seconds is not None and args.timeout_seconds < 1:
         parser.error("--timeout-seconds must be positive")
+    if not 1 <= args.max_iterations <= 1_000:
+        parser.error("--max-iterations must be between 1 and 1000")
     if args.provider_defaults or args.reasoning == "provider-default":
         args.reasoning = None
     if args.provider_defaults:
@@ -640,6 +651,7 @@ def main() -> int:
                     "reasoning": args.reasoning,
                     "max_output_tokens": args.max_output_tokens,
                     "max_task_input_tokens": args.max_task_input_tokens,
+                    "max_iterations": args.max_iterations,
                 }
             )
         )
@@ -679,6 +691,8 @@ def main() -> int:
         "reasoning": args.reasoning,
         "config": args.config,
         "max_output_tokens": args.max_output_tokens,
+        "max_task_input_tokens": args.max_task_input_tokens,
+        "max_iterations": args.max_iterations,
         "attempts": attempts,
         "retries": args.retries,
         "concurrency": args.concurrency,

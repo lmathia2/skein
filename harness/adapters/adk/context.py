@@ -146,6 +146,33 @@ def _evidence_manifest(events: list[Any], modified_paths: list[str], focus: tupl
     }
 
 
+def _captured_read_index(manifest: dict[str, Any], *, max_bytes: int = 3200) -> dict[str, Any] | None:
+    """Keep exact source-version coverage discoverable when detailed recipes do not fit."""
+    captures = [item for item in manifest.get("reads_newest_first", [])
+                if item.get("recovery_kind") == "historical_result_envelope"
+                and isinstance(item.get("artifact_uri"), str)
+                and int(item.get("returned_lines", 0)) > 0]
+    captures.sort(key=lambda item: (not bool(item.get("source_coverage", {}).get("whole_file")),
+                                    item.get("path", ""), item.get("offset", 0)))
+    index: dict[str, Any] = {
+        "program": "captured_read_index@1",
+        "scope": "Same-task historical source ranges, not current freshness or live bindings. "
+                 "Match the current SHA before reuse; load the addressed artifact or let PTC's "
+                 "read catalog reuse covered lines. Acquire missing or changed ranges.",
+        "captures": [], "omitted_count": manifest.get("omitted_reads", 0),
+    }
+    for item in captures:
+        entry = {"path": item["path"], "sha256": item["sha256"],
+                 "offset": item["offset"], "returned_lines": item["returned_lines"],
+                 "artifact_uri": item["artifact_uri"]}
+        proposed = {**index, "captures": [*index["captures"], entry]}
+        if len(canonical_json(proposed).encode()) > max_bytes:
+            index["omitted_count"] += 1
+            continue
+        index = proposed
+    return index if index["captures"] else None
+
+
 def _project_advisory(advisory: dict[str, Any]) -> dict[str, Any]:
     """Factor exact repeated finding context/dependencies in this prompt only."""
     entries = advisory["entries"]
@@ -225,6 +252,8 @@ def continuation_details(
     committed = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED]
     if committed:
         observations = [event for event in events if event.kind == EventKind.REPL_CELL_COMPLETED or
+                        (event.kind == EventKind.REPL_STATE_RESTORED and
+                         event.payload.get("state", {}).get("manifest")) or
                         (event.kind == EventKind.REPL_CELL_FAILED and event.payload.get("exception", {}).get("state_preserved")
                          and event.payload.get("exception", {}).get("stage") not in {"parse", "source_validation"})]
         last = observations[-1]
@@ -232,13 +261,15 @@ def continuation_details(
         unknown_failure = next((event for event in reversed(events)
                                 if event.kind in {EventKind.REPL_CELL_FAILED, EventKind.REPL_CELL_TIMEOUT}
                                 and event.payload.get("effect") == "unknown"), None)
+        unresolved = details.get("unresolved_effects", {})
+        has_unresolved = bool(unresolved.get("count", 0)) if isinstance(unresolved, dict) else bool(unresolved)
         details["notebook"] = {
             "last_committed_kernel_epoch": committed[-1].payload.get("kernel_epoch"),
             "observation_kernel_epoch": last.payload.get("kernel_epoch"),
             "observation_cell_id": last.payload.get("cell_id"),
             "state": last.payload.get("state", {}),
             "availability": "effect_reconciliation_required"
-            if unknown_failure and unknown_failure.sequence > last.sequence
+            if (has_unresolved or (unknown_failure and unknown_failure.sequence > last.sequence))
             else "live" if kernel.get("live") and kernel.get("kernel_epoch") ==
             last.payload.get("kernel_epoch") else "restart_pending_safe_restore",
         }
@@ -247,10 +278,54 @@ def continuation_details(
     return details
 
 
+def checkpoint_request(
+    task: TaskLedger, events: list[Any], details: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Request one learned-state refresh after a meaningful completed boundary."""
+    if task.status != "active" or task.phase.value not in {"plan", "implement"}:
+        return None
+    latest_note = max(
+        (event.sequence for event in events if event.kind == "memory.note"), default=0
+    )
+    boundaries: list[tuple[int, str, str]] = []
+    for event in events:
+        if event.sequence <= latest_note:
+            continue
+        if event.kind == EventKind.VERIFICATION_COMPLETED and not event.payload.get(
+            "report", {}
+        ).get("passed", False):
+            boundaries.append((event.sequence, "verification_failed", event.event_id))
+            continue
+        phase = (
+            event.payload.get("set_fields", {}).get("phase")
+            if event.kind == EventKind.LEDGER_PATCHED
+            else None
+        )
+        if phase in {"plan", "implement"}:
+            boundaries.append((event.sequence, f"phase_entered:{phase}", event.event_id))
+    if not boundaries:
+        return None
+    sequence, reason, event_id = max(boundaries)
+    return {
+        "program": "learned_checkpoint_request@2",
+        "reason": reason,
+        "source_event_id": event_id,
+        "source_sequence": sequence,
+        "current_phase": task.phase.value,
+        "current_note_version": int(details.get("note", {}).get("version", 0)),
+        "instruction": (
+            "Before more broad exploration, checkpoint only new learned state: settled evidence, "
+            "the chosen decision, rejected approaches with their observed result, unresolved gaps, "
+            "and one next action. Cite completed evidence for observations; update existing finding "
+            "IDs instead of duplicating them. Then reuse applicable findings and live read handles."
+        ),
+    }
+
+
 def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
     """Preserve control metadata and whole advisory entries, never JSON fragments."""
     critical = {key: details[key] for key in (
-        "history_boundary", "kernel", "unresolved_effects", "retrieval", "note_stale", "navigation"
+        "history_boundary", "kernel", "unresolved_effects", "retrieval", "note_stale", "navigation",
     ) if key in details}
     notebook = details.get("notebook", {})
     if notebook:
@@ -261,7 +336,17 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
             "program", "version", "program_hash", "execution_hash", "watermark", "content_hash", "status"
         ) if key in working}
     candidates: list[tuple[str, Any]] = []
+    if details.get("checkpoint_request"):
+        candidates.append(("checkpoint_request", details["checkpoint_request"]))
+    if details.get("committed_values"):
+        candidates.append(("committed_values", details["committed_values"]))
     manifest = details.get("evidence_manifest", {})
+    captured_index = (_captured_read_index(manifest)
+                      if details.get("navigation", {}).get("program") in
+                      {"work_batch_navigation@9", "work_batch_navigation@10"}
+                      else None)
+    if captured_index is not None:
+        candidates.append(("captured_read_index", captured_index))
     notebook = details.get("notebook", {})
     binding_candidates: list[dict[str, Any]] = []
     duplicate_aliases = 0
@@ -370,6 +455,64 @@ def render_handoff(details: dict[str, Any], *, max_tokens: int) -> str:
             if estimate_tokens(serialized(proposed)) <= max_tokens:
                 advisory = proposed
     return serialized(advisory)
+
+
+def navigation_update(full: str, previous_full: str, *, max_tokens: int) -> str:
+    """Send only changed semantic continuation data; retain full snapshots in trace."""
+    marker = "\nAdvisory memory (not execution authority):\n"
+    def unpack(value: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        required, separator, advisory = value.partition(marker)
+        if not separator or not required.startswith("Required continuation metadata:\n"):
+            raise ValueError("invalid navigation snapshot")
+        return json.loads(required.removeprefix("Required continuation metadata:\n")), json.loads(advisory)
+
+    old_required, old_advisory = unpack(previous_full)
+    new_required, new_advisory = unpack(full)
+    for required in (old_required, new_required):
+        required.pop("history_boundary", None)
+        navigation = required.pop("navigation", None)
+        if isinstance(navigation, dict):
+            required["navigation_scope"] = navigation.get("scope")
+        notebook = required.get("notebook")
+        if isinstance(notebook, dict):
+            notebook.pop("observation_cell_id", None)
+        working = required.get("working_set")
+        if isinstance(working, dict):
+            working.pop("watermark", None)
+    required_changes = {key: new_required.get(key) for key in sorted(old_required.keys() | new_required.keys())
+                        if old_required.get(key, object()) != new_required.get(key, object())}
+    old_index = next((item["value"] for item in old_advisory.get("entries", [])
+                      if item.get("kind") == "captured_read_index"), None)
+    new_index = next((item["value"] for item in new_advisory.get("entries", [])
+                      if item.get("kind") == "captured_read_index"), None)
+    index_update = None
+    if isinstance(old_index, dict) and isinstance(new_index, dict):
+        old_captures = {canonical_json(item): item for item in old_index.get("captures", [])}
+        new_captures = {canonical_json(item): item for item in new_index.get("captures", [])}
+        added_captures = [item for key, item in new_captures.items() if key not in old_captures]
+        removed_captures = [item for key, item in old_captures.items() if key not in new_captures]
+        if added_captures or removed_captures or old_index.get("omitted_count") != new_index.get("omitted_count"):
+            index_update = {"program": "captured_read_index_update@1",
+                            "added_captures": added_captures, "removed_captures": removed_captures,
+                            "omitted_count": new_index.get("omitted_count")}
+    exclude_index = isinstance(old_index, dict) and isinstance(new_index, dict)
+    old_entries = {canonical_json(item): item for item in old_advisory.get("entries", [])
+                   if not (exclude_index and item.get("kind") == "captured_read_index")}
+    new_entries = {canonical_json(item): item for item in new_advisory.get("entries", [])
+                   if not (exclude_index and item.get("kind") == "captured_read_index")}
+    added = [item for key, item in new_entries.items() if key not in old_entries]
+    removed = [item for key, item in old_entries.items() if key not in new_entries]
+    advisory_changes = {key: new_advisory.get(key) for key in sorted(old_advisory.keys() | new_advisory.keys())
+                        if key != "entries" and old_advisory.get(key, object()) != new_advisory.get(key, object())}
+    delta = canonical_json({"program": "work_batch_navigation_update@1",
+                            "scope": "Apply these changes to the earlier navigation snapshot; omitted entries remain available only as historical snapshots.",
+                            "required_updates": required_changes,
+                            "advisory_updates": advisory_changes,
+                            "captured_read_index_update": index_update,
+                            "added_entries": added, "removed_entries": removed})
+    if estimate_tokens(delta) > max_tokens or len(delta.encode()) >= len(full.encode()):
+        return full
+    return delta
 
 
 def _unconsumed_cut_limit(contents: list[types.Content], protected_from: int | None) -> int:
@@ -617,11 +760,12 @@ class ContextWindowPlugin(BasePlugin):
         if task.iteration == 0:
             return ""
         key = f"evidence-navigation:{invocation}:{task.iteration + 1}"
+        navigation_tokens = self.config.navigation_tokens or self.config.compaction_tokens
         parameters = {"task_id": task.task_id, "invocation_id": invocation,
                       "work_batch_id": str(task.iteration + 1), "phase": task.phase.value,
                       "representation": self.config.continuity_representation,
                       "focus_paths": list(dict.fromkeys([*task.files_read[-12:], *task.files_modified[-12:]])),
-                      "max_tokens": self.config.compaction_tokens,
+                      "max_tokens": navigation_tokens,
                       "task_hash": hashlib.sha256(canonical_json(task.model_dump(mode="json")).encode()).hexdigest()}
         events = self.events.read(task.task_id)
         previous = next((event for event in events if event.idempotency_key == key), None)
@@ -629,7 +773,9 @@ class ContextWindowPlugin(BasePlugin):
             payload = previous.payload
             content = payload.get("content")
             if (previous.kind != EventKind.EVIDENCE_NAVIGATION_CREATED or payload.get("parameters") != parameters
-                    or not isinstance(content, str) or hashlib.sha256(content.encode()).hexdigest() != payload.get("content_hash")):
+                    or not isinstance(content, str) or hashlib.sha256(content.encode()).hexdigest() != payload.get("content_hash")
+                    or (payload.get("full_content") is not None and
+                        hashlib.sha256(payload["full_content"].encode()).hexdigest() != payload.get("full_content_hash"))):
                 raise ValueError("work-batch navigation identity or captured content mismatch")
             return content
         # The memory query may publish its own receipt. Include that completed
@@ -637,23 +783,78 @@ class ContextWindowPlugin(BasePlugin):
         supplied = self.handoff(task)
         events = self.events.read(task.task_id)
         details = continuation_details(task, events, supplied, representation=self.config.continuity_representation)
+        committed = next((event for event in reversed(events)
+                          if event.kind == EventKind.REPL_STATE_CHECKPOINTED), None)
+        if (committed is not None and committed.payload.get("available")
+                and details.get("notebook", {}).get("availability") != "live"):
+            summaries = committed.payload.get("binding_summaries", {})
+            grounded = summaries.get("program") == "committed_value_summaries@2"
+            details["committed_values"] = {
+                "program": "committed_value_handoff@2" if grounded else "committed_value_handoff@1",
+                "source_cell_id": committed.payload.get("source_cell_id"),
+                "source_event_id": committed.payload.get("source_event_id"),
+                "bindings": summaries.get("bindings", []),
+                "summary_omitted_count": summaries.get("omitted_count", 0),
+                "omitted_names": committed.payload.get("omitted_names", []),
+                "notice": (
+                    "These successful-cell plain values auto-restore on the next PTC cell. "
+                    "Use a listed binding by its exact name. For a historical_source_ref, "
+                    "read only path offset=1 limit=1 to obtain the current whole-file SHA; "
+                    "if it equals the ref SHA, use the retained full text instead of paging the file. "
+                    "If changed, reacquire changed source. Plans are drafts, not verification evidence. "
+                    "Unresolved effects still block completion."
+                    if grounded else
+                    "These completed plain values auto-restore on the next PTC cell. Refer to a restored binding by its exact name; do not page the same file merely to reconstruct it. Values and source captures are historical: verify current source SHA/ranges for freshness, and unresolved effects still block completion."
+                ),
+            }
         program_hash = hashlib.sha256((inspect.getsource(type(self).work_batch_handoff) +
                                       inspect.getsource(continuation_details) + inspect.getsource(render_handoff) +
+                                      inspect.getsource(navigation_update) +
+                                      inspect.getsource(_captured_read_index) +
+                                      inspect.getsource(checkpoint_request) +
                                       inspect.getsource(_project_advisory) + inspect.getsource(_evidence_manifest) +
                                       inspect.getsource(unresolved_execution) + inspect.getsource(project_live_binding) + _CUT_READ_RECIPE).encode()).hexdigest()
         details["navigation"] = {
-            "program": "work_batch_navigation@5", "program_hash": program_hash,
+            "program": "work_batch_navigation@10" if self.config.delta_work_packets and committed is not None else
+                       "work_batch_navigation@9" if self.config.delta_work_packets else
+                       "work_batch_navigation@7", "program_hash": program_hash,
             "parameters": parameters, "source_watermark": events[-1].sequence,
             "source_clock": "task_harness_event_sequence",
             "scope": "Historical snapshot at this host work-batch boundary, not a live heap or freshness guarantee. "
-                     "Use relevant completed bindings or addressed artifacts before fetching unchanged captured ranges again. "
+                     "Use applicable findings, completed bindings or addressed artifacts before fetching unchanged captured ranges again. "
                      "Acquire missing or changed ranges; reconcile unknown effects. Independent verification still governs completion.",
         }
+        if self.require_notes:
+            request = checkpoint_request(task, events, details)
+            if request is not None:
+                details["checkpoint_request"] = request
         details = self.redactor.redact(details)
-        content = render_handoff(details, max_tokens=self.config.compaction_tokens)
+        full_content = render_handoff(details, max_tokens=navigation_tokens)
+        last_navigation = next((event for event in reversed(events)
+                                if event.kind == EventKind.EVIDENCE_NAVIGATION_CREATED), None)
+        reset = (last_navigation is None or
+                 last_navigation.payload.get("parameters", {}).get("invocation_id") != invocation or
+                 any(event.kind == EventKind.COMPACTION_CREATED and event.sequence > last_navigation.sequence
+                     for event in events) or
+                 last_navigation.payload.get("inputs", {}).get("kernel", {}).get("kernel_epoch")
+                 != details.get("kernel", {}).get("kernel_epoch") or
+                 last_navigation.payload.get("inputs", {}).get("navigation", {}).get("program")
+                 != details["navigation"]["program"])
+        previous_full = (last_navigation.payload.get("full_content", last_navigation.payload.get("content"))
+                         if self.config.delta_work_packets and last_navigation is not None and not reset else None)
+        if previous_full is not None and last_navigation is not None and hashlib.sha256(previous_full.encode()).hexdigest() != (
+                last_navigation.payload.get("full_content_hash", last_navigation.payload.get("content_hash"))):
+            raise ValueError("previous navigation snapshot identity mismatch")
+        content = (navigation_update(full_content, previous_full, max_tokens=navigation_tokens)
+                   if previous_full is not None else full_content)
         self.events.append(task.task_id, EventKind.EVIDENCE_NAVIGATION_CREATED, {
             **details["navigation"], "inputs": details, "content": content,
             "content_hash": hashlib.sha256(content.encode()).hexdigest(),
+            "full_content": full_content,
+            "full_content_hash": hashlib.sha256(full_content.encode()).hexdigest(),
+            "exposure_kind": "patch" if content != full_content else "full",
+            "base_full_hash": hashlib.sha256(previous_full.encode()).hexdigest()
+            if previous_full is not None else None,
         }, idempotency_key=key)
         return content
 
@@ -963,7 +1164,7 @@ class ContextWindowPlugin(BasePlugin):
                  "note_stale": bool(details.get("note_stale")),
                  "checkpoint_requested": checkpoint_requested,
                  "history_watermark": events[-1].sequence,
-                 "handoff_program": "continuation@12",
+                 "handoff_program": "continuation@14",
                  "handoff_program_hash": hashlib.sha256((inspect.getsource(render_handoff) +
                                                           inspect.getsource(continuation_details) +
                                                           inspect.getsource(_project_advisory) +

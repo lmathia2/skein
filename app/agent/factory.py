@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import shlex
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
@@ -92,6 +93,18 @@ from .streaming import PublicReplies
 from .workflow import SkeinWorkflowDependencies, build_root_agent
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _compound_memory_call(command: str) -> bool:
+    """Recognize a virtual memory command hidden after a shell operator."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split, lexer.commenters = True, ""
+        tokens = list(lexer)
+    except ValueError:
+        return False
+    return any(token == "memory" and index > 0 and tokens[index - 1] in
+               {";", "&&", "||", "|", "&"} for index, token in enumerate(tokens))
 
 ExecutionRuntimeFactory = Callable[
     [HarnessSettings, SkeinConfig, Sequence[str]], ExecutionRuntime
@@ -353,6 +366,7 @@ class SkeinHarnessFactory:
             state_root=settings.state_root,
             sandbox=sandbox,
             environment=execution.files,
+            repository=execution.repository,
             search_mode=config.tools.search.backend,
             policy=policy,
             known_secrets=known_secrets,
@@ -468,6 +482,12 @@ class SkeinHarnessFactory:
                         "effect": result.get("effect"),
                         "truncated": status == "partial", "ui_details": {"memory": True},
                     }
+                if _compound_memory_call(command):
+                    return {"status": "error", "model_text": (
+                        "Memory commands are virtual and must be called alone through bash "
+                        "or agent.shell.run; do not prefix cd or combine them with shell commands. "
+                        "Nothing was executed; make a separate memory call."
+                    ), "effect": "none", "ui_details": {"memory": True}}
             return ordinary_bash(command, **kwargs)
 
         if config.memory.context_programs.mode == "active":
@@ -626,7 +646,9 @@ class SkeinHarnessFactory:
             progress_history_limit=config.workflow.progress.action_history_limit,
             progress_replan_threshold=config.workflow.progress.replan_after_no_progress,
             progress_human_threshold=config.workflow.progress.block_after_no_progress,
+            max_verification_attempts=config.workflow.max_verification_attempts,
             steering_batch_limit=config.steering.batch_limit,
+            delta_work_packets=config.context.delta_work_packets,
             steering_enabled=config.steering.enabled,
             steering_at_work_batch_boundary=("work_batch_boundary" in config.steering.safe_points),
             plugin_owns_handoff=plugin_owns_handoff,

@@ -62,6 +62,7 @@ harness:
       max_timeout_seconds: 600
       max_output_bytes: 16000
       max_capability_calls_per_cell: 256
+      review_cells_per_batch: 1
       no_progress_cells_per_batch: 24
       max_cells_per_batch: 48
     memory:

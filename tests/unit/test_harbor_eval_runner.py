@@ -49,11 +49,16 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
         "config": "harness/core/config/profiles/four-tool.yaml",
         "max_output_tokens": 16_384,
         "max_task_input_tokens": 200_000,
+        "max_iterations": 1_000,
         "api_key_env": "OPENROUTER_API_KEY",
     })()
 
     command = runner.run_command(
-        {}, args, 1, tmp_path / "job", tmp_path / "deep-swe-task"
+        {"expected_runtime_seconds": 10_800},
+        args,
+        1,
+        tmp_path / "job",
+        tmp_path / "deep-swe-task",
     )
 
     assert command[:5] == [
@@ -66,6 +71,8 @@ def test_runner_uses_the_same_pier_interface_as_mini_swe_agent(tmp_path: Path) -
     assert "harness.adapters.pier:SkeinPierAgent" in command
     assert command[command.index("--model") + 1] == "openai/gpt-5.5"
     assert "max_task_input_tokens=200000" in command
+    assert "max_iterations=1000" in command
+    assert "wall_time_seconds=10800" in command
     assert "--no-delete" in command
     assert str(ROOT) in runner.pier_environment({})["PYTHONPATH"].split(":")
 
@@ -79,13 +86,34 @@ def test_provider_defaults_omit_reasoning_and_output_limit(tmp_path: Path) -> No
         "config": "harness/core/config/profiles/four-tool.yaml",
         "max_output_tokens": None,
         "max_task_input_tokens": 200_000,
+        "max_iterations": 1_000,
         "api_key_env": "OPENROUTER_API_KEY",
     })()
 
-    command = runner.run_command({}, args, 1, tmp_path / "job", tmp_path / "task")
+    command = runner.run_command(
+        {"expected_runtime_seconds": 10_800},
+        args,
+        1,
+        tmp_path / "job",
+        tmp_path / "task",
+    )
 
     assert not any("reasoning=" in value for value in command)
     assert not any("max_output_tokens=" in value for value in command)
+
+
+def test_deepswe_tasks_enable_submission_commit_packaging(tmp_path: Path) -> None:
+    runner = load_runner()
+    args = type("Args", (), {
+        "model": "openai/gpt-5.5", "provider": "openrouter", "reasoning": None,
+        "config": "harness/core/config/profiles/four-tool.yaml", "max_output_tokens": None,
+        "max_task_input_tokens": 200_000, "max_iterations": 1_000,
+        "api_key_env": "OPENROUTER_API_KEY",
+    })()
+    command = runner.run_command(
+        {"benchmark": "deep_swe", "expected_runtime_seconds": 10_800}, args, 1,
+        tmp_path / "job", tmp_path / "task")
+    assert "commit_workspace=true" in command
 
 
 def test_plan_accepts_bounded_campaign_concurrency() -> None:

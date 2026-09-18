@@ -89,3 +89,113 @@ The separate deterministic forced-cut screen passed six lifecycle cases covering
 handoff, repeated epochs, refreshed findings, source-derived answers, and independent
 completion evidence. This qualifies the deterministic lifecycle only, not live learned-
 memory use or a default change.
+
+## Official-compatible limit follow-up — 2026-09-14
+
+Commit `29f5da4` changed the Pier campaign runner to use each frozen task's declared
+agent timeout, raised the practical workflow ceiling from 24 to 1,000 iterations, and
+raised the cumulative input ceiling from 2M to 1B tokens. The same six tasks were run
+once with Muse Spark 1.3/xhigh and concurrency six at
+`/Users/mathiasl/skein-eval-results/memory-official-compatible-6-20260914`.
+
+| Aggregate | Pre-catalog baseline | Automatic catalog | Official-compatible latest |
+| --- | ---: | ---: | ---: |
+| Official passes | 1/6 | 0/6 | 1/6 |
+| Model calls | 192 | 210 | 255 |
+| Input / uncached input | 9.79M / 513k | 10.88M / 526k | 16.08M / 638k |
+| Output / reasoning tokens | 205k / 157k | 192k / 137k | 216k / 150k |
+| Cost | $0.110735 | $0.111644 | $0.137773 |
+| Active wall | 1,931s | 1,876s | 2,351s |
+| Logical selected / source-read lines | 28,803 / 28,803 | 20,394 / 15,523 | 27,613 / 20,131 |
+| Catalog-reused lines | 0 | 4,871 | 7,482 |
+
+Wazero again passed the official verifier with a 15,532-byte committed patch. The
+other five produced empty collected patches; Koota ended on provider
+`max_output_tokens`, while four models declared themselves blocked. No task ended on
+the cumulative input budget. The catalog reused 7,482 selected lines across 61 reads,
+including 2,622 on Koota and 2,396 on Testem; Ofetch had no eligible repeated range in
+this trajectory.
+
+This run removes the task-input stop as a quality confound and restores 1/6, but does
+not improve quality over the pre-catalog 1/6 baseline. Relative to that baseline it
+uses 32.8% more calls, 64.3% more input, 24.4% more uncached input and cost, and 21.8%
+more active wall time. The 30.1% reduction in physically selected source lines and
+7,482 directly reused lines demonstrate catalog operation, not a causal aggregate
+reread improvement, because the model trajectories and stopping points differ.
+
+## Decision-guidance canary — 2026-09-14
+
+Commit `0d1460c` temporarily added automatic path/range descriptions and binding hints,
+front-loaded instructions to inspect/annotate retained reads, and strengthened the
+no-progress checkpoint toward edit/test/commit. The deterministic path passed 194
+focused tests. A single official-compatible Testem trial ran at
+`/Users/mathiasl/skein-eval-results/memory-decision-reuse-testem-canary-20260914`.
+
+| Testem | Previous latest | Decision guidance | Change |
+| --- | ---: | ---: | ---: |
+| Official reward | 0 | 0 | equal |
+| Model calls | 46 | 63 | +37.0% |
+| Input / uncached input | 3.34M / 135k | 4.67M / 119k | +39.6% / -11.4% |
+| Cost | $0.027222 | $0.027357 | +0.5% |
+| Active wall | 392s | 377s | -3.6% |
+| Logical selected / source-read lines | 7,855 / 5,459 | 1,557 / 989 | -80.2% / -81.9% |
+| Catalog-reused lines | 2,396 | 568 | trajectory differs |
+
+The model continued through two work batches rather than stopping after the first, but
+again returned `blocked`, produced no committed patch, and scored 0/90 feature tests
+with 489/489 regressions passing. It never called `agent.state.annotate`. The treatment
+therefore reduced source acquisition and uncached input but failed quality, total-call,
+and total-cost gates. The remaining five paid trials were not dispatched, and the
+default prompt/descriptor changes were reverted. Automatic broker-level catalog reuse
+remains enabled.
+
+## Call-control and submission follow-up — 2026-09-14
+
+The next implementation kept exact repeated reads on their original live-epoch handle,
+routed unsupported `blocked` results with changed work to verification, and enabled
+deterministic DeepSWE workspace commit packaging. A first matched Testem pair exposed a
+separate inner-loop problem and was stopped after its efficiency gate had already failed:
+Muse reached 122 model calls/$0.114864 and Luna reached 104/$0.439501 without finishing.
+The retained traces are at
+`/Users/mathiasl/skein-eval-results/memory-call-control-testem-{muse,luna}-20260914`.
+Luna nevertheless reused 4,317 selected lines across 72 reads while acquiring 5,714,
+showing that source reuse and repeated model actions are independent.
+
+The memory profile then reduced read-only and hard work-batch ceilings from 24/48 to
+12/24 cells, made a changed hard-limit yield request verification, and added a three-
+attempt verification budget. A scripted real-workflow test proves changing failed
+workspaces stop at that absolute limit. The first bounded Muse run stopped at 43 calls,
+$0.025975, and 406 seconds, and Harbor graded its packaged seven-file patch at 39/90
+feature tests and 489/489 regressions. It then exposed a reducer crash on late advisory
+criterion proposals; those proposals are now rejected without changing the frozen
+criterion contract. Preserve this diagnostic at
+`/Users/mathiasl/skein-eval-results/memory-bounded-control-testem-muse-20260914`.
+
+The fixed replacement at
+`/Users/mathiasl/skein-eval-results/memory-bounded-control-v2-testem-muse-20260914`
+terminated after three failed independent verifications and produced a graded patch:
+
+| Testem | Official-compatible baseline | Fixed bounded replacement |
+| --- | ---: | ---: |
+| Official reward | 0 | 0 |
+| Feature / regression tests | 0/90 / 489/489 | 86/90 / 489/489 |
+| Model calls | 46 | 96 |
+| Input / uncached input | 3.34M / 134,528 | 10.89M / 197,164 |
+| Cost | $0.027222 | $0.051553 |
+| Active wall | 390s | 1,074s |
+| Selected / newly read lines | 7,855 / 5,459 | 7,390 / 4,990 |
+| Catalog-reused lines | 2,396 | 2,400 |
+
+The final run demonstrates nonempty submission, bounded verification re-entry, completed-
+evidence gating, and 469 fewer newly selected source lines. It does not pass the binary
+quality or efficiency gates: the patch missed four feature tests, calls doubled, and
+three `npm run test` attempts dominated latency. The initial baseline verification had
+timed out, so the model's claim that two failures were pre-existing was not completed
+evidence; Skein correctly withheld completion. A partial Luna rerun reached one forced
+verification at 73 calls/$0.279520 and was stopped because the efficiency gate was already
+lost; retain it at
+`/Users/mathiasl/skein-eval-results/memory-bounded-control-testem-luna-20260914`.
+
+Do not expand to six tasks from these canaries. The next experiment must separately test
+targeted validation selection/caching and semantic progress control; reread suppression
+is operating, but it cannot by itself prevent broad edit/test loops.

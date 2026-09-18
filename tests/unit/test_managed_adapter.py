@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from harness.evidence.state import ToolReceiptStore
+from harness.evidence.state.recovery import unresolved_execution
+from harness.execution.environment.runtime import LocalRepositoryRuntime
 from harness.execution.repo import SearchPage
 from harness.execution.sandbox import MANAGED_COMMAND_ENVIRONMENT, SandboxRequest, SandboxResult
 from harness.execution.tools.adk_adapter import create_adk_tools, discover_known_secrets
@@ -25,6 +28,19 @@ class _RecordingSandbox:
             duration_ms=12,
             artifact_uri="file:///artifact.log",
         )
+
+
+class _FailedCheckSandbox(_RecordingSandbox):
+    def __init__(self, workspace: Path, *, mutate: bool = False) -> None:
+        super().__init__(workspace)
+        self.mutate = mutate
+
+    def execute(self, request: SandboxRequest) -> SandboxResult:
+        self.requests.append(request)
+        if self.mutate:
+            (self.workspace / "side-effect.txt").write_text("changed", encoding="utf-8")
+        return SandboxResult(status="error", exit_code=1, stdout="1 failed", stderr="",
+                             duration_ms=12)
 
 
 class _RecordingSearchBackend:
@@ -108,6 +124,57 @@ def test_shell_keeps_program_data_separate_from_rendered_output(tmp_path: Path) 
 
     assert result["model_text"] == "sandbox output"
     assert result["data"] == {"stdout": "sandbox output", "stderr": ""}
+
+
+@pytest.mark.parametrize("command", ["go test ./...", "npm run --workspace happy-dom test -- --run test/observer.test.ts"])
+def test_completed_failed_validation_is_known_effect_not_a_passing_check(tmp_path: Path, command: str) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    sandbox = _FailedCheckSandbox(workspace)
+    tools = create_adk_tools(workspace, state_root=tmp_path / "state", sandbox=sandbox)
+    first = tools.bash(command, task_scope="task", invocation_id="inv",
+                       operation_id="check-1")
+    repeated = tools.bash(command, task_scope="task", invocation_id="inv",
+                          operation_id="check-1")
+    assert first["status"] == "error" and first["exit_code"] == 1
+    assert first["effect"] == "observed" and repeated["replayed"] is True
+    assert len(sandbox.requests) == 1
+    receipts = ToolReceiptStore(tmp_path / "state" / "managed-tools.db").for_task("task")
+    assert receipts[0].status == "completed"
+    assert unresolved_execution([], receipts) == []
+
+
+@pytest.mark.parametrize("command", ["go test ./...", "npm run --workspace happy-dom test -- --run test/observer.test.ts"])
+def test_failed_validation_with_workspace_change_remains_unresolved(tmp_path: Path, command: str) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    sandbox = _FailedCheckSandbox(workspace, mutate=True)
+    tools = create_adk_tools(workspace, state_root=tmp_path / "state", sandbox=sandbox)
+    result = tools.bash(command, task_scope="task", invocation_id="inv",
+                        operation_id="check-1")
+    assert result["status"] == "error" and result.get("effect") != "observed"
+    receipts = ToolReceiptStore(tmp_path / "state" / "managed-tools.db").for_task("task")
+    assert receipts[0].status == "failed"
+    assert unresolved_execution([], receipts)
+
+
+@pytest.mark.parametrize("mutate", [False, True])
+def test_receipt_fingerprints_execution_repository_not_local_shadow(tmp_path: Path, mutate: bool) -> None:
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    remote = tmp_path / "remote"
+    remote.mkdir()
+    (remote / "source.py").write_text("print('source')\n", encoding="utf-8")
+    tools = create_adk_tools(
+        shadow, state_root=tmp_path / "state", sandbox=_FailedCheckSandbox(remote, mutate=mutate),
+        repository=LocalRepositoryRuntime(remote),
+    )
+    result = tools.bash("go test ./...", task_scope="task", invocation_id="inv", operation_id="check")
+    receipt = ToolReceiptStore(tmp_path / "state" / "managed-tools.db").for_task("task")[0]
+    assert receipt.workspace_before != hashlib.sha256(b"").hexdigest()
+    assert (receipt.workspace_before == receipt.workspace_after) is not mutate
+    assert (result.get("effect") == "observed") is not mutate
+    assert bool(unresolved_execution([], [receipt])) is mutate
 
 
 def test_exact_write_replay_uses_receipt_without_repeating_side_effect(

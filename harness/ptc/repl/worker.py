@@ -14,6 +14,7 @@ import hashlib
 import importlib
 import io
 import json
+import math
 import multiprocessing
 import pickle
 import platform
@@ -90,7 +91,10 @@ class PythonExecutionResult:
     state_count: int = 0
     state_delta: tuple[str, ...] = ()
     state_manifest: tuple[dict[str, Any], ...] = ()
+    retained_read_uses: tuple[str, ...] = ()
     state_preserved: bool = False
+    checkpoint_values: dict[str, Any] | None = None
+    checkpoint_omitted_names: tuple[str, ...] = ()
 
 
 class _BoundedText(io.TextIOBase):
@@ -349,8 +353,10 @@ _AGENT_RESULTS: dict[str, dict[str, object]] = {
         "use": "put the returned URI in a source-dependent finding's evidence_refs",
         "unavailable": "raises KeyError after worker loss, eviction, or in-place mutation",
     },
-    "fs.write": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
-    "fs.edit": {"status": "ok|error|blocked", "changed_paths": "list[str]"},
+    "fs.write": {"status": "ok|error|blocked", "data": {"path": "str", "sha256": "broker-attested after-SHA256"},
+                 "content_hashes": "{path: same after-SHA256}; use result['data']['sha256'] for next expected_sha256"},
+    "fs.edit": {"status": "ok|error|blocked", "data": {"path": "str", "sha256": "broker-attested after-SHA256"},
+                "content_hashes": "{path: same after-SHA256}; use result['data']['sha256'] for next expected_sha256"},
     "artifacts.load": {
         "status": "ok|error|blocked",
         "data": {"uri": "str", "encoding": "utf-8|base64",
@@ -462,6 +468,49 @@ def _snapshot_value(value: Any, seen: set[int], depth: int = 0) -> bool:
     return valid
 
 
+def _checkpoint_value(value: Any, seen: set[int], depth: int = 0) -> bool:
+    """Only exact JSON-safe plain data may cross a durable worker checkpoint."""
+    if type(value) in {type(None), bool, int, str}:
+        return True
+    if type(value) is float:
+        return math.isfinite(value)
+    if depth >= 20 or type(value) not in {list, dict}:
+        return False
+    identity = id(value)
+    if identity in seen:
+        return False
+    seen.add(identity)
+    valid = (all(type(key) is str and _checkpoint_value(item, seen, depth + 1)
+                 for key, item in value.items()) if type(value) is dict else
+             all(_checkpoint_value(item, seen, depth + 1) for item in value))
+    seen.remove(identity)
+    return valid
+
+
+def _plain_checkpoint(namespace: Mapping[str, Any], max_bytes: int) -> tuple[dict[str, Any], tuple[str, ...]]:
+    selected: dict[str, Any] = {}
+    omitted: list[str] = []
+    for name in sorted(namespace):
+        if name.startswith("__") or name in _RESERVED_NAMES:
+            continue
+        value = namespace[name]
+        if not _checkpoint_value(value, set()):
+            omitted.append(name)
+            continue
+        # ponytail: candidate serialization is O(names * snapshot size); upgrade only if measured hot.
+        try:
+            candidate = json.dumps({**selected, name: value}, sort_keys=True, separators=(",", ":"),
+                                   ensure_ascii=False, allow_nan=False).encode()
+        except (TypeError, ValueError, OverflowError):
+            omitted.append(name)
+            continue
+        if len(candidate) > max_bytes:
+            omitted.append(name)
+        else:
+            selected[name] = value
+    return selected, tuple(omitted)
+
+
 def _snapshot_namespace(namespace: Mapping[str, Any], max_bytes: int) -> bytes:
     selected: dict[str, Any] = {}
     for name in sorted(namespace):
@@ -566,15 +615,22 @@ class _StateProxy:
         self._read_descriptions: dict[str, str] = {}
         self._annotations: dict[tuple[str, tuple[str | int, ...]], tuple[Any, str, str]] = {}
         self._output_replacements: list[tuple[str, str]] = []
+        self._used_read_handles: set[str] = set()
 
     def register_read(self, result: Any) -> None:
         """Called only on a host broker response, before returning it to code."""
         if type(result) is not dict or result.get("status") != "ok":
             return
+        retained = result.pop("retained_read_reference", None)
         reference = result.get("read_reference")
         data = result.get("data")
         if type(reference) is not dict or type(data) is not dict or type(data.get("text")) is not str:
             return
+        if (type(retained) is dict
+                and retained.get("artifact_uri") in self._read_handles_by_uri
+                and all(retained.get(key) == reference.get(key)
+                        for key in ("path", "sha256", "offset", "returned_lines"))):
+            result["read_reference"] = reference = retained
         # Detach the attestation from all model-mutable result containers.
         reference = json.loads(json.dumps(reference))
         uri = reference.get("artifact_uri")
@@ -614,8 +670,11 @@ class _StateProxy:
             while len(self._sources) > 128:
                 self._sources.pop(next(iter(self._sources)))
 
-    def begin_cell(self, assigned_names: set[str]) -> None:
+    def start_cell(self) -> None:
         self._output_replacements.clear()
+        self._used_read_handles.clear()
+
+    def begin_cell(self, assigned_names: set[str]) -> None:
         for key in tuple(self._annotations):
             if key[0] in assigned_names:
                 self._annotations.pop(key, None)
@@ -756,7 +815,11 @@ class _StateProxy:
                 self._read_handles_by_uri.pop(uri, None)
                 self._read_descriptions.pop(uri, None)
             raise KeyError("unknown retained read")
+        self._used_read_handles.add(handle)
         return retained[0]
+
+    def used_read_handles(self) -> tuple[str, ...]:
+        return tuple(sorted(self._used_read_handles))
 
     def _resolve(self, name: str, selector: tuple[str | int, ...]) -> Any:
         if type(name) is not str or not name.isidentifier() or name.startswith("__") or name in _RESERVED_NAMES:
@@ -785,6 +848,14 @@ class _StateProxy:
 
     def describe(self, name: str, selector: tuple[str | int, ...] = (), *, preview: bool = False) -> dict[str, Any]:
         """Describe one live value using only plain-container selectors."""
+        if not selector and name in self._reads:
+            descriptor = next(item for item in self.reads() if item.get("handle") == name)
+            if preview:
+                value = self._reads[name][0]
+                descriptor["preview"] = {
+                    "keys": [key[:80] for key in islice(value, 8) if type(key) is str]
+                }
+            return descriptor
         value = self._resolve(name, selector)
         key = (name, tuple(selector))
         item = _binding_description(name, value, self._metadata)
@@ -880,6 +951,7 @@ def _execute_cell(
     state_recovery: str = "replay_safe",
     snapshot_max_bytes: int = 1_000_000,
     state_catalog: _StateProxy | None = None,
+    capture_committed: bool = False,
 ) -> dict[str, Any]:
     stdout = _BoundedText(max_output_bytes)
     stderr = _BoundedText(max_output_bytes)
@@ -892,6 +964,8 @@ def _execute_cell(
         else None
     )
     source_name = "<agent-cell>"
+    if state_catalog is not None:
+        state_catalog.start_cell()
     try:
         # Source identity distinguishes frames from functions retained out of an
         # earlier cell, including callers that use the default cell_id="unknown".
@@ -935,6 +1009,9 @@ def _execute_cell(
             else:
                 metadata.pop(name, None)
         manifest = state_catalog.list() if state_catalog is not None else _state_manifest(namespace, metadata)
+        checkpoint_values, checkpoint_omitted = (
+            _plain_checkpoint(namespace, snapshot_max_bytes) if capture_committed else (None, ())
+        )
         selected_stdout = state_catalog.sanitize_output(stdout.getvalue()) if state_catalog else stdout.getvalue()
         selected_full_stdout = state_catalog.sanitize_output(stdout.full_value()) if state_catalog else stdout.full_value()
         value_repr = state_catalog.sanitize_output(value_repr) if state_catalog else value_repr
@@ -950,6 +1027,9 @@ def _execute_cell(
             "state_count": sum(not name.startswith("__") and name not in _RESERVED_NAMES for name in namespace),
             "state_delta": sorted(touched_names),
             "state_manifest": manifest[:64],
+            "retained_read_uses": state_catalog.used_read_handles() if state_catalog else (),
+            "checkpoint_values": checkpoint_values,
+            "checkpoint_omitted_names": checkpoint_omitted,
         }
     except BaseException as error:
         if state_catalog is not None and annotation_checkpoint is not None:
@@ -990,6 +1070,7 @@ def _execute_cell(
             ),
             "traceback": tuple(traceback.format_exception_only(error)),
             "state_preserved": state_preserved,
+            "retained_read_uses": state_catalog.used_read_handles() if state_catalog else (),
             "output_truncated": stdout.truncated or stderr.truncated,
         }
 
@@ -1000,6 +1081,7 @@ def _worker_main(
     help_catalog: Mapping[str, Mapping[str, object]],
     state_recovery: str,
     snapshot_max_bytes: int,
+    capture_committed: bool,
 ) -> None:
     namespace: dict[str, Any] = {
         "__builtins__": _safe_builtins(),
@@ -1017,6 +1099,34 @@ def _worker_main(
             return
         if request.get("type") == "close":
             return
+        if request.get("type") == "restore_plain":
+            values = request.get("values")
+            source_cell_id = request.get("source_cell_id")
+            valid = (type(values) is dict and type(source_cell_id) is str and
+                     all(type(name) is str and not name.startswith("__") and
+                         name not in _RESERVED_NAMES and _checkpoint_value(value, set())
+                         for name, value in values.items()))
+            if valid:
+                try:
+                    valid = len(json.dumps(values, sort_keys=True, separators=(",", ":"),
+                                           ensure_ascii=False, allow_nan=False).encode()) <= snapshot_max_bytes
+                except (TypeError, ValueError, OverflowError):
+                    valid = False
+            if not valid:
+                connection.send({"type": "restore_result", "id": request.get("id"),
+                                 "ok": False, "error": "invalid or oversized plain checkpoint"})
+                continue
+            for name in tuple(namespace):
+                if not name.startswith("__") and name not in _RESERVED_NAMES:
+                    del namespace[name]
+            state_metadata.clear()
+            namespace.update(values)
+            state_metadata.update({name: {"cell_id": source_cell_id, "replay": "committed_checkpoint"}
+                                   for name in values})
+            connection.send({"type": "restore_result", "id": request.get("id"),
+                             "ok": True, "state_manifest": [state_catalog.describe(name)
+                                                            for name in sorted(values)]})
+            continue
         if request.get("type") != "execute":
             continue
         result = _execute_cell(
@@ -1029,6 +1139,7 @@ def _worker_main(
             state_recovery=state_recovery,
             snapshot_max_bytes=snapshot_max_bytes,
             state_catalog=state_catalog,
+            capture_committed=capture_committed,
         )
         connection.send({"type": "execution_result", "id": request.get("id"), **result})
 
@@ -1064,6 +1175,7 @@ class PersistentPythonWorker:
         help_catalog: Mapping[str, Mapping[str, object]] | None = None,
         state_recovery: str = "replay_safe",
         snapshot_max_bytes: int = 1_000_000,
+        capture_committed: bool = False,
     ) -> None:
         if max_output_bytes < 1_024:
             raise ValueError("max_output_bytes must be at least 1024")
@@ -1076,6 +1188,7 @@ class PersistentPythonWorker:
             raise ValueError("state_recovery must be replay_safe or snapshot")
         self.state_recovery = state_recovery
         self.snapshot_max_bytes = snapshot_max_bytes
+        self.capture_committed = capture_committed
         self._process: BaseProcess | None = None
         self._connection: Connection | None = None
         self._kernel_epoch: str | None = None
@@ -1095,6 +1208,7 @@ class PersistentPythonWorker:
                 self.help_catalog,
                 self.state_recovery,
                 self.snapshot_max_bytes,
+                self.capture_committed,
             ),
             daemon=True,
             name="agent-cpython-worker",
@@ -1276,7 +1390,12 @@ class PersistentPythonWorker:
                         state_count=int(response.get("state_count", 0)),
                         state_delta=tuple(str(name) for name in response.get("state_delta", ())),
                         state_manifest=tuple(response.get("state_manifest", ())),
+                        retained_read_uses=tuple(
+                            str(handle) for handle in response.get("retained_read_uses", ())
+                        ),
                         state_preserved=bool(response.get("state_preserved", False)),
+                        checkpoint_values=response.get("checkpoint_values"),
+                        checkpoint_omitted_names=tuple(response.get("checkpoint_omitted_names", ())),
                     )
             except (EOFError, BrokenPipeError, OSError) as error:
                 self._discard()
@@ -1288,6 +1407,24 @@ class PersistentPythonWorker:
                     effect_unknown=True,
                     failure_stage="transport",
                 )
+
+    def restore_plain(self, values: dict[str, Any], source_cell_id: str) -> tuple[dict[str, Any], ...]:
+        """Restore only validated, previously committed plain values into a fresh worker."""
+        with self._lock:
+            self._start()
+            assert self._connection is not None
+            request_id = uuid4().hex
+            self._connection.send({"type": "restore_plain", "id": request_id,
+                                   "values": values, "source_cell_id": source_cell_id})
+            if not self._connection.poll(30):
+                self._discard()
+                raise RuntimeError("plain checkpoint restore timed out")
+            response = self._connection.recv()
+            if (response.get("type") != "restore_result" or response.get("id") != request_id
+                    or not response.get("ok")):
+                self._discard()
+                raise ValueError("plain checkpoint restore identity or content mismatch")
+            return tuple(response.get("state_manifest", ()))
 
     def close(self) -> None:
         with self._lock:

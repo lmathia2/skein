@@ -1,4 +1,4 @@
-# Canary treatment: notebook PTC with active trace memory, notes, and bounded context.
+# Controlled work-packet delta treatment; otherwise identical to notebook-ptc-memory.yaml.
 schema_version: 1
 
 app:
@@ -66,6 +66,11 @@ harness:
 
     notebook_ptc:
       enabled: true
+      cross_epoch_read_reuse: true
+      recover_committed_values: true
+      ground_committed_bindings: true
+      eager_committed_restore: true
+      snapshot_max_bytes: 16000000
       default_timeout_seconds: 120
       max_timeout_seconds: 600
       max_output_bytes: 16000
@@ -95,6 +100,7 @@ harness:
 
     context:
       window_management: true
+      delta_work_packets: true
       reconstruction: handoff_tail
       compaction_timing: phase_boundary
       max_context_tokens: 1048576

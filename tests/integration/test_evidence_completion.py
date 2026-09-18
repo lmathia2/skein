@@ -68,6 +68,32 @@ class _ProposalProvider:
         return self.model
 
 
+class _ChangingFailureModel(BaseLlm):
+    _calls: int = PrivateAttr(default=0)
+
+    async def generate_content_async(self, llm_request, stream=False):
+        del llm_request, stream
+        index, self._calls = self._calls, self._calls + 1
+        if index % 2 == 0:
+            value = 10 + index
+            code = (
+                f"import json\nvalue = {value}\n"
+                "try:\n old = agent.fs.read('answer.json')['data']['sha256']\n"
+                "except Exception:\n old = None\n"
+                "print(agent.fs.write('answer.json', json.dumps({'value': value}), "
+                "expected_sha256=old, expected_absent=old is None))"
+            )
+            part = types.Part(function_call=types.FunctionCall(
+                id=f"cell-{index}", name="execute_code", args={"code": code}))
+        else:
+            part = types.Part(text=json.dumps({
+                "status": "verify", "message": "Check the changed answer.",
+                "completion_claims": [{"criterion_id": criterion_id("Answer uses SAFE_VALUE"),
+                                       "evidence": ["answer.json"]}],
+            }))
+        yield LlmResponse(content=types.Content(role="model", parts=[part]))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("repair", (False, True))
 async def test_wrong_self_checked_answer_requires_independent_verification(tmp_path, repair):
@@ -117,3 +143,47 @@ async def test_wrong_self_checked_answer_requires_independent_verification(tmp_p
         assert json.loads((workspace / "answer.json").read_text()) == {"value": 73 if repair else 11}
     finally:
         await coordinator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_verification_attempt_budget_stops_changing_failures(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "test_check.py").write_text(
+        "import unittest\nclass Check(unittest.TestCase):\n def test_never(self): self.fail('no')\n")
+    for args in (("init", "-q"), ("add", "."),
+                 ("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                  "commit", "-qm", "fixture")):
+        subprocess.run(["git", "-C", str(workspace), *args], check=True, capture_output=True)
+    profile = Path(__file__).resolve().parents[2] / "harness/core/config/profiles/notebook-ptc-jsonl.yaml"
+    payload = load_harness_composition(profile).model_dump(mode="json")
+    payload["harness"]["config"]["models"]["coding"].update(
+        provider="proposal_fixture", name="proposal-fixture")
+    payload["harness"]["config"]["workflow"]["max_verification_attempts"] = 3
+    payload["harness"]["config"]["tools"]["search"]["backend"] = "disabled"
+    (tmp_path / "config.json").write_text(json.dumps(payload))
+    model = _ChangingFailureModel(model="proposal-fixture")
+    registry = default_harness_registry(
+        model_providers=ClosedAdkModelProviderRegistry((_ProposalProvider(model),)))
+    assembly = build_server_assembly(
+        workspace=workspace, state_root=tmp_path / "state",
+        config_path=tmp_path / "config.json", registry=registry)
+    try:
+        record, _ = await assembly.coordinator.start(StartTaskMessage(
+            type="task.start", request_id="run", idempotency_key="run",
+            thread_id="conversation", input=json.dumps({
+                "goal": "Write answer.json", "mode": "coding",
+                "acceptance_criteria": ["Answer uses SAFE_VALUE"],
+                "permitted_paths": ["answer.json"],
+                "verification_requirements": [f"{sys.executable} -m unittest test_check"],
+            })), user_id="owner")
+        async with asyncio.timeout(60):
+            await assembly.coordinator.wait(record.run_id)
+        events = open_ledger(
+            tmp_path / "state" / "runs" / record.run_id, "jsonl").read(record.run_id)
+        assert len([event for event in events if event.kind == "verification.completed"]) == 3
+        blocked = [event for event in events if event.kind == "task.blocked"]
+        assert len(blocked) == 1
+        assert "attempt budget exhausted" in blocked[0].payload["reason"]
+    finally:
+        await assembly.coordinator.aclose()

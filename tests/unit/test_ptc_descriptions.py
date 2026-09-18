@@ -161,6 +161,19 @@ def test_nested_selectors_and_deletion_are_safe():
     assert state.annotate("sources", "missing", selector=("main",))["status"] == "unavailable"
 
 
+def test_describe_accepts_retained_read_handle_without_marking_it_used():
+    read = source_result()
+    state = _StateProxy({}, {})
+    state.register_read(read)
+
+    described = state.describe("read:1", preview=True)
+
+    assert described["handle"] == "read:1"
+    assert described["read_reference"] == read["read_reference"]
+    assert described["preview"] == {"keys": list(read)[:8]}
+    assert state.used_read_handles() == ()
+
+
 def test_catalog_discovers_attested_container_values_without_annotations_or_reads():
     first, second = source_result(), source_result()
     second["read_reference"] = {**second["read_reference"], "artifact_uri": "artifact://sha256/" + "d" * 64,
@@ -228,6 +241,19 @@ def test_retained_read_catalog_survives_reassignment_and_rejects_mutation():
     assert state.reads() == []
     with pytest.raises(KeyError, match="unknown retained read"):
         state.reuse(uri)
+
+
+def test_exact_retained_read_keeps_its_stable_handle():
+    first = source_result()
+    state = _StateProxy({}, {})
+    state.register_read(first)
+    repeated = source_result()
+    repeated["read_reference"]["artifact_uri"] = "artifact://sha256/" + "c" * 64
+    repeated["retained_read_reference"] = first["read_reference"]
+    state.register_read(repeated)
+    assert repeated["read_handle"] == first["read_handle"] == "read:1"
+    assert repeated["read_reference"] == first["read_reference"]
+    assert state.reuse("read:1") is repeated
 
 
 def test_selector_recipes_quote_plain_keys_and_reject_unbounded_representation():

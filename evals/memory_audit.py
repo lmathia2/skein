@@ -78,7 +78,8 @@ def audit_emissions(snapshots: list[dict[str, Any]], records: list[dict[str, Any
         request_seen: set[tuple[str, str, int]] = set()
         post_cut = record["sequence"] > cut_sequence
         for raw in _exposed_lines(record["text"]):
-            line = re.sub(r"^\s*\d+ \| ", "", raw)  # direct read's exact line-number renderer
+            line = re.sub(r"^\s*\d+:\s+", "", raw) if route == "ptc_output" else raw
+            line = re.sub(r"^\s*\d+ \| ", "", line)  # direct read's exact line-number renderer
             choices = index.get(line, set())
             if len(choices) != 1:
                 routes[route]["unmapped_nonempty_lines"] += bool(line.strip())

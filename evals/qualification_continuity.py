@@ -8,8 +8,24 @@ from typing import Any
 from evals.transfer_continuity import TRANSFER_CASES, transfer_fixture
 from harness.evidence.memory.models import ReadEvidence
 
-QUALIFICATION_CASES = tuple(f"qualification_{family}_{variant}"
-                            for family in ("routes", "partial", "changed", "conflict", "validation", "prior") for variant in (1, 2)) + TRANSFER_CASES
+QUALIFICATION_CASES = (
+    *(f"qualification_{family}_{variant}"
+      for family in ("routes", "partial", "changed", "conflict", "validation", "prior")
+      for variant in (1, 2)),
+    "qualification_routes_3",
+    "qualification_routes_5",
+    "qualification_routes_7",
+    "qualification_routes_9",
+    "qualification_routes_11",
+    "qualification_routes_13",
+    "qualification_routes_15",
+    "qualification_partial_3",
+    "qualification_changed_3",
+    "qualification_changed_4",
+    "qualification_conflict_3",
+    "qualification_validation_4",
+    *TRANSFER_CASES,
+)
 
 
 def qualification_fixture(case: str) -> dict[str, Any]:
@@ -31,7 +47,7 @@ def qualification_fixture(case: str) -> dict[str, Any]:
     if family == "routes":
         # All branches are real source relationships. The control retains ordinary
         # artifacts and the same read-index budget; no recovery route is disabled.
-        for branch in range(4 + 2 * (variant - 1)):
+        for branch in range(4 + 2 * ((variant - 1) % 2)):
             for depth in range(3):
                 path = f"pipeline/branch_{branch}_{depth}.py"
                 if depth < 2:
@@ -88,13 +104,23 @@ def qualification_fixture(case: str) -> dict[str, Any]:
             "PTC/artifact facilities. Do not create answer files yet. Print LEARNING_COMPLETE after preparation. "
             "A fresh acknowledgement and idle-worker-loss context cut precede each question. Only requested answer "
             "files may change; do not inspect oracle code. Completion is independently source- and value-verified.")
+    required_no_change_command = (
+        "git status --short" if family == "routes" and variant in {11, 13, 15} else None
+    )
+    if required_no_change_command:
+        goal += (
+            " After the working-note or artifact checkpoint succeeds and before printing LEARNING_COMPLETE, "
+            f"run exactly {required_no_change_command!r} once through agent.shell.run and inspect its completed "
+            "successful result. This check must not modify the workspace or trigger source reacquisition."
+        )
     return {"family": case, "variant": variant, "files": files, "target": next(iter(files)),
             "goal": goal, "followup": stages[-1]["followup"], "expected": answers[-1]["expected"],
             "expect_abstention": False, "answers": answers, "stages": stages,
             "source_requirements": answers[-1]["required"], "initial_ranges": initial_ranges,
             "permitted_paths": [a["path"] for a in answers],
             "final_source_hashes": {p: hashlib.sha256(t.encode()).hexdigest() for p, t in files.items()},
-            "max_model_calls": 24, "input_budget": 350_000}
+            "max_model_calls": 24, "input_budget": 350_000,
+            **({"required_no_change_command": required_no_change_command} if required_no_change_command else {})}
 
 
 def _prior_fixture(case: str, variant: int) -> dict[str, Any]:
@@ -155,7 +181,7 @@ def _prior_fixture(case: str, variant: int) -> dict[str, Any]:
 
 def _validation_fixture(case: str, variant: int) -> dict[str, Any]:
     command = "python -B -m unittest check_batch"
-    failed = variant == 2
+    failed = variant in {2, 4}
     units, price, correction = 6 + variant, 17 + 2 * variant, 1 + variant
     total = units * price - correction * 13
     files = {

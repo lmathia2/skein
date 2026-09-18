@@ -50,6 +50,19 @@ def _merge_findings(
     entries = {item["finding"]["id"]: json.loads(canonical_json(item)) for item in previous
                if MemoryFinding.model_validate(item["finding"]).status != "superseded"}
     available = {ref: row for row in rows for ref in (row["event_id"], *_artifact_references(row["payload"]))}
+    source_evidence: dict[str, dict[str, Any]] = {}
+    ambiguous_source_refs: set[str] = set()
+    for row in rows:
+        raw_read = row["payload"].get("read_evidence")
+        if raw_read is None:
+            continue
+        evidence = ReadEvidence.model_validate(raw_read).model_dump(mode="json")
+        for ref in (row["event_id"], *_artifact_references(row["payload"])):
+            prior_evidence = source_evidence.get(ref)
+            if prior_evidence is not None and prior_evidence != evidence:
+                ambiguous_source_refs.add(ref)
+            else:
+                source_evidence[ref] = evidence
     if len({item.id for item in updates}) != len(updates):
         raise _NoteRejected("finding update IDs must be unique")
     known = set(entries) | {item.id for item in updates}
@@ -74,9 +87,10 @@ def _merge_findings(
             raise _NoteRejected("finding links an unknown finding ID")
         dependencies = {}
         for ref in finding.evidence_refs:
-            read = available[ref]["payload"].get("read_evidence")
-            if read is not None:
-                evidence = ReadEvidence.model_validate(read).model_dump(mode="json")
+            if ref in ambiguous_source_refs:
+                raise _NoteRejected("finding citation has ambiguous source identity")
+            evidence = source_evidence.get(ref)
+            if evidence is not None:
                 dependencies[canonical_json(evidence)] = evidence
         entries[finding.id] = {"finding": finding.model_dump(mode="json"), "revision": revision,
                                "source_dependencies": [dependencies[key] for key in sorted(dependencies)]}

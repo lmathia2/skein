@@ -100,6 +100,7 @@ def test_recent_context_omits_ledger_and_checkpoint_duplicates(tmp_path) -> None
     deps = SimpleNamespace(
         event_store=store,
         settings=SimpleNamespace(recent_event_limit=12),
+        delta_work_packets=False,
     )
 
     rendered = workflow._render_recent_events(deps, task_id)

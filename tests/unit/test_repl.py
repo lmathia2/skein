@@ -64,6 +64,36 @@ def test_worker_preserves_namespace_and_captures_outputs() -> None:
     assert second.value_repr == "42"
 
 
+def test_committed_plain_values_survive_a_failed_cell_without_repeating_a_read() -> None:
+    broker = _Broker()
+    with PersistentPythonWorker(capture_committed=True) as worker:
+        learned = worker.execute(
+            "read = agent.fs.read('input.txt')\npage = {'path': 'input.txt', 'text': read['model_text']}",
+            broker, 5, cell_id="learn",
+        )
+        assert learned.status == "ok" and learned.checkpoint_values is not None
+        failed = worker.execute("scratch = {'partial': True}\nmissing_name", broker, 5)
+        assert failed.status == "error" and failed.checkpoint_values is None
+        worker.reset()
+        restored = worker.restore_plain(learned.checkpoint_values, "learn")
+        assert any(item["name"] == "page" for item in restored)
+        reused = worker.execute("print(page['text'])", broker, 5)
+    assert reused.status == "ok" and reused.stdout == "hello\n"
+    assert [name for name, _ in broker.calls] == ["read"]
+
+
+def test_committed_plain_checkpoint_reports_omitted_values() -> None:
+    with PersistentPythonWorker(capture_committed=True, snapshot_max_bytes=1024) as worker:
+        learned = worker.execute("import datetime\nhuge = 'x' * 5000\nsaved = {'answer': 42}", _Broker(), 5)
+        assert learned.status == "ok" and learned.checkpoint_values is not None
+        assert {"datetime", "huge"} <= set(learned.checkpoint_omitted_names)
+        worker.reset()
+        worker.restore_plain(learned.checkpoint_values, "learn")
+        assert worker.execute("print(saved['answer'])", _Broker(), 5).stdout == "42\n"
+        missing = worker.execute("print(huge)", _Broker(), 5)
+        assert missing.status == "error" and missing.error_type == "NameError"
+
+
 def test_worker_routes_capabilities_through_parent_broker() -> None:
     broker = _Broker()
     code = """
@@ -185,6 +215,9 @@ def test_prompt_source_mapping_survives_separate_answer_reads_without_refetching
         retained = worker.execute(
             f"agent.state.reuse({entry['read_reference']['artifact_uri']!r})['data']['text']", broker, 5)
         assert retained.value_repr == repr('{"price": 7}')
+        assert retained.retained_read_uses == ("read:1",)
+        rejected = worker.execute("not valid python !", broker, 5)
+        assert rejected.status == "error" and rejected.retained_read_uses == ()
         assert worker.execute("source_reads['config.json']['data']['complete']", broker, 5).value_repr == "False"
     assert broker.calls == [("read", ("config.json", 1, 400)), ("read", ("answer.json", 1, 400))]
 

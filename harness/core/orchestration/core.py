@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable
 from enum import StrEnum
 
@@ -247,6 +248,91 @@ def build_work_packet(
             bounded += marker
         rendered[title] = header + bounded
     return packet(rendered)
+
+
+def work_packet_sections(packet: str) -> dict[str, str]:
+    """Recover complete, ordered work-packet sections for append-only updates."""
+    sections: dict[str, str] = {}
+    titles = {"TASK", "CONVERSATION", "SELECTED SKILLS", "REPOSITORY MANIFEST",
+              "COMPACTED HISTORY", "EVIDENCE NAVIGATION", "RECENT EVENTS", "USER STEERING"}
+    boundary = r"\n\n(?=## (?:" + "|".join(sorted(titles)) + r")\n)"
+    for block in re.split(boundary, packet):
+        block = block.removeprefix("## ")
+        title, separator, body = block.partition("\n")
+        if not separator or title not in titles or title in sections:
+            raise ValueError("invalid work-packet section")
+        sections[title] = body
+    return sections
+
+
+def _field_patch(previous: dict[str, object], current: dict[str, object]) -> dict[str, object]:
+    """A field-level merge patch; null explicitly removes an old field."""
+    return {key: current.get(key) for key in sorted(previous.keys() | current.keys())
+            if previous.get(key, object()) != current.get(key, object())}
+
+
+def build_work_packet_update(
+    full_packet: str,
+    previous_sections: dict[str, str] | None,
+    *,
+    previous_recent_sequence: int = 0,
+) -> tuple[str, dict[str, str], int]:
+    """Append only changed sections while retaining a full replayable snapshot."""
+    sections = work_packet_sections(full_packet)
+    if previous_sections is None:
+        recent = sections.get("RECENT EVENTS", "")
+        sequence = max((int(line.split(".", 1)[0]) for line in recent.splitlines()
+                        if line.split(".", 1)[0].isdigit()), default=0)
+        return full_packet, sections, sequence
+    updates: list[str] = []
+    recent_sequence = previous_recent_sequence
+    for title, body in sections.items():
+        old = previous_sections.get(title)
+        if title == "RECENT EVENTS":
+            fresh = []
+            for line in body.splitlines():
+                prefix = line.split(".", 1)[0]
+                if prefix.isdigit():
+                    sequence = int(prefix)
+                    recent_sequence = max(recent_sequence, sequence)
+                    if sequence > previous_recent_sequence:
+                        fresh.append(line)
+            if fresh:
+                updates.append("## RECENT EVENTS\n" + "\n".join(fresh))
+            continue
+        if body == old:
+            continue
+        if title == "TASK" and old is not None:
+            patch = _field_patch(json.loads(old), json.loads(body))
+            if patch:
+                updates.append("## TASK UPDATE\n" + json.dumps(
+                    {"program": "work_packet_task_update@1", "fields": patch},
+                    sort_keys=True, separators=(",", ":")))
+            continue
+        if title == "USER STEERING" and old is not None:
+            # The projection's source watermark changes on unrelated events.
+            # Only new delivered messages are a new model instruction.
+            try:
+                old_messages = json.loads(old.partition("\n")[2]).get("messages", [])
+                new_messages = json.loads(body.partition("\n")[2]).get("messages", [])
+            except (ValueError, TypeError, AttributeError):
+                old_messages, new_messages = [], []
+            seen = {item.get("message_id") for item in old_messages}
+            fresh = [item for item in new_messages if item.get("message_id") not in seen]
+            if not fresh:
+                continue
+            updates.append("## USER STEERING\n" + json.dumps(
+                {"program": "delivered_steering_update@1", "messages": fresh},
+                sort_keys=True, separators=(",", ":")))
+            continue
+        if old is not None and not body:
+            updates.append(f"## {title} UPDATE\nUnavailable (previous section withdrawn).")
+        elif body:
+            updates.append(f"## {title}\n{body}")
+    for title in previous_sections.keys() - sections.keys():
+        if title != "RECENT EVENTS":
+            updates.append(f"## {title} UPDATE\nUnavailable (previous section withdrawn).")
+    return "\n\n".join(updates) or "## TASK UPDATE\nNo change to previously supplied work packet.", sections, recent_sequence
 
 
 def replan_ledger(ledger: TaskLedger) -> TaskLedger:

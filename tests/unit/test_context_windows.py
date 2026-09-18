@@ -10,10 +10,13 @@ from google.genai import types
 
 from harness.adapters.adk.context import (
     ContextWindowPlugin,
+    _captured_read_index,
     _complete_cuts,
     _evidence_manifest,
     _project_advisory,
     _serialized,
+    checkpoint_request,
+    navigation_update,
     prior_applicability_update,
     render_handoff,
     select_context_cut,
@@ -31,6 +34,64 @@ from harness.evidence.state import EventKind, JsonlEventStore, rebuild_ledger
 
 def text(value):
     return types.Content(role="user", parts=[types.Part.from_text(text=value)])
+
+
+def test_navigation_delta_ignores_transport_churn_but_carries_new_evidence() -> None:
+    def snapshot(batch: int, watermark: int, entries: list[dict]) -> str:
+        required = {"history_boundary": watermark, "kernel": {"live": True, "kernel_epoch": "epoch"},
+                    "navigation": {"program": "work_batch_navigation@8", "source_watermark": watermark,
+                                   "parameters": {"work_batch_id": str(batch), "task_hash": str(batch)},
+                                   "scope": "Use completed evidence; verify independently."},
+                    "unresolved_effects": {"count": 0, "operations": []}}
+        advisory = {"entries": entries, "omitted_count": 0, "upstream_omitted_count": 0}
+        return "Required continuation metadata:\n" + json.dumps(required, sort_keys=True) + (
+            "\nAdvisory memory (not execution authority):\n" + canonical_json(advisory))
+
+    source = {"kind": "live_bindings", "value": {"handle": "read:1", "read_reference": {
+        "path": "src/a.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 9}}}
+    original = snapshot(2, 100, [source])
+    churn = snapshot(3, 150, [source])
+    delta = navigation_update(churn, original, max_tokens=2000)
+    assert len(delta) < len(churn)
+    body = json.loads(delta)
+    assert body["added_entries"] == [] and body["removed_entries"] == []
+    assert body["required_updates"] == {}
+    revised = snapshot(4, 160, [source, {"kind": "validations_newest_first",
+                                         "value": {"command": "pytest", "status": "passed"}}])
+    changed = json.loads(navigation_update(revised, churn, max_tokens=2000))
+    assert changed["added_entries"][0]["kind"] == "validations_newest_first"
+    assert changed["removed_entries"] == []
+
+
+def test_captured_read_index_surfaces_old_ranges_and_deltas_only_new_capture() -> None:
+    def capture(path: str, digest: str) -> dict:
+        return {"path": path, "sha256": digest, "offset": 1, "returned_lines": 100,
+                "artifact_uri": "artifact://sha256/" + digest,
+                "recovery_kind": "historical_result_envelope",
+                "source_coverage": {"whole_file": True}}
+
+    old = {"reads_newest_first": [capture("config.go", "a" * 64),
+                                   capture("linter.go", "b" * 64)], "omitted_reads": 0}
+    new = {"reads_newest_first": [*old["reads_newest_first"], capture("command.go", "c" * 64)],
+           "omitted_reads": 0}
+    assert [item["path"] for item in _captured_read_index(old)["captures"]] == [
+        "config.go", "linter.go"]
+
+    def snapshot(manifest: dict, watermark: int) -> str:
+        return render_handoff({"history_boundary": watermark,
+                               "kernel": {"live": False, "kernel_epoch": "new-epoch"},
+                               "navigation": {"program": "work_batch_navigation@9",
+                                              "scope": "historical", "parameters": {"focus_paths": []}},
+                               "unresolved_effects": {"count": 0, "operations": []},
+                               "evidence_manifest": manifest}, max_tokens=2000)
+
+    first, second = snapshot(old, 10), snapshot(new, 20)
+    first_advisory = json.loads(first.split("Advisory memory (not execution authority):\n")[1])
+    assert first_advisory["entries"][0]["kind"] == "captured_read_index"
+    delta = json.loads(navigation_update(second, first, max_tokens=2000))
+    assert [item["path"] for item in delta["captured_read_index_update"]["added_captures"]] == [
+        "command.go"]
+    assert not any(item["kind"] == "captured_read_index" for item in delta["added_entries"])
 
 
 def setup(tmp_path, *, policy="fresh", note=None):
@@ -896,11 +957,60 @@ def test_optional_action_guidance_cannot_displace_required_metadata():
     assert "recorded_actions" not in advisory
 
 
+def test_checkpoint_request_tracks_phase_and_failed_verification_until_note(tmp_path):
+    _, _, events, _ = setup(tmp_path)
+    task = rebuild_ledger(events.read("task"))
+    phase = events.append("task", EventKind.LEDGER_PATCHED, {
+        "set_fields": {"phase": "implement"}
+    })
+    task = rebuild_ledger(events.read("task"))
+    request = checkpoint_request(task, events.read("task"), {"note": {"version": 0}})
+    assert request and request["reason"] == "phase_entered:implement"
+    assert request["source_event_id"] == phase.event_id
+
+    events.append("task", "memory.note", {"version": 1, "entries": []})
+    assert checkpoint_request(task, events.read("task"), {"note": {"version": 1}}) is None
+
+    failed = events.append("task", EventKind.VERIFICATION_COMPLETED, {
+        "report": {"passed": False}
+    })
+    request = checkpoint_request(task, events.read("task"), {"note": {"version": 1}})
+    assert request and request["reason"] == "verification_failed"
+    assert request["source_event_id"] == failed.event_id
+
+    events.append("task", "memory.note", {"version": 2, "entries": []})
+    events.append("task", EventKind.LEDGER_PATCHED, {"set_fields": {"phase": "review"}})
+    review = rebuild_ledger(events.read("task"))
+    assert checkpoint_request(review, events.read("task"), {"note": {"version": 2}}) is None
+
+
+def test_work_batch_navigation_requests_checkpoint_and_replays_it(tmp_path):
+    plugin, _, events, _ = setup(tmp_path, note={
+        "note": {"status": "ok", "version": 0}, "note_excerpt": "",
+        "retrieval": "memory note write",
+    })
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 1000})
+    events.append("task", EventKind.LEDGER_PATCHED, {"set_fields": {"phase": "plan"}})
+    task = rebuild_ledger(events.read("task")).model_copy(update={"iteration": 1})
+    first = plugin.work_batch_handoff(task, "invocation")
+    advisory = json.loads(first.split("Advisory memory (not execution authority):\n", 1)[1])
+    request = next(entry["value"] for entry in advisory["entries"]
+                   if entry["kind"] == "checkpoint_request")
+    assert request["reason"] == "phase_entered:plan"
+    assert "settled evidence" in request["instruction"]
+    restarted = ContextWindowPlugin(
+        events=events, ledger=plugin.ledger, config=plugin.config,
+        handoff=lambda _: pytest.fail("replay must not refresh memory"), require_notes=True,
+    )
+    assert restarted.work_batch_handoff(task, "invocation") == first
+
+
 @pytest.mark.asyncio
 async def test_work_batch_navigation_appends_once_and_replays_captured_bytes(tmp_path, monkeypatch):
     plugin, context, events, canonical = setup(tmp_path)
     plugin.config = plugin.config.model_copy(update={"window_management": False, "compaction_tokens": 2000,
-                                                    "work_packet_tokens": 6000})
+                                                    "work_packet_tokens": 6000,
+                                                    "delta_work_packets": True})
     task = rebuild_ledger(events.read("task"))
     assert plugin.work_batch_handoff(task, "invocation") == ""
     raw = [text(build_work_packet(task))]
@@ -924,7 +1034,9 @@ async def test_work_batch_navigation_appends_once_and_replays_captured_bytes(tmp
     published = [e for e in events.read("task") if e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED]
     assert len(published) == 1
     payload = published[0].payload
-    assert payload["program"] == "work_batch_navigation@5"
+    assert payload["program"] == "work_batch_navigation@9"
+    assert payload["exposure_kind"] == "full"
+    assert payload["full_content"] == snapshot
     assert payload["source_watermark"] >= read.sequence
     assert payload["parameters"]["work_batch_id"] == "2"
     assert render_handoff(payload["inputs"], max_tokens=2000) == snapshot
@@ -958,10 +1070,36 @@ async def test_work_batch_navigation_appends_once_and_replays_captured_bytes(tmp
         restarted.work_batch_handoff(task, "invocation")
 
 
+def test_grounded_handoff_names_exact_historical_source_and_freshness_probe(tmp_path):
+    plugin, _, events, _ = setup(tmp_path)
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 2000,
+                                                    "delta_work_packets": True})
+    task = rebuild_ledger(events.read("task")).model_copy(update={"iteration": 1})
+    completed = events.append("task", EventKind.REPL_CELL_COMPLETED, {
+        "cell_id": "saved", "kernel_epoch": "old", "state": {"manifest": []},
+    })
+    events.append("task", EventKind.REPL_STATE_CHECKPOINTED, {
+        "available": True, "source_cell_id": "saved", "source_event_id": completed.event_id,
+        "binding_summaries": {"program": "committed_value_summaries@2", "omitted_count": 0,
+                              "bindings": [{"name": "routing_text_exact", "type": "str",
+                                            "historical_source_refs": [{"path": "fastapi/routing.py",
+                                                                        "sha256": "a" * 64,
+                                                                        "read_event_id": "completed-read"}]}]},
+        "omitted_names": [],
+    })
+    plugin.handoff = lambda _: {"kernel": {"live": False, "kernel_epoch": "new"},
+                               "unresolved_effects": {"count": 0}}
+    snapshot = plugin.work_batch_handoff(task, "invocation")
+    assert "committed_value_handoff@2" in snapshot
+    assert "routing_text_exact" in snapshot and "fastapi/routing.py" in snapshot
+    assert "offset=1 limit=1" in snapshot
+    assert "historical_source_refs" in snapshot and "Unresolved effects still block" in snapshot
+
+
 @pytest.mark.parametrize("worker", ("lost", "unknown", "live"))
 def test_boundary_snapshot_preserves_partial_historical_sources_and_worker_fences(tmp_path, worker):
     plugin, _, events, _ = setup(tmp_path)
-    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 2000})
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 3000, "navigation_tokens": 1800})
     task = rebuild_ledger(events.read("task")).model_copy(update={"iteration": 1})
     evidence = {"path": "policy.toml", "sha256": "a" * 64, "offset": 4, "returned_lines": 1}
     events.append("task", EventKind.READ_OBSERVED, {"read_evidence": evidence})
@@ -975,6 +1113,11 @@ def test_boundary_snapshot_preserves_partial_historical_sources_and_worker_fence
     plugin.handoff = lambda _: {"kernel": {"live": worker != "lost", "kernel_epoch": "old"},
                                "unresolved_effects": {"count": int(worker == "unknown")}}
     snapshot = plugin.work_batch_handoff(task, "invocation")
+    assert estimate_tokens(snapshot) <= 1800
+    published = next(e for e in events.read("task") if e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED)
+    assert published.payload["parameters"]["max_tokens"] == 1800
+    assert plugin.config.compaction_tokens == 3000
+    assert render_handoff(published.payload["inputs"], max_tokens=1800) == published.payload["full_content"]
     required, advisory = snapshot.split("\nAdvisory memory (not execution authority):\n")
     metadata = json.loads(required.removeprefix("Required continuation metadata:\n"))
     assert metadata["notebook"]["availability"] == {
@@ -992,7 +1135,11 @@ def test_navigation_overflow_and_publication_failure_never_return_a_snapshot(tmp
     with pytest.raises(ContextBudgetExceeded):
         plugin.work_batch_handoff(task, "invocation")
     assert not any(e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED for e in events.read("task"))
-    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 2000})
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 2000, "navigation_tokens": 200})
+    with pytest.raises(ContextBudgetExceeded):
+        plugin.work_batch_handoff(task, "invocation")
+    assert not any(e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED for e in events.read("task"))
+    plugin.config = plugin.config.model_copy(update={"compaction_tokens": 2000, "navigation_tokens": None})
     def fail(*args, **kwargs):
         raise OSError("publication failed")
     monkeypatch.setattr(events, "append", fail)

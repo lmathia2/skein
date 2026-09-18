@@ -120,7 +120,9 @@ input order; other operations remain serial.
 Use
 `agent.state.list()` or
 `agent.state.describe(name, selector=(), preview=False)` to inspect
-live values selectively. A descriptor with a selector describes the selected leaf,
+live values selectively. Retained read handles such as `read:4` are accepted as `name`;
+describe the handle directly instead of guessing a Python binding or issuing a memory query.
+A descriptor with a selector describes the selected leaf,
 not the parent binding: use its `access_expression` or `inspect_expression` exactly;
 `binding_type` identifies the parent and `type` identifies the selected value.
 `agent.state.annotate(name, description, selector=())` attaches
@@ -128,6 +130,9 @@ a brief advisory purpose to supported values; it does not durably retain conclus
 When working notes are enabled, record concise public findings and next actions with
 `memory note write --text TEXT --entries JSON --expected-version N --operation-id ID`
 through `agent.shell.run`; quote text and JSON with `shlex.quote`, including multiline text.
+Memory commands are virtual: send the complete `memory ...` command alone, without
+`cd`, `&&`, pipes, or other shell commands. The broker routes it without entering
+the workspace shell; use a separate call for Git or project commands.
 Use `memory note schema` for the validated input format, live byte budget, and merge rules
 when needed; its input_schema describes the write arguments, while --entries takes only
 the entries array. Its schema_version identifies the API contract, never --expected-version.
@@ -138,7 +143,9 @@ use 1-96 letters, digits, underscores, or hyphens (not file paths). Each finding
 1000 characters and 2000 UTF-8 bytes; the complete note also has a bounded serialized
 budget, including automatically attached source dependencies. Keep --text a short
 checkpoint heading; put conclusions in entries, without repeating receipt hashes/ranges
-in prose. Make independently reusable facts separate entries, each with only its supporting
+in prose. Do not add an aggregate finding that repeats evidence refs already attached to
+specific findings; that wastes the bounded note and can force a retry. Make independently
+reusable facts separate entries, each with only its supporting
 evidence and paths. Do not bundle unrelated file facts into one catalog entry: all of an
 entry's source dependencies must be validated together. Keep genuinely cross-source
 conclusions together with every required dependency; never split away evidence needed

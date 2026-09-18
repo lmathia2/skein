@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from app.agent.workflow import _latest_kernel_epoch, _render_recent_events
 from harness.core.context import estimate_tokens
 from harness.core.context.compiler import ContextBudgetExceeded
 from harness.core.models.agent_step import AgentStep, CompletionClaim, CriterionProposal
@@ -12,6 +14,7 @@ from harness.core.models.task import TaskPhase, TaskRequest, criterion_id
 from harness.core.orchestration import (
     HarnessRoute,
     build_work_packet,
+    build_work_packet_update,
     create_initial_ledger,
     decide_route,
     parse_agent_step,
@@ -20,6 +23,8 @@ from harness.core.orchestration import (
     replan_ledger,
     resume_for_steering,
 )
+from harness.core.orchestration.core import work_packet_sections
+from harness.evidence.state import EventKind, JsonlEventStore
 from harness.execution.tools.adk_adapter import create_adk_tools
 
 
@@ -170,6 +175,66 @@ def test_work_packet_is_deterministic_and_steering_is_last() -> None:
     assert packet.rfind("## USER STEERING") > packet.index("## RECENT EVENTS")
 
 
+def test_work_packet_updates_append_only_changed_control_and_new_events() -> None:
+    ledger = _ledger()
+    first = build_work_packet(ledger, selected_skills="Stable skill", repository_manifest="Stable manifest",
+                              recent_events=["10. read: source", "11. check: passed"])
+    initial, snapshot, watermark = build_work_packet_update(first, None)
+    assert initial == first and watermark == 11
+    ledger.next_action = "Verify the completed evidence"
+    ledger.phase = TaskPhase.REVIEW
+    second = build_work_packet(ledger, selected_skills="Stable skill", repository_manifest="Stable manifest",
+                               recent_events=["11. check: passed", "12. edit: changed"])
+    delta, current, watermark = build_work_packet_update(
+        second, snapshot, previous_recent_sequence=watermark)
+    assert "## TASK UPDATE\n" in delta and "Verify the completed evidence" in delta
+    assert "Stable skill" not in delta and "Stable manifest" not in delta
+    assert "12. edit: changed" in delta and "11. check: passed" not in delta
+    assert watermark == 12
+    unchanged, _, _ = build_work_packet_update(second, current, previous_recent_sequence=watermark)
+    assert "No change to previously supplied work packet" in unchanged
+    reset, _, _ = build_work_packet_update(second, None)
+    assert "## TASK\n" in reset and "Stable skill" in reset
+
+
+def test_work_packet_sections_keep_skill_subheadings_in_skill_body() -> None:
+    packet = "## TASK\n{}\n\n## SELECTED SKILLS\nSkill text\n\n## Local guidance\nDetails"
+    assert work_packet_sections(packet)["SELECTED SKILLS"] == (
+        "Skill text\n\n## Local guidance\nDetails"
+    )
+
+
+def test_delta_recent_events_keep_receipt_but_not_duplicate_cell_payload(tmp_path: Path) -> None:
+    events = JsonlEventStore(tmp_path / "events")
+    events.append("task", EventKind.NOTEBOOK_CELL_ADDED, {"source": "large source" * 200})
+    events.append("task", EventKind.REPL_CELL_SUBMITTED, {"source": "large source" * 200})
+    events.append("task", EventKind.REPL_CELL_COMPLETED, {
+        "effect": "none", "cell_id": "cell", "state": {"delta": ["read_catalog"],
+                                                       "manifest": ["large manifest" * 200]},
+    })
+    deps = SimpleNamespace(event_store=events, settings=SimpleNamespace(recent_event_limit=12),
+                           delta_work_packets=True)
+    rendered = _render_recent_events(deps, "task")
+    assert len(rendered) == 1
+    assert "read_catalog" in rendered[0] and "cell" in rendered[0]
+    assert "large source" not in rendered[0] and "large manifest" not in rendered[0]
+    assert "event_id" in rendered[0]
+
+
+def test_work_packet_epoch_tracks_restoration_after_failed_cell(tmp_path: Path) -> None:
+    events = JsonlEventStore(tmp_path / "events")
+    assert _latest_kernel_epoch(events.read("task")) is None
+    events.append("task", EventKind.REPL_CELL_COMPLETED, {"kernel_epoch": "old"})
+    events.append("task", EventKind.REPL_CELL_FAILED, {"kernel_epoch": "old", "effect": "none"})
+    events.append("task", EventKind.REPL_STATE_RESTORED, {
+        "kernel_epoch": "restored", "recovery_timing": "after_failed_cell",
+    })
+    events.append("task", EventKind.READ_OBSERVED, {"path": "src/a.py"})
+    assert _latest_kernel_epoch(events.read("task")) == "restored"
+    events.append("task", EventKind.REPL_CELL_COMPLETED, {"kernel_epoch": "restored"})
+    assert _latest_kernel_epoch(events.read("task")) == "restored"
+
+
 def test_work_packet_enforces_section_and_total_token_budgets() -> None:
     packet = build_work_packet(
         _ledger(),
@@ -207,6 +272,8 @@ def test_task_control_is_whole_when_optional_progress_and_section_target_do_not_
         task_id="task", base_revision="abc", workspace_id="workspace", branch_id="main")
     ledger.phase = TaskPhase.REVIEW
     ledger.next_action = _criterion_review_action(ledger, AgentStep(status="verify"))
+    assert "Do not reread unchanged source" in ledger.next_action
+    assert "specifically identified missing, stale, or contradictory fact" in ledger.next_action
     ledger.progress = ["large old progress " * 10_000]
     original = ledger.model_dump_json()
     packet = build_work_packet(ledger, max_tokens=2000, section_token_limits={"TASK": 600})

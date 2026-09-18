@@ -32,38 +32,61 @@ async def test_root_review_control_survives_small_section_target_in_provider_req
         calls += 1
         body = build_openrouter_request_body(request, model=self.model, reasoning_effort="max")
         prefixes.append(body.get("instructions"))
+        task_sections = [
+            content.get("text", "")
+            for item in body["input"]
+            for content in item.get("content", [])
+            if content.get("text", "").startswith(("## TASK\n", "## TASK UPDATE\n"))
+        ]
+        task = None
+        for section in task_sections:
+            if section.startswith("## TASK\n"):
+                task, _ = json.JSONDecoder().raw_decode(section.removeprefix("## TASK\n"))
+            elif task is not None:
+                update, _ = json.JSONDecoder().raw_decode(section.removeprefix("## TASK UPDATE\n"))
+                for key, value in update.get("fields", {}).items():
+                    if value is None:
+                        task.pop(key, None)
+                    else:
+                        task[key] = value
+        packet_text = task_sections[-1] if task_sections else ""
         for item in body["input"]:
             for content in item.get("content", []):
                 text = content.get("text", "")
-                if text.startswith("## TASK\n"):
-                    task, _ = json.JSONDecoder().raw_decode(text.removeprefix("## TASK\n"))
-                    if task["phase"] == "review":
-                        ledger = rebuild_ledger(trial.events.read(trial.task_id))
-                        assert task["next_action"] == ledger.next_action
+                if text == packet_text and task is not None and task["phase"] == "review":
+                    ledger = rebuild_ledger(trial.events.read(trial.task_id))
+                    assert task["next_action"] == ledger.next_action
+                    if "bounded counterexample-review cell is complete" in task["next_action"]:
+                        assert ledger.criterion_rows[0].criterion_id in task["next_action"]
+                        assert "not another tool cell" in task["next_action"]
+                    else:
                         assert "Do not repeat broad exploration." in task["next_action"]
-                        assert task["goal"] == trial.fixture["goal"]
-                        # This development fixture predates the root request and
-                        # seeds its ledger separately; preserve that exact input.
-                        assert task["verification_requirements"] == ledger.verification_requirements
-                        assert task["permitted_paths"] == ledger.permitted_paths
-                        reviews.append(task)
-                        assert "## EVIDENCE NAVIGATION\n" in text
-                        navigation = text.split("## EVIDENCE NAVIGATION\n", 1)[1].split("\n\n## ", 1)[0]
-                        required, advisory = navigation.split("\nAdvisory memory (not execution authority):\n")
-                        metadata = json.loads(required.removeprefix("Required continuation metadata:\n"))
-                        assert metadata["navigation"]["parameters"]["phase"] == "review"
-                        entries = json.loads(advisory)["entries"]
-                        available = [e["value"] for e in entries if e["kind"] == "live_bindings"]
-                        available += [source for e in entries if e["kind"] == "findings"
-                                      for source in e["value"].get("live_sources", [])]
-                        retained = next(value for value in available
-                                        if value.get("read_reference", {}).get("path") == "config/route_00.toml")
-                        assert retained["read_reference"]["path"] == "config/route_00.toml"
-                        assert retained["read_reference"]["artifact_uri"].startswith("artifact://sha256/")
-                        retained_access = retained["content_expression"]
-                        assert "value_fingerprint" not in retained and "inspect_expression" not in retained
-                        navigation_packets.append(navigation)
-                        read_counts.append(sum(bool(e.payload.get("read_evidence")) for e in trial.events.read(trial.task_id)))
+                    assert task["goal"] == trial.fixture["goal"]
+                    # This development fixture predates the root request and
+                    # seeds its ledger separately; preserve that exact input.
+                    assert task["verification_requirements"] == ledger.verification_requirements
+                    assert task["permitted_paths"] == ledger.permitted_paths
+                    reviews.append(task)
+                    assert "## EVIDENCE NAVIGATION\n" in text
+                    navigation = text.split("## EVIDENCE NAVIGATION\n", 1)[1].split("\n\n## ", 1)[0]
+                    latest = next(e for e in reversed(trial.events.read(trial.task_id))
+                                  if e.kind == EventKind.EVIDENCE_NAVIGATION_CREATED)
+                    required, advisory = latest.payload["full_content"].split(
+                        "\nAdvisory memory (not execution authority):\n")
+                    metadata = json.loads(required.removeprefix("Required continuation metadata:\n"))
+                    assert metadata["navigation"]["parameters"]["phase"] == "review"
+                    entries = json.loads(advisory)["entries"]
+                    available = [e["value"] for e in entries if e["kind"] == "live_bindings"]
+                    available += [source for e in entries if e["kind"] == "findings"
+                                  for source in e["value"].get("live_sources", [])]
+                    retained = next(value for value in available
+                                    if value.get("read_reference", {}).get("path") == "config/route_00.toml")
+                    assert retained["read_reference"]["path"] == "config/route_00.toml"
+                    assert retained["read_reference"]["artifact_uri"].startswith("artifact://sha256/")
+                    retained_access = retained["content_expression"]
+                    assert "value_fingerprint" not in retained and "inspect_expression" not in retained
+                    navigation_packets.append(navigation)
+                    read_counts.append(sum(bool(e.payload.get("read_evidence")) for e in trial.events.read(trial.task_id)))
         if calls == 1:
             code = ("import json, tomllib\nreads = agent.parallel([{'operation':'fs.read','arguments':{'path':'config/route_00.toml'}}])\n"
                     "source = tomllib.loads(reads[0]['data']['text'])['service']\n"
@@ -88,7 +111,8 @@ async def test_root_review_control_survives_small_section_target_in_provider_req
     assert result["first_verification_passed"] and not result["unresolved_execution"]
     assert result["measurement"]["answer_evidence"]["all_answers_source_available"]
     assert reviews and all(prefix == prefixes[0] for prefix in prefixes)
-    assert len(navigation_packets) >= 2 and len(set(navigation_packets)) == 1
+    assert len(navigation_packets) >= 2
+    assert len(set(navigation_packets)) == len(navigation_packets)
     assert len(set(read_counts)) == 1  # Scripted reuse exercise, not a live-model efficiency claim.
 
 
@@ -590,7 +614,7 @@ def test_diagnostic_manifest_freezes_reuse_label_without_provider_dispatch(tmp_p
     monkeypatch.setattr(evaluation, "dotenv_value", lambda *args: pytest.fail("dry run must not read a credential"))
     evaluation.main()
     manifest = json.loads((output / "manifest.json").read_text())
-    assert manifest["version"] == "verified-continuity-v25" and manifest["diagnostic_reuse"] is True
+    assert manifest["version"] == "verified-continuity-v32" and manifest["diagnostic_reuse"] is True
     assert manifest["planned_episodes"] == 6 and manifest["max_model_calls"] == 24
     assert manifest["input_budget"] == 350_000 and manifest["promotion"] is False
     assert not (output / "results.json").exists()
@@ -608,7 +632,7 @@ def test_live_worker_manifest_is_isolated_and_bounded(tmp_path, monkeypatch):
     monkeypatch.setattr(evaluation, "dotenv_value", lambda *args: pytest.fail("dry run must not read a credential"))
     evaluation.main()
     manifest = json.loads((output / "manifest.json").read_text())
-    assert manifest["version"] == "verified-continuity-v25"
+    assert manifest["version"] == "verified-continuity-v32"
     assert manifest["planned_episodes"] == 6 and manifest["live_worker_contract"]["iteration_budget"] == 4
     assert "on_demand" in manifest["live_worker_contract"]
     assert manifest["live_worker_contract"]["excluded"] == [

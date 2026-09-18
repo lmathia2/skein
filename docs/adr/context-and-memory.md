@@ -952,6 +952,192 @@ occurs inside the retained-state API (`agent.state.cite`), so the note service k
 existing public-evidence validation and source-dependency construction. A lost, evicted or
 mutated live handle fails closed; no guessed hash or worker-local name enters memory.
 
+### Phase-boundary learned-state loop
+
+Working notes are requested after an observed transition into plan or implementation,
+and again after a failed independent verification when no newer note exists. Entering
+terminal review alone does not request another checkpoint: completed evidence remains
+available to the independent verifier, and a failed verification creates the next real
+continuation boundary.
+`learned_checkpoint_request@2` is derived from the existing task ledger, verification
+and note events and is carried by `work_batch_navigation@7`. It asks for settled
+evidence, decisions, rejected approaches, unresolved gaps and one next action; it does
+not generate those conclusions or block execution when the advisory budget cannot fit
+them. A newer canonical note satisfies the request until another boundary occurs.
+
+The handoff's reuse guidance now names applicable findings before broad exploration.
+PTC completed-cell evidence records the exact live `read:N` handles consumed through
+`agent.state.reuse` or `agent.state.cite`; broker receipts continue to distinguish
+automatic catalog reuse from new source acquisition. These receipts establish use of
+a retained value, not semantic dependence on a finding. Context program identities
+advance to `continuation@14` and `work_batch_navigation@7`; historical packets retain
+their captured bytes. Verification, freshness and unresolved-effect authority are
+unchanged.
+
+Reserved `memory ...` commands execute in-process behind the PTC shell namespace. Both
+their requested and terminal capability receipts therefore declare no task-workspace
+mutation. Treating only the terminal as safe leaves the earlier request as an unresolved
+task-wide mutation and invalidates the findings the command just wrote. Ordinary shell
+requests retain their conservative mutation semantics. Retained read handles are also
+valid inputs to `agent.state.describe('read:N')`; inspection does not count as use.
+
+An ordinary shell request remains provisionally workspace-uncertain until its terminal
+evidence is known. A completed capability may identify its canonical managed-tools
+receipt; advisory source freshness retracts only that operation's uncertainty when the
+same-task bash receipt is complete, records integer-zero success without truncation or
+omission, and has identical valid before/after workspace fingerprints. The join is by
+receipt identity, never trace adjacency. Earlier or intervening unknown effects and every
+missing, malformed, failed, truncated, changed-workspace or mismatched receipt remain
+unknown. This reconciliation updates learned-finding freshness only and grants no
+execution, verification or completion authority.
+
+Counterexample review should challenge completed evidence in place. A model may acquire
+source during review only after identifying a missing, stale or contradictory fact, and
+that acquisition must stay within the cited criterion scope. Generic falsification does
+not justify rereading unchanged inputs or sampling unrelated branches. The review remains
+bounded to one PTC cell and the independent verifier remains authoritative.
+
+Artifact identity is stable provenance, not last-use state. When note construction sees
+later artifact loads or cell records reference an existing read-result URI, those uses
+must not shadow the original `fs.read` evidence. Source dependencies are derived from the
+source-bearing row for that URI. Conflicting read identities under one URI indicate
+corrupt provenance and fail the note write closed.
+
+File mutation requests are conservatively task-wide uncertain until their terminal
+receipt arrives. A matching successful `fs.write` or `fs.edit` terminal with exact
+changed paths replaces only that request's provisional global watermark with path-level
+observations. A known single-file no-op similarly clears only its own request. Changes to
+a dependency still invalidate it; missing identities, failed or malformed terminals,
+unscoped effects, and intervening unknown operations remain fail-closed.
+
+A pending host-authored PTC work-batch yield bypasses provider input-budget preflight
+because no provider request occurs. The synthetic response remains excluded from model
+usage accounting, then the next real model request faces the unchanged budget. Working
+note guidance avoids aggregate findings that duplicate citations already attached to
+specific conclusions; oversize notes still fail closed and retain the prior checkpoint.
+
+## 2026-09-15 controlled work-packet and captured-read decisions
+
+Accepted direction: work-batch context is an append-only model exposure, not a new
+historical authority. The compatibility memory profile retains full packets and
+`work_batch_navigation@7`; the opt-in delta profile publishes deterministic full/patch
+work packets and navigation `@9` snapshots with event IDs, hashes, source watermark,
+and full captured snapshots for replay. Full exposure resets after a context cut,
+invocation change, or worker-epoch loss. The bounded review cell must yield to one
+structured verify-or-concrete-fix decision; denying a tool may remind the model once,
+but must not immediately terminate a task that can still make a correction.
+
+Implemented: recent treatment packets project duplicate notebook transport events as
+small event-ID-addressed receipts. Navigation prioritizes a ≤3,200-byte exact
+path/SHA/range/artifact index of completed same-task captures ahead of optional detailed
+recovery recipes; only changed capture entries are sent in subsequent patches. This
+index is historical coverage, never freshness, a live Python binding, or completion
+authority. PTC current-version catalog reuse across worker epochs remains opt-in,
+task-scoped, and requires a current file SHA probe.
+
+Empirical qualification: the diagnostic E3 DeepSWE pair preserved or improved Harbor
+reward on two previously used tasks and cut uncached input/cost, but active wall rose
+and post-navigation same-version overlap requests increased. The actionlint trace
+identified 401 covered lines reacquired after an epoch reset. E4 live validation of
+cross-epoch reuse did exercise the task/SHA-scoped catalog on IPython: 462 source
+lines were served from three artifacts captured in an earlier worker epoch. Physical
+source fetch after the first navigation fell there, but read requests rose 18→24 and
+both arms failed the same hidden magic-status test. Actionlint treatment had no
+same-version capture requested after its reset and failed Harbor quality because a
+model-added edge test depended on helpers in a test file replaced by Harbor's own
+test patch. Thus E4 proves narrow PTC physical reuse, not reliable model avoidance
+of repeat requests or broad quality. The new live safety/diversity pair is E5; no
+broad default promotion is authorized by E3/E4.
+
+E5–E7 changed the navigation decision: a path/SHA capture index prevents
+physical source refetch but is not sufficient to stop model-visible paging.
+The E5 FastAPI treatment returned 42,388 source lines after navigation despite
+catalog reuse; its restored worker lacked assembled source values after error
+resets. E6's opt-in plain-value checkpoint reduced the same used task's
+post-navigation returned lines to 29,067 and Harbor scored 1, but a reset still
+prompted a 4,952-line unchanged routing reread. E7 ranked exact source-SHA
+bindings before generic alphabetical variables and exposed their names/path/SHA;
+the model used them once in a live worker, then reread both full files after an
+exception because restoration was acknowledged too late. In E7's simultaneous
+two-task pair, Harbor reward improved 0/2→1/2 but cost rose $0.736→$1.010,
+calls 190→230, and FastAPI post-navigation returned lines 18,451→32,263.
+The fresh Tomlkit treatment had no recoverable reset. These are partial
+mechanisms, not reliable memory use or default-promotion evidence. E8 tests
+the separate post-error acknowledgement boundary while preserving prefix
+stability, historical-source freshness labels, and independent completion.
+
+E8's live pair rejected eager acknowledgement as a default: Harbor 1/2→0/2,
+calls 183→199, cost $0.645→$0.768, and post-first-navigation model-visible
+read requests 58→81. Both memory-arm tasks acquired more source coverage;
+same-SHA overlap did not uniformly rise, so the result should not be described
+as a universal duplicate-read regression. A verified after-failure restore can
+be followed by a work packet that mistakenly records the failed cell's older
+epoch; E8 Yaegi then emitted a second unnecessary 23.5 KB full packet. E9
+corrects that event-derived packet identity, and its fresh PTC-control versus
+corrected-memory live pair is the next value gate. Read-handle citation across
+worker epochs is a separate design decision: only broker-attested artifact
+identities may be exposed as historical refs; old `read:` live handles must
+not be presented as live evidence in the new worker.
+
+E9's fresh paired gate tied Harbor quality at 1/2 but did not earn default
+memory navigation: calls 119→134 and cost $0.379→$0.448, with more whole-task
+read requests and physical source acquisition. The fresh PSD Tools memory run
+did reduce prior same-SHA overlap 1,528→852 lines but used 17 extra model calls,
+16 edits versus control's seven, and seven navigation packets without any
+context cut. Yaegi memory used two fewer calls but had more same-SHA overlap.
+The E8 eager-after-failure packet race did not occur in E9, so the epoch fix is
+supported deterministically but not credited as an isolated live gain. Preserve
+working notes, context compaction and prior-run recall as available features,
+while testing a more demand-driven, compact evidence handoff; repeated intact-
+worker navigation is not itself a demonstrated reasoning shortcut.
+
+E10 separates navigation size from actual compaction reserve: the optional
+`navigation_tokens` field bounds work-batch evidence views, while
+`compaction_tokens` continues to govern cuts. At 1,800 versus 3,000 navigation
+tokens on a terminal three-task DeepSWE pair, Harbor quality tied 1/3 and
+completed source-read requests fell 105→78; physical source lines fell
+10,623→10,181 and same-SHA catalog-served repeat lines 3,387→783. The
+earlier physical-line aggregation omitted first reads lacking `read_reuse`;
+the corrected count uses `read_evidence.returned_lines` for those events. However
+calls rose 163→177 and cost $0.581→$0.589, with a fresh TypeScript task
+offsetting two used-task cost gains. The smaller view is not a reliable
+reasoning shortcut or a promoted default. No arm cut context, so do not
+attribute those results to compaction. Keep critical worker/effect/freshness
+metadata even when advisory evidence is shortened; unknown effects still
+block completed-evidence claims. E11's separate failed-validation receipt
+grammar fix was not exercised in its live canary; it is deterministic-contract
+hardening, not a credited call/cost gain. E12's completed fresh six-task net
+comparison against PTC yielded Harbor reward 5/6→4/6 and same-SHA catalog
+repeat lines 5,465→8,050 despite fewer model calls 496→454 and physical
+source lines 26,278→23,271. Cost was effectively tied $1.657→$1.653;
+all local completions remained blocked. Do not promote memory defaults on
+these data; diagnose reread demand and the Anko behavioral miss separately.
+
+E13 keeps virtual memory commands at the existing reserved bash/PTC broker
+boundary. E12 Pebble and Narwhals attempted `memory` after `cd` or Git shell
+composition, so the prefix-only in-process route did not match and the real
+shell returned `memory: command not found`, with an unnecessary unknown effect.
+The accepted correction rejects such composed calls before shell execution
+with `effect:none` and instructs a separate standalone `memory ...` call;
+it does not execute either part, expand shell authority, or turn a failed
+note into a learned finding. Its prompt clarification is cache-stable, not
+task/session state. Deterministic PTC and routing checks pass. E13's fresh
+paired live cohort did not establish value: its first three provider-
+uninterrupted pairs regressed Harbor reward 1/3→0/3, and catalog-served
+same-SHA repeat lines rose 1,770→3,770 while physical acquisition fell
+14,241→10,461. All three memory tasks committed notes; none exercised the
+compound rejection path. The other three pairs were interrupted by
+OpenRouter 402 in both arms and are reported separately, including one
+control patch that Harbor passed after provider interruption. Keep memory
+defaults unchanged; distinguish tool-fetched/source-returned lines from
+actual provider-visible duplication before a new demand-side correction.
+The corrected selected-response exact-line audit yielded conservative
+duplicate source-equivalent lines 613→331 overall across the first three
+pairs, with Arcane worsening 159→226. These bounded ADK function responses
+are model-facing exposure evidence; full HTTP provider input and other
+shell/artifact routes remain unmapped. Do not use broker catalog reuse lines
+as a proxy for provider-visible reread cost or blanket-suppress needed code.
+
 ## Rejected alternatives
 
 - Mutable “memory” inside `static_instruction`: destroys prefix stability and hides

@@ -103,6 +103,7 @@ def execute_edit(
             omitted_bytes=bounded.omitted_bytes,
             changed_paths=[result.path] if result.changed else [],
             content_hashes={result.path: result.after_sha256},
+            data={"path": result.path, "sha256": result.after_sha256},
             ui_details={"changed": result.changed, "already_applied": result.already_applied},
         )
         return envelope
@@ -135,6 +136,7 @@ def execute_write(
             omitted_bytes=bounded.omitted_bytes,
             changed_paths=[result.path] if result.changed else [],
             content_hashes={result.path: result.after_sha256},
+            data={"path": result.path, "sha256": result.after_sha256},
             ui_details={"changed": result.changed, "already_applied": result.already_applied},
         )
         return envelope

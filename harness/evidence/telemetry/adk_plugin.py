@@ -393,6 +393,10 @@ class HarnessMetricsPlugin(BasePlugin):
         callback_context: Any,
         llm_request: Any,
     ) -> None:
+        # A PTC work-batch boundary returns a host-authored synthetic response;
+        # no provider request or input-token charge will occur.
+        if bool(_context_value(callback_context, "ptc_host_yield_pending", False)):
+            return None
         invocation_id = self._invocation_id(callback_context)
         model = str(
             _attribute(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from typing import Any
@@ -11,9 +12,51 @@ from harness.evidence.ledger.models import canonical_json
 from .models import MemoryFinding, ReadEvidence, ViewRequest
 
 
+def _receipt_proves_no_workspace_change(
+    receipt: dict[str, Any] | None, *, task_id: str, receipt_id: str | None,
+) -> bool:
+    """Accept only a complete canonical bash receipt with an exact stable fingerprint."""
+    if not isinstance(receipt, dict) or not isinstance(receipt_id, str):
+        return False
+    before, after = receipt.get("workspace_before"), receipt.get("workspace_after")
+    if not (
+        receipt.get("task_id") == task_id
+        and receipt.get("tool_call_id") == receipt_id
+        and receipt.get("tool_name") == "bash"
+        and receipt.get("status") == "completed"
+        and isinstance(before, str)
+        and re.fullmatch(r"[0-9a-f]{64}", before)
+        and before == after
+    ):
+        return False
+    raw_result = receipt.get("result_json")
+    if not isinstance(raw_result, str):
+        return False
+    try:
+        result = json.loads(raw_result)
+    except (TypeError, json.JSONDecodeError):
+        return False
+    return bool(
+        isinstance(result, dict)
+        and result.get("status") == "ok"
+        and type(result.get("exit_code")) is int
+        and result["exit_code"] == 0
+        and not result.get("truncated")
+        and not result.get("omitted_bytes")
+    )
+
+
 def source_observations(rows: list[dict[str, Any]]) -> tuple[dict, dict, dict]:
     hashes, touched, unknown = {}, {}, {}
-    validation_candidates = {}
+    receipts = {
+        (row["task_id"], row["payload"].get("tool_call_id")): row["payload"]
+        for row in rows
+        if row["kind"] == "tool.bash" and row.get("status") == "completed"
+        and isinstance(row.get("payload"), dict)
+        and isinstance(row["payload"].get("tool_call_id"), str)
+    }
+    pending_requests: dict[tuple[str, str], tuple[int, int]] = {}
+    validation_candidates: dict[tuple[str, str], tuple[int, int]] = {}
     for row in rows:
         task, sequence, payload = row["task_id"], row["sequence"], row["payload"]
         for path, digest in payload.get("content_hashes", {}).items():
@@ -32,21 +75,58 @@ def source_observations(rows: list[dict[str, Any]]) -> tuple[dict, dict, dict]:
                       and all(isinstance(path, str) and path and isinstance(digest, str)
                               and re.fullmatch(r"[0-9a-f]{64}", digest)
                               for path, digest in payload["content_hashes"].items()))
+        operation_id = payload.get("operation_id")
+        key = (task, operation_id) if isinstance(operation_id, str) else None
+        known_scoped_file_effect = (
+            row["kind"] == "capability.completed"
+            and payload.get("operation") in {"fs.write", "fs.edit"}
+            and payload.get("status") == "ok"
+            and payload.get("effect") in {"observed", "changed"}
+            and (
+                known_noop
+                or (
+                    bool(payload.get("changed_paths"))
+                    and all(isinstance(path, str) and path for path in payload["changed_paths"])
+                )
+            )
+        )
+        if known_scoped_file_effect and key:
+            requested = pending_requests.pop(key, None)
+            if requested and unknown.get(task) == requested[0]:
+                # Replace only this request's provisional workspace-wide
+                # uncertainty with its terminal path-specific observations.
+                unknown[task] = requested[1]
         if payload.get("workspace_may_have_changed") and (
             payload.get("operation") not in {"fs.edit", "fs.write"} or not payload.get("changed_paths")
         ) and not known_noop:
             previous = unknown.get(task, 0)
             unknown[task] = sequence
-            validation_candidates.pop(task, None)
-            if (row["kind"] == "capability.completed" and payload.get("operation") == "shell.run"
-                    and payload.get("status") == "ok" and payload.get("effect") == "observed"
-                    and payload.get("operation_id")):
-                validation_candidates[task] = (payload["operation_id"], sequence, previous)
-        if row["kind"] == "execution.validation_observed" and task in validation_candidates:
-            operation, terminal_sequence, previous = validation_candidates[task]
+            if row["kind"] == "capability.requested" and key:
+                pending_requests[key] = (sequence, previous)
+            elif (row["kind"] == "capability.completed" and payload.get("operation") == "shell.run"
+                  and payload.get("status") == "ok" and payload.get("effect") == "observed" and key):
+                requested = pending_requests.pop(key, None)
+                restore = requested[1] if requested and previous == requested[0] else previous
+                receipt_id = payload.get("receipt_id")
+                receipt = receipts.get((task, receipt_id)) if isinstance(receipt_id, str) else None
+                if _receipt_proves_no_workspace_change(receipt, task_id=task, receipt_id=receipt_id):
+                    unknown[task] = restore
+                else:
+                    validation_candidates[key] = (sequence, restore)
+            else:
+                # An unrelated unknown effect prevents an older validation from
+                # clearing the task-wide watermark.
+                for candidate in [item for item in validation_candidates if item[0] == task]:
+                    validation_candidates.pop(candidate, None)
+        if row["kind"] == "execution.validation_observed" and isinstance(payload.get("operation_id"), str):
+            key = (task, payload["operation_id"])
+            candidate = validation_candidates.get(key)
+            if candidate is None:
+                continue
+            terminal_sequence, previous = candidate
             result = payload.get("result", {})
-            if (payload.get("operation_id") == operation and unknown.get(task) == terminal_sequence
-                    and sequence > terminal_sequence and isinstance(result, dict) and result.get("status") == "ok"
+            if (unknown.get(task) == terminal_sequence and sequence > terminal_sequence
+                    and isinstance(result, dict) and result.get("status") == "ok"
                     and type(result.get("exit_code")) is int and result["exit_code"] == 0
                     and not result.get("truncated") and not result.get("omitted_bytes")
                     and isinstance(payload.get("workspace_before"), str) and payload["workspace_before"]
@@ -55,7 +135,7 @@ def source_observations(rows: list[dict[str, Any]]) -> tuple[dict, dict, dict]:
                 # Earlier or intervening unknown effects remain unknown; this is
                 # advisory freshness, never execution reconciliation/admission.
                 unknown[task] = previous
-                validation_candidates.pop(task)
+                validation_candidates.pop(key)
     return hashes, touched, unknown
 
 

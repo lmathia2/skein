@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -57,9 +58,16 @@ def test_edit_requires_a_unique_preimage_and_is_idempotent(tmp_path: Path) -> No
     first = execute_edit(environment, "src/example.py", "value = 1", "value = 2")
     second = execute_edit(environment, "src/example.py", "value = 1", "value = 2")
     assert first.changed_paths == ["src/example.py"]
+    assert first.data == {"path": "src/example.py", "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    assert first.content_hashes[first.data["path"]] == first.data["sha256"]
     assert second.status is ToolStatus.OK
+    assert second.data == first.data
+    chained = execute_edit(environment, "src/example.py", "value = 2", "value = 3",
+                           expected_sha256=first.data["sha256"])
+    assert chained.status is ToolStatus.OK
+    assert chained.data["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
     assert "already applied" in second.model_text
-    assert path.read_text(encoding="utf-8") == "value = 2\n"
+    assert path.read_text(encoding="utf-8") == "value = 3\n"
 
 
 def test_environment_rejects_ambiguous_edit(tmp_path: Path) -> None:
@@ -76,7 +84,10 @@ def test_write_supports_expected_absence_and_hash_conflict(tmp_path: Path) -> No
     repeated = execute_write(environment, "src/new.py", "answer = 42\n", expected_absent=True)
     conflict = execute_write(environment, "src/new.py", "answer = 43\n", expected_sha256="bad")
     assert created.changed_paths == ["src/new.py"]
+    assert created.data == {"path": "src/new.py", "sha256": hashlib.sha256((tmp_path / "src/new.py").read_bytes()).hexdigest()}
+    assert created.content_hashes[created.data["path"]] == created.data["sha256"]
     assert repeated.status is ToolStatus.OK
+    assert repeated.data == created.data
     assert conflict.status is ToolStatus.ERROR
 
 

@@ -89,6 +89,81 @@ def test_successful_validation_retracts_only_its_own_provisional_source_invalida
     assert current["status"] == ("historical_snapshot" if case == "stable" else "revalidation_required")
 
 
+@pytest.mark.parametrize("case", ["stable", "prior_unknown", "intervening_unknown", "changed_workspace",
+                                  "failed_result", "truncated", "wrong_receipt", "missing_receipt"])
+def test_completed_shell_receipt_retracts_only_its_paired_request_invalidation(case):
+    need = {"path": "module.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 2}
+    rows = []
+    def add(kind, row_status="observed", **payload):
+        rows.append({"task_id": "task", "sequence": len(rows) + 1, "kind": kind,
+                     "status": row_status, "payload": payload})
+    add("capability.completed", operation="fs.read", status="ok", read_evidence=need)
+    if case == "prior_unknown":
+        add("capability.failed", operation="shell.run", effect="unknown", workspace_may_have_changed=True)
+    add("capability.requested", row_status="started", operation="shell.run", operation_id="op",
+        workspace_may_have_changed=True)
+    if case == "intervening_unknown":
+        add("workspace.effect_observed", operation="shell.run", workspace_may_have_changed=True)
+    receipt_id = "b" * 64
+    result = {"status": "error" if case == "failed_result" else "ok", "exit_code": 0,
+              "truncated": case == "truncated", "omitted_bytes": 0}
+    add("tool.bash", row_status="completed", task_id="task", tool_call_id=receipt_id,
+        tool_name="bash", arguments_hash="c" * 64, status="completed",
+        workspace_before="d" * 64,
+        workspace_after="e" * 64 if case == "changed_workspace" else "d" * 64,
+        result_json=json.dumps(result))
+    add("capability.completed", row_status="completed", operation="shell.run", operation_id="op",
+        receipt_id=None if case == "missing_receipt" else "f" * 64 if case == "wrong_receipt" else receipt_id,
+        status="ok", effect="observed", workspace_may_have_changed=True)
+
+    current = source_freshness(need, source_observations(rows), "task")
+    assert current["status"] == ("historical_snapshot" if case == "stable" else "revalidation_required")
+
+
+@pytest.mark.parametrize("case", ["unrelated", "source", "noop", "intervening", "failed", "missing_id"])
+def test_completed_file_effect_replaces_only_its_request_wide_uncertainty(case):
+    need = {"path": "module.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 2}
+    rows = [{"task_id": "task", "sequence": 1, "kind": "capability.completed", "status": "completed",
+             "payload": {"operation": "fs.read", "status": "ok", "read_evidence": need}}]
+    operation_id = None if case == "missing_id" else "write-op"
+    rows.append({"task_id": "task", "sequence": 2, "kind": "capability.requested", "status": "started",
+                 "payload": {"operation": "fs.write", "operation_id": operation_id,
+                             "workspace_may_have_changed": True}})
+    if case == "intervening":
+        rows.append({"task_id": "task", "sequence": 3, "kind": "workspace.effect_observed", "status": "observed",
+                     "payload": {"operation": "shell.run", "workspace_may_have_changed": True}})
+    changed = ["module.py" if case == "source" else "answer.json"]
+    if case == "noop":
+        changed = []
+    rows.append({"task_id": "task", "sequence": len(rows) + 1, "kind": "capability.failed" if case == "failed" else "capability.completed",
+                 "status": "failed" if case == "failed" else "completed",
+                 "payload": {"operation": "fs.write", "operation_id": operation_id,
+                             "status": "error" if case == "failed" else "ok",
+                             "effect": "unknown" if case == "failed" else "observed" if case == "noop" else "changed",
+                             "changed_paths": changed,
+                             "content_hashes": {"answer.json": "b" * 64} if case == "noop" else {},
+                             "workspace_may_have_changed": True}})
+
+    current = source_freshness(need, source_observations(rows), "task")
+    assert current["status"] == ("historical_snapshot" if case in {"unrelated", "noop"} else "revalidation_required")
+
+
+def test_managed_memory_commands_do_not_invalidate_the_findings_they_manage():
+    need = {"path": "module.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 2}
+    rows = [
+        {"task_id": "task", "sequence": 1, "kind": "capability.completed",
+         "payload": {"operation": "fs.read", "status": "ok", "read_evidence": need}},
+        {"task_id": "task", "sequence": 2, "kind": "capability.requested",
+         "payload": {"operation": "shell.run", "discovery_kind": "memory",
+                     "workspace_may_have_changed": False}},
+        {"task_id": "task", "sequence": 3, "kind": "capability.completed",
+         "payload": {"operation": "shell.run", "discovery_kind": "memory", "status": "ok",
+                     "effect": "none", "workspace_may_have_changed": False}},
+    ]
+
+    assert source_freshness(need, source_observations(rows), "task")["status"] == "historical_snapshot"
+
+
 @pytest.mark.parametrize("case", ["write", "edit", "prior_unknown", "failed", "unknown", "missing_hash", "bad_hash", "shell"])
 def test_known_single_file_noop_does_not_invalidate_unrelated_findings(case):
     need = {"path": "source.py", "sha256": "a" * 64, "offset": 1, "returned_lines": 2}
@@ -126,6 +201,20 @@ def test_findings_survive_restart_text_updates_and_idempotent_retries(tmp_path):
     assert finding["finding"]["id"] == "parser" and finding["revision"] == 1
     assert finding["authority"] == "advisory" and finding["freshness"] == "historical_snapshot"
     assert write(restarted, [entry]) == note  # retry after later revisions is the original receipt
+
+
+def test_later_artifact_use_cannot_shadow_a_read_citation_source_dependency(tmp_path):
+    service, event, uri = service_at(tmp_path)
+    service.ledger.append(
+        task_id="task", source="harness", source_id="load", kind="capability.completed",
+        payload={"operation": "artifacts.load", "status": "ok", "artifact_uri": uri},
+    )
+
+    note = write(service, [{"id": "source", "kind": "observation", "text": "captured fact",
+                            "evidence_refs": [uri]}])
+
+    assert note["status"] == "ok"
+    assert service.note_read()["entries"][0]["source_dependencies"] == [event.payload["read_evidence"]]
 
 
 def test_note_commit_receipt_is_small_and_full_published_evidence_is_recoverable(tmp_path):

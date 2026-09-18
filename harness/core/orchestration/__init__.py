@@ -3,6 +3,7 @@
 from .core import (
     HarnessRoute,
     build_work_packet,
+    build_work_packet_update,
     create_initial_ledger,
     decide_route,
     reduce_agent_step,
@@ -14,6 +15,7 @@ from .runtime import changed_paths, parse_agent_step, parse_task_request, task_i
 __all__ = [
     "HarnessRoute",
     "build_work_packet",
+    "build_work_packet_update",
     "changed_paths",
     "create_initial_ledger",
     "decide_route",

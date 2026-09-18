@@ -2,7 +2,7 @@
 
 > Status: core contracts implemented; safe automatic recovery remains opt-in
 >
-> Updated: 2026-09-12
+> Updated: 2026-09-14
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -22,6 +22,18 @@ Code-level requirements and test mappings are in the
 7. Recovery distinguishes live availability, historical evidence, and current
    workspace observations. Missing optional memory is not an unknown effect, and a
    memory summary cannot reconcile an uncertain operation.
+8. `blocked` without a concrete question is not a human-input terminal. If execution
+   is reconciled, changed work enters verification and unchanged work receives a
+   bounded continuation; unresolved execution still fails closed.
+9. PTC work batches and verification repair have independent host-owned limits.
+   Hitting a changed-batch ceiling enters verification, while an absolute verification
+   attempt budget prevents ineffective workspace churn from resetting retry control.
+10. Harbor submission packaging is transport, not completion authority. The DeepSWE
+    adapter commits a final dirty workspace for the external grader but does not mark
+    the run verified or clear blocked/failed status.
+11. Completion claims are advisory rows. Unknown, stale, or duplicate criterion IDs
+    are rejected and recorded individually; they never satisfy a criterion and do not
+    prevent recognized claims from reaching the independent verifier.
 
 Task-input budget exits retain their own terminal category through ADK exception
 wrappers. Classification follows typed causes, not exception-message matching;
@@ -290,6 +302,16 @@ must test the production verification/re-entry boundary before claiming end-to-e
 evidence-backed completion. These are pending empirical/coverage gates, not grounds
 to require every file to be read in full.
 
+The counterexample pass is bounded as a decision boundary, not an open-ended second
+implementation phase. The worker may execute one grouped PTC cell to falsify claimed
+evidence or establish a concrete defect. It then returns to the outer workflow for a
+fresh structured decision. Exact valid criterion claims are rendered as a resubmission
+scaffold; malformed, stale, missing, or duplicate IDs never acquire authority and are
+not fuzzy-matched. The harness does not automatically promote the pre-review claim,
+because a read-only review cell may have discovered a counterexample that the model has
+not yet interpreted. A correction must provide new completed evidence, and every renewed
+claim still passes the unchanged independent verifier and unresolved-effect checks.
+
 The offline PTC/workflow integration now verifies that a wrong answer with a passing
 self-authored read-back assertion is rejected by a required task-specific oracle.
 An unchanged second proposal stops without `task.finished`; a repair using just the
@@ -430,11 +452,86 @@ reject a mismatched hash guard even when requested content is empty, and report
 already-applied only for an existing matching file. The existing idempotency policy
 for matching content is otherwise unchanged.
 
+Completed failed validation is narrower than an ordinary shell failure: a single
+classified validation command with a known nonnegative exit code, a completed same-task
+receipt, and equal verified before/after workspace fingerprints is an observed *failed
+attempt*. It is replayable as that failure, not a passing check. A timeout, incomplete
+receipt, unknown/native effect, shell composition, or workspace divergence remains
+unresolved. Non-Git local workspaces now receive a deterministic file-content
+fingerprint rather than a constant empty digest; an untracked mutation cannot falsely
+look unchanged. E4 Harbor traces exposed a separate boundary bug: managed tools
+fingerprinted Pier's empty local shadow workspace although commands and edits affected
+the remote repository under `/app`. Identical `e3b0c442...` receipts were not workspace
+evidence. Managed tools now use the injected execution repository's fingerprint on both
+receipt sides; local runs default to the local repository and Pier supplies its remote
+content snapshot. Deterministic remote-versus-shadow tests pass; E5 live receipt
+confirmation observed nonempty remote digests and changing remote edit fingerprints. This does not
+retroactively clear E3's original unknown records or authorize user-facing completion.
+
+E6/E7 add an opt-in successful-cell, content-addressed JSON-plain checkpoint. The
+worker reports selected and unsupported/oversize names; restoration verifies the
+task/notebook/source cell, artifact SHA/length, source event, binding summary
+program, and exact restored-name manifest. A failed or timed-out calculation is
+never captured. Restored values are marked historical and do not clear uncertain
+effects, establish a current source version, or count as completion evidence.
+An exact checkpointed source string may carry a historical path/SHA only when
+its content hash equals the SHA of a completed `fs.read` receipt. The current
+one-line whole-file SHA still must be checked before using that text for edits;
+a mismatch requires reacquisition. The ordinary bounded `agent.state.list()`
+browsing cap does not silently truncate the restore RPC's root-name report.
+
+E7 live DeepSWE FastAPI traces exposed a recovery acknowledgement race: after
+an execution exception reset the worker, the next model-authored cell was
+already planned as a full reread before the start-of-cell checkpoint restore
+ran. The returned failure text also said all bindings were discarded, despite
+the pending safe restoration. E8 therefore adds a further opt-in timing switch:
+for a no-effect/observed runtime failure with an available verified checkpoint,
+restore immediately after recording the failed cell and before returning the
+tool result. The response reports the actual new live epoch and attested
+historical bindings; the failed cell's partial assignments remain discarded.
+Timeouts, unknown or known-changed effects and corrupt/unavailable checkpoints
+do not receive an eager success claim. This is an experimental usability change,
+not a relaxation of effect reconciliation, source freshness, or verification.
+
+E8 live DeepSWE confirmed eager recovery fires safely but **did not** improve
+the paired outcome: Harbor reward 1/2 control to 0/2 eager, with higher calls,
+input, cost and source reacquisition. Keep the switch opt-in; deterministic
+recovery timing is not a quality gate. E8 also exposed two representation
+boundaries. Work packets must take their latest worker epoch from a verified
+`repl.state_restored` event when it follows a failed-cell event; otherwise a
+second unnecessary full worker-transition packet can be produced. E9 corrects
+that event projection unconditionally. Plain checkpoint recovery does not
+restore `agent.state.cite("read:…")` live handles into the new epoch. Historical
+citations should instead come from receipt-attested artifact URIs; stale live
+handles must not be relabeled as current retained reads. That historical
+citation handoff remains a separate empirical candidate.
+
 - Real invocation-bound checkpoints and same-machine recovery validation exist.
 - Safe-auto recovery is opt-in and covered by deterministic subprocess scenarios.
 - Workspace fingerprints detect divergence but do not restore a workspace.
 - Conversation notebook continuity and prior-run memory are separately authorized.
-- Live model-quality, cost, and cache promotion gates remain pending.
+- Live model-quality, cost, and cache promotion gates remain pending; E8
+  failed them, E9 tied quality but raised calls/cost, and E10 cut reads while
+  raising aggregate calls/cost on a three-task pair. No default promotion.
+
+E9's PSD Tools trace exposed an after-hash result-shape mismatch: a chained
+PTC `fs.edit` read `data.sha256`, while the broker's attested after-SHA lived
+only at `content_hashes[path]`. E10 makes `fs.edit`/`fs.write` expose the same
+attested digest at both locations and documents expected-SHA chaining in
+`agent.help`; the receipt/effect protocol remains authoritative. E10's fresh
+Happy DOM trace then exposed another narrow shared-contract miss: failed
+`npm run --workspace happy-dom test` commands had concrete exit code 1 and
+equal before/after execution-workspace fingerprints, but the existing
+recognized-test grammar rejected the flag position and left five test
+attempts as unknown effects. E11 accepts only the ordinary workspace flag
+before a `test`/`check` script, subject to the unchanged exit-code,
+fingerprint, identity and no-metacharacter gates. A failed test remains a
+failed check, not passing evidence; lint, timeouts and arbitrary shell
+failures remain fail-closed. E11's live canary did not invoke the new
+`npm run --workspace ... test` form; Happy DOM used the preexisting-recognized
+`npm --prefix ... test` form. Thus the narrow parser fix has deterministic
+contract evidence but no live value credit. E12 tests current net memory
+value against PTC control on six fresh tasks; all default gates remain open.
 
 ## Rejected alternatives
 

@@ -84,7 +84,10 @@ product surfaces and have been removed.
 - `harness/adapters` contains external boundary code only: Google ADK integration,
   supported model providers, and the Pier task-environment adapter.
 - `evals` contains frozen manifests, campaign execution, and result analysis. It is
-  deliberately outside the harness package.
+  deliberately outside the harness package. The Pier campaign runner now uses each
+  frozen task's declared agent timeout and defaults to practical no-stop ceilings
+  (1B cumulative input tokens and 1,000 workflow iterations); lower limits are
+  explicitly labelled Skein resource-policy ablations, not DeepSWE behavior.
 
 ## Empirical status
 
@@ -1197,3 +1200,217 @@ reused 1,047 selected lines across ten positive reuse receipts, including 872 li
 paths, so live absolute-path uptake remains unisolated. No run used citation handles or
 grounded working-note findings. See
 `docs/audits/ptc-read-catalog-live-2026-09-13.md`; defaults remain unqualified.
+
+The next implementation closes the previously optional learned-state loop without a
+new store, top-level tool or summarizer. `learned_checkpoint_request@1` asks for a
+fresh typed checkpoint after observed plan/implementation/review transitions and
+failed independent verification until a newer canonical note exists. It is a bounded
+advisory entry in `work_batch_navigation@6`, so insufficient memory budget omits it
+rather than blocking the task. Navigation explicitly prefers applicable findings and
+retained values before broad reacquisition. Completed PTC cell events now record
+`read:N` handles actually consumed through `agent.state.reuse` or `agent.state.cite`;
+source catalog reuse and new acquisition remain separate broker evidence. Context
+identities advance to `continuation@13` and `work_batch_navigation@6`. This is
+deterministic mechanism evidence only; live checkpoint uptake, semantic dependence
+and call/cost improvement remain unqualified.
+
+The bounded live diagnostic at commit `34c6d21` now qualifies mechanism uptake on the
+consumed `reuse_config_3` case. The findings arm exposed the review-phase checkpoint
+request, wrote a new evidence-linked note and then consumed all three retained answer
+handles. It had zero same-version source reread after the final cut and passed first
+independent verification in 15 calls/$0.03124181, versus one five-line unchanged-source
+reread and 17 calls/$0.03192652 in control. Control produced correct artifacts but its
+duplicate/unknown/stale completion claim IDs failed before verification, so promotion
+remains held and this is not a clean quality or held-out reliability comparison. Uncached
+input was also higher in findings (45,372 versus 38,815). Full result:
+`docs/experiments/learned-checkpoint-loop-20260914.md`; no paid run remains active.
+
+The control-arm claim-ID failure is corrected at the verification boundary. Unknown,
+stale and duplicate model-authored criterion IDs are recorded as rejected claims and
+cannot contribute evidence; the first recognized claim for each current criterion
+continues into the unchanged independent verifier. Invalid advisory rows no longer
+raise a harness exception or discard valid recognized evidence. Focused workflow,
+approval and independent-completion checks pass.
+
+The next live qualification is frozen without changing production memory behavior.
+Six previously unused fixture variants cover unchanged relationships, partial capture,
+two authorized source revisions, conflicting completed authority and a required failed
+validation. Both arms retain identical PTC/artifact/budget contracts; only findings and
+working notes differ. The previous uncached-input increase is not a continuous prefix
+defect: all within-epoch calls reused their preceding prefix, while expected phase cuts,
+larger memory packets and one cold first request account for the difference. Full unit and
+integration regression, lint, compilation and typing pass. The frozen gates and output
+path are in `docs/experiments/learned-memory-qualification-20260914.md`.
+
+The consumed routes diagnostic confirmed the review-entry checkpoint removal but failed
+terminal qualification. Findings reduced summed same-version overlap from 30 to 20 lines
+and used 21 versus 24 calls, yet both correct artifact sets stopped before verification;
+findings used 15.0% more input and cost 10.0% more. Its first verification proposal used
+the learned branch transformation but truncated the criterion ID, which remained
+fail-closed. Both arms then expanded a model-owned counterexample review into additional
+reads and checks. Counterexample review is now limited to one grouped PTC cell followed
+by a fresh structured model decision. Exact valid claim evidence is supplied as a
+criterion-ID scaffold; malformed IDs receive no inferred mapping, and no pre-review
+claim is automatically promoted. Deterministic workflow, completion, and PTC boundary
+tests pass. Fresh live validation remains pending.
+
+That fresh twelve-trial cohort completed without provider, infrastructure, accounting,
+false-acceptance or harness failures. Both arms independently verified four cases; both
+routes arms produced correct artifacts but stopped at the frozen resource ceilings, and
+both failed-validation arms withheld the answer with the failed command's effect still
+conservatively unresolved. Findings reduced aggregate same-version post-cut overlap from
+82 to 40 lines and had no overlap on the five non-routes cases, but used 73 versus 71
+calls, 16.5% more input and 6.4% more cost. It passed changed-source/conflict safety and
+used 11.6% fewer reasoning tokens. Quality and reread gates pass; terminal, median-call
+and median-cost gates fail, so defaults remain held.
+
+Trace analysis found the new request redundant at terminal review: learned evidence was
+already durable, while the request induced note/citation repair in the broad routes case.
+`learned_checkpoint_request@2` therefore covers plan/implementation transitions and
+failed verification, not review entry. A failed verifier remains the durable boundary
+that justifies another learned checkpoint. Context identities advance to
+`continuation@14` and `work_batch_navigation@7`; no note, freshness, effect or independent
+verification rule changes.
+
+The fresh bounded-review canary then isolated a memory provenance defect. Control reached
+first-pass verification in 22 calls. Findings produced every correct artifact and used
+less uncached input, fewer reasoning tokens and less repeated overlap, but stopped at the
+input budget before verification. All learned transformations had been self-invalidated:
+reserved `memory query` and `memory note write` request receipts inherited generic shell's
+workspace-mutation uncertainty even though their completed managed receipts were safe.
+The request path now records no workspace effect, so same-task findings remain usable
+unless real source changes or unknown effects occur. PTC handle descriptions accept
+`read:N`, note guidance avoids duplicate aggregate citations, and pending host-only work
+batch yields no longer undergo provider-budget preflight. Focused provenance, state,
+metrics, and memory tests pass; fresh live validation is pending.
+
+That fresh routes-7 pair verified both arms, but did not improve efficiency: findings
+used 24 versus 22 calls, cost $0.03780 versus $0.03230, and accumulated 60 versus 50
+post-cut same-version source lines. Trace analysis found two successful no-change shell
+checks whose canonical receipts had equal workspace fingerprints. Because capability
+events lacked their receipt IDs and freshness ignored `tool.bash`, those checks still
+invalidated every finding and rationally triggered reacquisition. Completed shell
+capabilities now carry the managed receipt identity, and advisory freshness clears only
+that operation's provisional uncertainty after strict same-task receipt validation.
+Unknown, changed, failed, incomplete or mismatched effects remain fail-closed. The full
+unit/integration suite passes; a frozen fresh routes-9 live pair is next, and defaults
+remain unchanged.
+
+The routes-9 fresh pair then supplied the first strong positive result in this sequence.
+Findings reached first-pass independent verification in 16 calls while control hit the
+24-call ceiling after writing passing artifacts. Findings reduced total input 28.2%,
+output 40.7%, reasoning 22.9%, cost 17.1% and wall time 33.1%, though uncached input rose
+23.9%. It used historical-snapshot transformations for all three answers without source
+reads. Its mandatory review then reacquired 14 lines, including an unrelated branch, so
+the zero-reread gate still failed. The run also contained no ordinary shell check and
+therefore did not exercise the receipt join. Review now prefers completed evidence and
+permits source acquisition only for a named missing/stale/contradictory fact in criterion
+scope. A frozen routes-11 pair requires a post-checkpoint `git status --short` receipt and
+zero post-cut rereads. Defaults remain unchanged.
+
+The targeted routes-11 pair exercised the required shell receipt, but both arms stopped
+at resource ceilings after writing correct artifacts and each reread 20 lines. The
+receipt identity and equal workspace fingerprints were present. The findings note had
+empty source dependencies because later `artifacts.load` rows sharing each result URI
+overwrote the original source-bearing read row in note construction. The model therefore
+received correct learned text without the strong source linkage needed by the test.
+Construction now retains `fs.read` identity across later artifact uses and rejects any
+conflicting URI mapping. A frozen routes-13 pair will repeat the exact receipt/freshness/
+review gate; defaults remain unchanged.
+
+The routes-13 canary verified findings in 23 calls and correctly attached three source
+dependencies to each of four transformations. Its no-change shell receipt preserved the
+note initially. Subsequent writes to answer files left their request-phase task-wide
+uncertainty in place even though terminal receipts scoped changes to those unrelated
+paths. Findings consequently reread all 40 source lines and cost 56% more than control.
+Freshness now pairs successful file terminals with their requests and replaces only that
+operation's provisional global uncertainty with path-specific observations. Real source
+changes and all unresolved effects remain invalidating. Routes-15 is frozen as the final
+canary in this four-iteration sequence; defaults remain unchanged.
+
+The final routes-15 canary demonstrates the complete targeted mechanism. Findings
+independently verified in 17 calls; all four learned transformations retained three
+source dependencies, the no-change shell receipt preserved freshness, scoped answer
+writes left the global unknown watermark at zero, and all three worker-loss questions
+plus terminal review completed with zero pipeline source rereads. Control exhausted the
+input budget after 21 calls, failed the answer outcome and reread ten lines. Findings
+reduced calls and total input but increased uncached input 63%, reasoning 41%, cost 14%
+and wall time 2%. This is credible live evidence that the implementation can use memory
+and eliminate rereads on the targeted protocol. It is not yet diverse reliability or a
+cost-efficiency qualification; further work should move to a frozen diverse cohort, not
+another routes-specific iteration. Defaults remain unchanged.
+
+The 2026-09-15 diagnostic DeepSWE work-packet experiment now separates packet savings
+from completed evidence and rereads (`docs/experiments/delta-work-packet-20260914.md`).
+An initial treatment denied a post-review tool and immediately terminally blocked
+IPython before any changes; Harbor scored baseline 1, treatment 0. The corrected E3
+two-task pair scored baseline 1/2, treatment 2/2 and cut uncached input 48.5% and
+provider cost 36.3%, but active wall rose 12.4%. All four tasks locally blocked under
+independent verification, and treatment post-navigation same-version overlap requests
+rose on both tasks. Those are diagnostic, used cases, not default-promotion evidence.
+
+The E4 controlled treatment offers task-and-current-SHA-scoped PTC read-catalog
+reuse across worker epochs and a bounded exact captured-range/artifact navigation
+index (`work_batch_navigation@9`). On the used E4 DeepSWE pair, reward regressed
+1/2→0/2 while uncached input fell 43.8% and cost 30.1%; active wall rose 9.4%.
+IPython physically reused 462 lines from earlier-epoch artifacts, but its read
+requests rose and both arms failed the same hidden magic-status test. Actionlint's
+official failure came from a model-added edge test depending on helpers in a test
+file the verifier replaced, not a demonstrated production-memory defect. E4 also
+exposed a false receipt premise: Pier's managed tools fingerprinted an empty local
+shadow, not the remote task repository. The common correction injects the actual
+execution repository into managed tools and fingerprints it for claimed mutations.
+Deterministic remote-shadow and changed-workspace checks pass; E5 live traces
+confirmed nonempty remote fingerprints on two previously unused Python/Go
+tasks. Defaults remain unchanged.
+
+The subsequent E5–E9 live sequence established that grounded PTC read-catalog
+reuse and historical plain-value restoration can save physical source reads,
+but E6/E7 worker resets still led to whole-file reacquisition, E8 eager
+after-failure restoration regressed Harbor quality 1/2→0/2, and E9 corrected
+memory tied fresh PTC control at Harbor 1/2 while raising calls 119→134 and
+cost $0.379→$0.448. E9 also exposed a PTC edit/write result-shape defect:
+the attested after-SHA was not at `data.sha256`, leading to a failed chained
+edit cell. E10 now exposes the same attested after-SHA in `data` and
+`content_hashes`, with deterministic first/idempotent/chained checks.
+The separate opt-in `navigation_tokens` limit changes only navigation, not
+the 3,000-token context-cut reserve. In the terminal three-task E10 DeepSWE
+pair, the 1,800-token arm tied quality at 1/3 and reduced completed read
+requests 105→78 and corrected physical source lines 10,623→10,181, but raised model calls
+163→177 and cost $0.581→$0.589 because the fresh Happy DOM task took 19 extra
+calls. All six local outcomes remained `blocked/verified:false`; none of these
+mechanisms is a default-promotion result. E11 narrowly repairs recognition
+of `npm run --workspace <package> test` for already-gated failed-validation
+receipt settlement; its E11 live canary did not exercise that new command
+form, so it has no empirical value credit. E11 Harbor passed fresh Arktype
+and the repeated PSD task but not Happy DOM; the two repeated tasks moved
+cost in opposite directions. A new six-task, previously unused Python/Go/
+TypeScript PTC-versus-memory pair completed as E12: Harbor quality regressed
+5/6→4/6; model calls fell 496→454 and physical source lines 26,278→23,271,
+but same-SHA catalog-served repeats rose 5,465→8,050 and cost tied at
+$1.657→$1.653. All twelve local completions were `blocked/verified:false`.
+The opt-in memory arm is not promoted. Full unit tests passed
+at E10 freeze. Exact experiments and trace paths are in
+`docs/experiments/delta-work-packet-20260914.md`.
+
+E13 corrects a concrete opt-in routing trap found in E12 Pebble/Narwhals:
+`memory` is an in-process reserved bash command, not an executable in the
+workspace shell. A compound `cd ... && memory ...` or chained Git/memory call
+now returns no-execution/effect-none guidance at the shared factory boundary,
+and PTC guidance requires a standalone call. Standalone memory commands still
+route through the existing service. Focused factory/context/PTC tests, Ruff,
+compileall, targeted Pyright and diff check pass. A fresh six-task paired
+PTC-versus-memory E13 Luna/max live run finished. Raw Harbor reward was
+2/6→0/6, but the final three pairs in both arms stopped on nonretryable
+OpenRouter 402 credit exhaustion; only the first three had provider-
+uninterrupted agent/Harbor outcomes, and they regressed 1/3→0/3. On those
+first three, same-SHA catalog-served repeats rose 1,770→3,770 despite
+physical source lines falling 14,241→10,461 and calls falling 204→184;
+cost tied near $0.656. Three note versions were committed in each memory
+task, but the new compound-command rejection branch was not exercised.
+The corrected exact-line audit of bounded PTC function responses found fewer
+conservatively mapped repeated source lines overall, 613→331, although
+Arcane alone increased 159→226. This is selected-output egress, not a
+complete HTTP provider-wire duplicate count or a quality qualification.
+It has no empirical read/cost credit, and memory remains opt-in. The provider
+balance precludes another same-contract paid cohort until restored.

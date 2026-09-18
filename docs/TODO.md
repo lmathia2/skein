@@ -199,9 +199,77 @@ Implementation ownership, dependencies, and acceptance gates are in the
       boundary; absolute and relative requests now share the completed-read catalog key.
     - [x] Run one bounded Ofetch canary. Ten reads reused 1,047 selected lines, including
       872 from `src/fetch.ts`; the task still produced no patch and scored 0/47 F2P.
+  - [x] Close the learned-state loop at work-batch boundaries: request an evidence-linked
+    checkpoint after phase changes and failed verification, prefer existing findings/live
+    handles in the next navigation packet, and record actual retained-handle consumption
+    on completed PTC cells. Live efficiency remains an S6 gate.
+    - [x] Run the bounded consumed-case diagnostic. Findings updated its checkpoint,
+      consumed three retained handles, avoided the control's five-line unchanged-source
+      reread and used 15 versus 17 calls, but the control hit a completion-claim protocol
+      error before verification and findings used more uncached input. Keep promotion held.
+    - [x] Reject and record invalid individual completion claims instead of letting an
+      advisory unknown/duplicate ID crash verification; recognized claims still face the
+      unchanged independent evidence and scope gates.
   - [ ] Demonstrate evidence-use and actual reread improvements on new held-out
     continuations; distinguish first proposals, verifier rejection/recovery, and
     independently accepted outcomes. Earlier fixture loops bypassed outer verification.
+    - [x] Freeze six unused qualification variants covering unchanged and partial
+      evidence, two source revisions, conflicting authority, and failed-validation
+      abstention. Pair `no_recall`/`findings` with fixed quality, reread and cost gates.
+    - [x] Run the fresh six-pair cohort. Both arms verified 4/6; routes artifacts were
+      correct but stopped at resource ceilings, and failed validation was withheld with
+      unresolved command effect. Findings cut same-version overlap 82 to 40 lines but
+      used 73 versus 71 calls and cost 6.4% more. Keep promotion held.
+    - [x] Remove the redundant checkpoint request on terminal review entry; keep requests
+      after plan/implementation transitions and failed independent verification.
+    - [x] Run the bounded consumed routes pair. The checkpoint/note-repair mechanism was
+      removed and findings reduced repeated overlap 30 to 20 lines, but neither arm
+      reached verification; findings cost 10.0% more. Preserve this negative result.
+    - [x] Bound model-owned counterexample review to one PTC cell, then require a fresh
+      structured decision with exact criterion-ID scaffolding. Never fuzzy-repair an ID
+      or automatically promote a pre-review claim.
+    - [x] Run one fresh routes canary for the bounded-review correction. Control verified;
+      findings stopped before verification because managed memory requests invalidated
+      their own findings and the host-yield preflight consumed the remaining budget.
+    - [x] Mark reserved managed-memory request receipts workspace-safe, let
+      `agent.state.describe('read:N')` inspect retained handles, avoid duplicate aggregate
+      note citations, and skip provider-budget preflight for pending host-only yields.
+    - [x] Run the managed-memory freshness pair. Both arms verified, but ordinary
+      successful no-change shell checks invalidated findings because canonical bash
+      receipts were not joined to capability events; findings reread more and cost 17% more.
+    - [x] Join completed shell capabilities to exact same-task receipts and retract only
+      their own provisional freshness uncertainty when success, complete output and
+      identical workspace fingerprints are proven. All mismatches remain fail-closed.
+    - [x] Run the frozen routes-9 pair. Findings verified in 16 calls and reduced cost
+      17%; control hit 24 calls. Findings used learned transformations for all answers,
+      then its mandatory review reread 14 source lines, including an unrelated branch.
+      The model issued no ordinary shell check, so the receipt join was not exercised.
+    - [x] Constrain criterion review to completed in-packet evidence unless a specific
+      missing, stale or contradictory fact requires scoped acquisition; retain the
+      one-cell bound and independent verifier.
+    - [x] Run the targeted routes-11 pair. Both arms wrote correct artifacts but stopped
+      at resource limits and reread 20 lines each. The shell receipt joined correctly,
+      but later artifact-load rows shadowed original read rows during note construction,
+      leaving every learned transformation without source dependencies.
+    - [x] Preserve source-bearing read identity when later events reference the same
+      artifact URI; reject conflicting URI-to-read mappings instead of selecting one.
+    - [x] Run the frozen routes-13 pair. Findings verified and all source dependencies
+      survived the shell receipt, but every later answer-write request left task-wide
+      uncertainty after its terminal scoped the change to an unrelated answer path.
+      Findings reread all 40 source lines and cost 56% more.
+    - [x] Replace a matching successful file-mutation request's provisional global
+      uncertainty with its terminal changed paths; retain source-specific invalidation
+      and every unmatched, failed, malformed or intervening unknown effect.
+    - [x] Run the final routes-15 pair and stop. Findings verified in 17 calls with all
+      12 source dependencies fresh and zero post-cut source rereads; control stopped at
+      the input budget, failed quality and reread ten lines. Findings cost 14% more, so
+      this is a mechanism demonstration, not broad reliability or efficiency promotion.
+    - [x] Freeze and run eight genuinely unused, diverse DeepSWE 1.1 tasks as a
+      system-level current-memory versus PTC-control comparison, with no retries or
+      in-cohort changes. Both score 4/8; current memory cuts mapped repeated-read
+      requests 35.8% but costs 27.3% more, has 64.3% more uncached input, and does
+      not compact or reliably construct evidence-linked notes. Keep promotion held;
+      see `docs/experiments/memory-heldout-8-20260914.md`.
     - [x] Implement fresh breadth and partial-capture variants through the existing
       real workflow. Keep control artifacts, verify each answer, reject correct
       unsupported guesses, and measure premature/opaque acquisition separately.

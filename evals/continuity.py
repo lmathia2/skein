@@ -44,6 +44,7 @@ from scripts.run_harbor_eval import dotenv_value
 
 PROFILE = Path(__file__).resolve().parents[1] / "harness/core/config/profiles/notebook-ptc-jsonl.yaml"
 ARMS = ("full_history", "metadata", "described", "findings")
+PACKET_ARMS = ("packet_baseline", "packet_delta")
 FAMILIES = ("navigation", "partial", "mutation", "worker", "rejected", "prior")
 MODEL = "openai/gpt-5.6-luna"
 MAX_CALLS = 12
@@ -51,8 +52,9 @@ INPUT_BUDGET = 200_000
 
 
 def composition_for(arm: str):
-    if arm not in ARMS:
+    if arm not in (*ARMS, *PACKET_ARMS):
         raise ValueError("unknown continuity arm")
+    representation = "findings" if arm in {"packet_baseline", "packet_delta"} else arm
     payload = load_harness_composition(PROFILE).model_dump(mode="json")
     config = payload["harness"]["config"]
     config["models"]["coding"] = {
@@ -60,13 +62,14 @@ def composition_for(arm: str):
         "api_key": {"env": "OPENROUTER_API_KEY"},
     }
     config["agents"]["coding_worker"]["generation"]["max_output_tokens"] = 8192
-    config["notebook_ptc"].update(emit_state_updates=arm in {"described", "findings"})
+    config["notebook_ptc"].update(emit_state_updates=representation in {"described", "findings"})
     config["memory"].update(working_notes=True, prior_runs=True, context_programs={"mode": "active"})
     # Controlled forced checkpoint only: identical compacted-arm budgets/cut input.
     # Full DeepSWE must use provider-calibrated phase-boundary thresholds instead.
     config["context"].update(
-        window_management=arm != "full_history", continuity_representation=arm if arm != "full_history" else "metadata",
-        reconstruction="fresh" if arm != "full_history" else "handoff_tail", compaction_timing="immediate", work_packet_tokens=6000,
+        window_management=representation != "full_history", continuity_representation=representation if representation != "full_history" else "metadata",
+        reconstruction="fresh" if representation != "full_history" else "handoff_tail", compaction_timing="immediate", work_packet_tokens=6000,
+        delta_work_packets=arm == "packet_delta",
         max_context_tokens=1_050_000, compaction_tokens=4000, ledger_tokens=600,
         recent_event_tokens=0, steering_tokens=200, max_task_input_tokens=INPUT_BUDGET,
     )

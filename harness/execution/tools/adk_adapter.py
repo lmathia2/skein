@@ -20,7 +20,7 @@ from harness.evidence.memory.models import ReadEvidence, ViewRequest
 from harness.evidence.state import ToolReceipt, ToolReceiptStore
 from harness.execution.approvals import ApprovalRequest, ApprovalStore
 from harness.execution.environment import LocalWorkspaceEnvironment, WorkspaceEnvironment
-from harness.execution.environment.runtime import LocalRepositoryRuntime
+from harness.execution.environment.runtime import LocalRepositoryRuntime, RepositoryRuntime
 from harness.execution.repo import FffSearchService, SearchBackend, SearchError, SearchPage
 from harness.execution.safety import ApprovalAction, ApprovalPolicy, SecretRedactor
 from harness.execution.sandbox import (
@@ -38,6 +38,7 @@ from harness.execution.tools.search_command import (
     SearchCommandParseError,
     parse_search_command,
 )
+from harness.verification.contracts import is_reusable_validation_command
 
 _CONTENT_ARTIFACT_NAME = re.compile(r"^(?P<digest>[0-9a-f]{64})\.[A-Za-z0-9]{1,12}$")
 _COMMAND_ARTIFACT_NAME = re.compile(r"^command-(?P<digest>[0-9a-f]{64})\.log$")
@@ -315,6 +316,7 @@ class _ManagedTools:
         workspace: Path,
         *,
         environment: WorkspaceEnvironment | None = None,
+        repository: RepositoryRuntime | None = None,
         state_root: Path | None = None,
         sandbox: CommandSandbox | None = None,
         search_backend: SearchBackend | None = None,
@@ -330,6 +332,7 @@ class _ManagedTools:
     ) -> None:
         self.workspace = workspace.resolve()
         self.environment = environment or LocalWorkspaceEnvironment(self.workspace)
+        self.repository = repository or LocalRepositoryRuntime(self.workspace)
         state_root = (
             state_root.expanduser().resolve()
             if state_root is not None
@@ -726,10 +729,7 @@ class _ManagedTools:
                 arguments_hash=arguments_hash,
                 side_effect_key=tool_call_id if operation_id is not None else arguments_hash,
                 claim=operation_id is not None,
-                workspace_before=(
-                    LocalRepositoryRuntime(self.workspace).fingerprint()
-                    if operation_id is not None else None
-                ),
+                workspace_before=(self.repository.fingerprint() if operation_id is not None else None),
             )
         except RuntimeError as error:
             return {"status": "blocked", "model_text": str(error),
@@ -755,20 +755,34 @@ class _ManagedTools:
                 error=self.redactor.redact_text(str(exc)),
             )
             raise
+        workspace_after = self.repository.fingerprint() if operation_id is not None else None
+        command = arguments.get("command") if tool_name == "bash" else None
+        settled_validation_failure = (
+            isinstance(command, str)
+            and is_reusable_validation_command(command)
+            and not re.search(r"[;&|<>`\n]|\$\(", command)
+            and result.get("status") == "error"
+            and type(result.get("exit_code")) is int
+            and result["exit_code"] >= 0
+            and not result.get("reconciliation_required")
+            and result.get("effect") not in {"unknown", "native_untracked"}
+            and receipt.workspace_before is not None
+            and receipt.workspace_before == workspace_after
+        )
+        if settled_validation_failure:
+            # A failed test is not a passing check, but its completed, workspace-stable effect is known.
+            result["effect"] = "observed"
         result_hash = hashlib.sha256(
             json.dumps(result, sort_keys=True, default=str).encode()
         ).hexdigest()
         self.receipts.finish(
             task_id=active_scope,
             tool_call_id=tool_call_id,
-            status="completed" if result.get("status") == "ok" else "failed",
+            status="completed" if result.get("status") == "ok" or settled_validation_failure else "failed",
             result_hash=result_hash,
             artifact_uri=result.get("artifact_uri"),
             result_json=json.dumps(result, sort_keys=True, default=str),
-            workspace_after=(
-                LocalRepositoryRuntime(self.workspace).fingerprint()
-                if operation_id is not None else None
-            ),
+            workspace_after=workspace_after,
         )
         result["receipt_id"] = tool_call_id
         if result.get("status") == "ok" and self.search_backend is not None:
@@ -854,6 +868,7 @@ def create_adk_tools(
     workspace: Path,
     *,
     environment: WorkspaceEnvironment | None = None,
+    repository: RepositoryRuntime | None = None,
     state_root: Path | None = None,
     sandbox: CommandSandbox | None = None,
     search_backend: SearchBackend | None = None,
@@ -870,6 +885,7 @@ def create_adk_tools(
     managed = _ManagedTools(
         workspace,
         environment=environment,
+        repository=repository,
         state_root=state_root,
         sandbox=sandbox,
         search_backend=search_backend,

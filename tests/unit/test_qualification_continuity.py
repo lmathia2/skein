@@ -7,9 +7,36 @@ from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
 from evals.learned_continuity import LearnedContinuation
-from evals.qualification_continuity import QUALIFICATION_CASES
+from evals.qualification_continuity import QUALIFICATION_CASES, qualification_fixture
 from evals.verified_continuity import run_verified_case
 from harness.adapters.providers.openrouter_responses import OpenRouterResponsesLlm
+
+
+def test_fresh_memory_qualification_cases_cover_the_frozen_risk_mix() -> None:
+    selected = {
+        "qualification_routes_3",
+        "qualification_routes_5",
+        "qualification_routes_7",
+        "qualification_routes_9",
+        "qualification_routes_11",
+        "qualification_routes_13",
+        "qualification_routes_15",
+        "qualification_partial_3",
+        "qualification_changed_3",
+        "qualification_changed_4",
+        "qualification_conflict_3",
+        "qualification_validation_4",
+    }
+
+    assert selected <= set(QUALIFICATION_CASES)
+
+
+def test_receipt_join_canary_requires_one_post_checkpoint_no_change_shell() -> None:
+    fixture = qualification_fixture("qualification_routes_11")
+
+    assert fixture["required_no_change_command"] == "git status --short"
+    assert "After the working-note or artifact checkpoint succeeds" in fixture["goal"]
+    assert "before printing LEARNING_COMPLETE" in fixture["goal"]
 
 
 @pytest.mark.asyncio

@@ -463,7 +463,7 @@ def main() -> None:
     parser.add_argument("--diagnostic", action="store_true", help="Label consumed-case reruns as diagnostic, not held out")
     parser.add_argument("--dotenv", type=Path, default=Path.home() / ".env")
     parser.add_argument("--cases", nargs="+", choices=(*CASES, *LEARNED_CASES, *HELDOUT_CASES, *STAGED_CASES, *REPEATED_CASES, *VALIDATION_CASES, *QUALIFICATION_CASES, *LIVE_WORKER_CASES), default=["routing", "missing"])
-    parser.add_argument("--arms", nargs="+", choices=("metadata", "findings", "no_recall", *LIVE_WORKER_ARMS), default=["metadata", "findings"])
+    parser.add_argument("--arms", nargs="+", choices=("metadata", "findings", "no_recall", "packet_baseline", "packet_delta", *LIVE_WORKER_ARMS), default=["metadata", "findings"])
     parser.add_argument("--concurrency", type=int, choices=range(1, 7), default=6)
     parser.add_argument("--repetitions", type=int, choices=range(1, 4), default=1)
     parser.add_argument("--sandbox-image", help="Already available immutable Docker image for live command isolation")
@@ -495,7 +495,7 @@ def main() -> None:
                 | {case: validation_fixture(case) for case in VALIDATION_CASES}
                 | {case: qualification_fixture(case) for case in QUALIFICATION_CASES}
                 | {case: live_worker_fixture(case) for case in LIVE_WORKER_CASES})
-    manifest = {"version": "verified-continuity-v25", "model": MODEL, "reasoning": "max",
+    manifest = {"version": "verified-continuity-v32", "model": MODEL, "reasoning": "max",
         "diagnostic_reuse": args.diagnostic,
         "cases": args.cases, "arms": args.arms, "concurrency": args.concurrency, "repetitions": args.repetitions,
         "max_model_calls": max(fixtures[c].get("max_model_calls", MAX_CALLS) + fixtures[c].get("producer", {}).get("max_model_calls", 0) for c in args.cases),

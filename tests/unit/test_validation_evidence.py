@@ -103,7 +103,8 @@ async def test_actual_ptc_validation_pending_and_failed_cannot_support_an_answer
         assert not audit["all_submissions_supported"]
         assert calls == 1  # No replay/re-execution to obtain a validation receipt.
         if failure:
-            assert terminal[0].payload["effect"] == "unknown"  # Do not relabel failed commands safe.
+            assert terminal[0].payload["effect"] == "observed"  # The failed check is known, not passing evidence.
+            assert not any(e.kind == "execution.validation_observed" and e.payload.get("command") == COMMAND for e in events)
     finally:
         release.set()
         if task is not None and not task.done():
@@ -175,10 +176,10 @@ async def test_validation_controls_through_actual_root_workflow(tmp_path, monkey
         assert result["validation_outcomes"][0]["exit_code"] == 0
     else:
         assert not result["accepted"] and not result["passed"] and result["answer_withheld"], result
-        assert result["correct_abstention"] is (case == "validation_missing")
+        assert result["correct_abstention"]  # A completed failed check permits safe abstention, not acceptance.
         if case == "validation_failed":
             assert result["validation_outcomes"][0]["exit_code"] == 1
-            assert result["validation_outcomes"][0]["effect"] == "unknown"
+            assert result["validation_outcomes"][0]["effect"] == "observed"
         else:
             assert result["validation_outcomes"] == []
 
@@ -310,12 +311,12 @@ async def test_fresh_validation_reuse_requires_the_actual_completed_check(tmp_pa
     else:
         assert len(outcomes) == (2 if bad == "repeat" else 1)
         assert all(o["exit_code"] == int(failed) for o in outcomes)
-        assert bool(result["unresolved_execution"]) is failed
+        assert not result["unresolved_execution"]  # Known failed validation is not an unresolved tool effect.
         if bad == "repeat":
             assert len(audit["artifacts"]["answer.json"]["answers"][-1]["validations"][command]) == 2
     if failed:
         assert result["answer_withheld"] is (bad != "force")
-        assert not result["correct_abstention"]  # Withholding is not reconciliation.
+        assert result["correct_abstention"] is (bad != "force")
     else:
         checkpoints = result["learning_checkpoints"]
         assert len(checkpoints) == 2

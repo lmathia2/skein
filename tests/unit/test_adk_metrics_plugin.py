@@ -136,7 +136,11 @@ def test_plugin_does_not_count_host_work_batch_yield_as_a_model_call(tmp_path) -
         default_model="test-model",
         default_task_id="task-1",
     )
-    context = _Context(state={"task_id": "task-1"})
+    context = _Context(state={
+        "task_id": "task-1",
+        "task_input_token_limit": 1,
+        "ptc_host_yield_pending": True,
+    })
     asyncio.run(plugin.before_model_callback(callback_context=context, llm_request=_Request()))
     asyncio.run(
         plugin.after_model_callback(

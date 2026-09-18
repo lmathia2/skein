@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,7 +55,21 @@ class LocalRepositoryRuntime:
 
     def fingerprint(self) -> str:
         digest = hashlib.sha256()
-        digest.update(self._git("git", "rev-parse", "HEAD").encode())
+        revision = self._git("git", "rev-parse", "HEAD")
+        if not revision:
+            # ponytail: non-Git workspaces need an O(files) fallback; use Git if this becomes hot.
+            for target in sorted(self.root.rglob("*")):
+                relative = target.relative_to(self.root).as_posix()
+                if target.is_symlink():
+                    digest.update(relative.encode())
+                    digest.update(os.readlink(target).encode())
+                elif target.is_file():
+                    digest.update(relative.encode())
+                    with target.open("rb") as handle:
+                        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                            digest.update(chunk)
+            return digest.hexdigest()
+        digest.update(revision.encode())
         digest.update(self._git("git", "diff", "--binary", "HEAD").encode())
         untracked = self._git(
             "git", "ls-files", "--others", "--exclude-standard", "-z"
