@@ -10,6 +10,7 @@ This document specifies what Skein implements and maps each contract to source a
 tests. The ADRs explain why:
 
 - [Trace-native harness and composable PTC](adr/trace-native-harness.md)
+- [Pi-hosted programmatic tool calling](adr/programmatic-tool-calling.md)
 - [Context, versioned memory programs, and long sessions](adr/context-and-memory.md)
 - [Execution, recovery, and verified completion](adr/execution-and-recovery.md)
 

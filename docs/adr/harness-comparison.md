@@ -111,6 +111,8 @@ preflight, compact text observations, bounded result paging, live variable reuse
 JSON-only checkpoint recovery without transcript replay. The project retains v4.1 as
 the Pi PTC reference after a v4.2 experiment reduced verification calls but failed to
 reduce total interactions, cost, or latency.
+The exact implementation contract is recorded in the
+[programmatic tool calling ADR](programmatic-tool-calling.md).
 
 ## What is genuinely novel in Skein
 

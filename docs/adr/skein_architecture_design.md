@@ -201,6 +201,7 @@ The companion ADRs turn that premise into execution contracts:
 | ADR | Questions it answers |
 | --- | --- |
 | [Trace-native harness and composable PTC](trace-native-harness.md) | How do `execute_code`, runtime selection, notebook/JSONL serialization, and state recovery fit together? |
+| [Programmatic tool calling implementation](programmatic-tool-calling.md) | How does the Pi-hosted v4.1 adapter implement prompts, batching, preflight, projections, variable reuse, recovery, and verification? |
 | [Context, versioned memory programs, and long sessions](context-and-memory.md) | How are programs versioned, evidence scoped, views computed, and prompts kept bounded? |
 | [Execution, recovery, and verified completion](execution-and-recovery.md) | Who authorizes effects, handles interruption, reconciles outcomes, and decides when work is complete? |
 | [Skein compared with Codex, OpenCode, and Pi](harness-comparison.md) | Which ideas are inherited, which tradeoffs differ, and what is genuinely distinctive in Skein? |

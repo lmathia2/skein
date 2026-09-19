@@ -103,7 +103,7 @@ V4.1 provides:
 The general Skein default remains the four-tool profile. V4.1 is the default only for
 the Pi + Skein PTC evaluation arm; v4.2 remains an archived experiment because it
 reduced `verify()` calls without reducing total interactions, cost, or latency. See
-[the PTC architecture decision](docs/adr/trace-native-harness.md#pi-hosted-ptc-v41-evaluation-adapter)
+[the PTC architecture decision](docs/adr/programmatic-tool-calling.md)
 and [the v4.2 comparison](docs/experiments/e13-pi-skein-v4.2-comparison.md).
 
 ## Develop

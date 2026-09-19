@@ -198,6 +198,9 @@ Successful compact replies omit the redundant field to preserve normal egress bo
 
 ### Pi-hosted v4.1 recovery boundary
 
+The complete adapter decision is in the
+[programmatic tool calling ADR](programmatic-tool-calling.md).
+
 The Pi evaluation adapter uses the same CPython worker with a smaller recovery
 contract than the ADK notebook path. Before each cell it snapshots supported live
 values for in-process exception rollback. After each successful cell it atomically

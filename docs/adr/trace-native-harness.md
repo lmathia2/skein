@@ -694,36 +694,10 @@ duplicate or unknown effects, snapshot bytes/failures, and terminal reason.
 
 ## Implemented boundary
 
-### Pi-hosted PTC v4.1 evaluation adapter
-
-The Pi comparison arm in `scripts/pi_code_tool_harbor.py` and
-`scripts/pi_skein_ptc_extension.mjs` reuses `PersistentPythonWorker`, but it is not the
-ADK notebook implementation described above. Pi owns inference, conversation state,
-and compaction. The adapter registers one model-visible tool named `code` and bridges
-each submitted cell to a resident Skein CPython subprocess and the Pier task
-workspace.
-
-| Concern | Implemented v4.1 behavior |
-|---|---|
-| Model contract | A compact stable prompt is assembled from independent runtime, workflow, generated helper-signature, contract, verification, and example components. Session state never enters it. |
-| Helpers | `read`, `write`, `edit`, `bash`, and `verify` are synchronous Python functions. Each nested call is captured separately; one cell accepts at most 64 helper calls. |
-| Batching | The model writes normal Python to loop, filter, compute, and combine helpers. There is no automatic batch planner or second batch tool. |
-| Variable reuse | The live namespace persists across cells. `json`, `math`, and `re` are preloaded. A straight-line AST metric records reads of prior bindings but does not inject a binding inventory into the prompt. |
-| Preflight | The stdlib AST checker reads the real broker signatures and result schemas. It blocks known undefined names, bad helper arguments/signatures, known result-key mistakes, simple literal type mismatches, and selected invalid operators before execution. It deliberately abstains after opaque calls, branches, comprehensions, and dynamic namespace changes. |
-| Result projection | Only selected stdout and the final expression are model-facing by default. Missing shell stderr, nonzero exits, timeouts, partial reads, and failed external effects are appended as compact diagnostics. Observations are capped at 50 KiB; up to 32 fuller 256 KiB records can be paged by result ID. |
-| State and rollback | Supported live values are snapshotted before a cell and restored after a Python execution exception. File and shell effects are not rolled back. Parse and source-validation rejection execute nothing. |
-| Worker loss | A successful cell writes an at-most-1 MiB checkpoint containing only finite JSON-safe scalars, lists, and string-keyed dictionaries. Timeout or transport loss discards the worker and restores that checkpoint before the next cell. Functions, modules, tuples, objects, and omitted oversized values are lost. No transcript is replayed. |
-| Verification | `bash` uses normal shell pipeline semantics. `verify` enables `pipefail` and raises on a non-success result. The extension conservatively invalidates verification after changed writes/edits and after every shell call, and may issue one final evidence-review turn. |
-| Isolation | Worker source guards and the Harbor file adapter restrict intended access, while Pier/Docker isolates task commands. The CPython worker is not presented as an adversarial OS sandbox. |
-
-V4.1 remains the Pi PTC default because its complete 20-task run matched Code Tool's
-binary quality within the uncertainty of the panel. The v4.2 revision-gating
-experiment reduced repeated verification but increased interactions, uncached input,
-cost, and latency on the clean comparison slice, so it was not promoted. The v4.2
-run also exposed a current adapter limitation: Pi can record a terminal provider
-message with `stopReason: "error"` while exiting zero, and the adapter does not yet
-turn that message into a Harbor agent error. Such rollouts must be classified from
-their event logs and excluded from quality comparisons.
+The separate Pi-hosted v4.1 evaluation adapter reuses the CPython worker but not this
+ADK notebook/ledger protocol. Its model contract, batching, preflight, result
+projection, recovery, verification, isolation, and known limits are defined in the
+[programmatic tool calling ADR](programmatic-tool-calling.md).
 
 - Four tools are the default profile.
 - `execute_code` is the model-facing name for Skein notebook PTC and returns the compact

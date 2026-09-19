@@ -216,6 +216,7 @@ The companion ADRs turn the thesis into enforceable contracts:
 | Decision | Contract |
 | --- | --- |
 | [Trace-native harness and composable PTC](adr/trace-native-harness.md) | How execution, the notebook document, and runtime-state recovery remain distinct. |
+| [Programmatic tool calling implementation](adr/programmatic-tool-calling.md) | How the Pi-hosted v4.1 adapter implements its prompt, helper contract, batching, projections, variable reuse, recovery, and verification. |
 | [Context and memory](adr/context-and-memory.md) | How evidence becomes bounded, versioned, reproducible context. |
 | [Execution and recovery](adr/execution-and-recovery.md) | How effects are authorized, interruptions reconciled, and completion verified. |
 | [Harness comparison](adr/harness-comparison.md) | How Skein differs from Codex, OpenCode, and Pi, including its novel combination of contracts. |
