@@ -43,6 +43,7 @@ PTC_OBSERVATION_BYTES = 50 * 1024
 PTC_RESULT_BYTES = 256_000
 PTC_RESULT_COUNT = 32
 OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
+MLX_DSPARK_BASE_URL = 'http://127.0.0.1:8484/v1'
 
 
 def _pricing_from_catalog(payload: dict, model_name: str) -> dict[str, float]:
@@ -80,6 +81,31 @@ def _price_usage(usage: dict, rates: dict[str, float]) -> float:
         usage['cache_write'] * rates['cacheWrite'],
         usage['output'] * rates['output'],
     )) / 1_000_000
+
+
+def _provider_config(provider_name: str, model_name: str,
+                     max_output_tokens: int | None) -> tuple[dict, dict]:
+    if provider_name == 'openrouter':
+        pricing = _openrouter_pricing(model_name)
+        override = {'cost': pricing['usd_per_million_tokens']}
+        if max_output_tokens is not None:
+            override['maxTokens'] = max_output_tokens
+        return {'providers': {'openrouter': {'modelOverrides': {model_name: override}}}}, pricing
+    if provider_name != 'mlx-dspark':
+        raise ValueError(f'Unsupported Pi provider: {provider_name}')
+    rates = {'input': 0.0, 'output': 0.0, 'cacheRead': 0.0, 'cacheWrite': 0.0}
+    model = {'id': model_name, 'name': f'{model_name} (local mlx-dspark)',
+             'reasoning': True, 'contextWindow': 100_000,
+             'maxTokens': max_output_tokens or 16_384, 'cost': rates,
+             'samplingParams': {'temperature': 1.0, 'top_p': .95, 'top_k': 20,
+                                'chat_template_kwargs': {'enable_thinking': True}}}
+    provider = {'baseUrl': MLX_DSPARK_BASE_URL, 'api': 'openai-completions',
+                'apiKey': 'local', 'compat': {'supportsDeveloperRole': False,
+                                               'supportsReasoningEffort': False},
+                'models': [model]}
+    pricing = {'model': model_name, 'source': MLX_DSPARK_BASE_URL,
+               'fetched_at_unix': int(time.time()), 'usd_per_million_tokens': rates}
+    return {'providers': {'mlx-dspark': provider}}, pricing
 
 
 def _bounded_text(value: str, limit: int) -> tuple[str, bool]:
@@ -427,12 +453,14 @@ class PiCodeToolPierAgent(BaseAgent):
     """Run Pi on the host; route the code tool's effects into Pier."""
 
     def __init__(self, *args, model_name: str | None = 'openai/gpt-5.6-luna',
-                 reasoning: str = 'max', max_output_tokens: int | None = None,
+                 provider_name: str = 'openrouter', reasoning: str | None = 'max',
+                 max_output_tokens: int | None = None,
                  execution_timeout_seconds: int = 6900, **kwargs):
         super().__init__(*args, model_name=model_name, **kwargs)
         if execution_timeout_seconds < 1:
             raise ValueError("execution_timeout_seconds must be positive")
         self.execution_timeout_seconds = execution_timeout_seconds
+        self.provider_name = provider_name
         self.reasoning = reasoning
         self.max_output_tokens = max_output_tokens
         self.workspace: str | None = None
@@ -571,17 +599,13 @@ class PiCodeToolPierAgent(BaseAgent):
             writer.close()
             await writer.wait_closed()
 
-        pricing = await asyncio.to_thread(_openrouter_pricing, self.model_name)
+        models_config, pricing = await asyncio.to_thread(
+            _provider_config, self.provider_name, self.model_name, self.max_output_tokens)
         server = await asyncio.start_server(handle, '127.0.0.1', 0)
         port = server.sockets[0].getsockname()[1]
         agent_dir = self.logs_dir / 'pi-state'
         agent_dir.mkdir(parents=True, exist_ok=True)
-        model_override = {'cost': pricing['usd_per_million_tokens']}
-        if self.max_output_tokens is not None:
-            model_override['maxTokens'] = self.max_output_tokens
-        (agent_dir / 'models.json').write_text(json.dumps({'providers': {'openrouter': {
-            'modelOverrides': {self.model_name: model_override}
-        }}}, sort_keys=True))
+        (agent_dir / 'models.json').write_text(json.dumps(models_config, sort_keys=True))
         pi_cwd = Path(tempfile.mkdtemp(prefix='pi-harbor-', dir='/private/tmp'))
         if self.package_env == 'PI_CODEMODE_PACKAGE':
             config_dir = agent_dir / '.pi/agent'
@@ -601,17 +625,21 @@ class PiCodeToolPierAgent(BaseAgent):
             (cache_dir / 'mcp-metadata.json').write_text(json.dumps({
                 'version': 1, 'servers': {'harbor': {'configHash': digest,
                     'tools': list(TOOLS.values()), 'cachedAt': int(time.time() * 1000)}}}))
-        env = {**os.environ, 'OPENROUTER_API_KEY': _openrouter_key(),
+        env = {**os.environ,
                'HOME': str(agent_dir) if self.package_env == 'PI_CODEMODE_PACKAGE'
                     else os.environ.get('HOME', str(Path.home())),
                'PI_CODING_AGENT_DIR': str(agent_dir),
                self.package_env: str(self.package),
                'PI_HARBOR_BRIDGE_URL': f'http://127.0.0.1:{port}/tool',
                'PTC_EVIDENCE_REVIEW': '1' if self.uses_skein_ptc else '0'}
+        if self.provider_name == 'openrouter':
+            env['OPENROUTER_API_KEY'] = _openrouter_key()
         argv = ['node', str(PI_CLI), '-e', str(self.extension), '--no-builtin-tools',
-                '--no-session', '--print', '--mode', 'json', '--provider', 'openrouter',
-                '--model', self.model_name or 'openai/gpt-5.6-luna',
-                '--thinking', self.reasoning, '--', instruction]
+                '--no-session', '--print', '--mode', 'json', '--provider', self.provider_name,
+                '--model', self.model_name or 'openai/gpt-5.6-luna']
+        if self.reasoning is not None:
+            argv += ['--thinking', self.reasoning]
+        argv += ['--', instruction]
         try:
             exit_code, timed_out = await _run_pi_process(argv, cwd=str(pi_cwd), env=env,
                 logs_dir=self.logs_dir, timeout_seconds=self.execution_timeout_seconds)
@@ -643,7 +671,8 @@ class PiCodeToolPierAgent(BaseAgent):
         context.cost_usd = usage['cost']
         context.n_agent_steps = usage['steps']
         context.metadata = {'pi_code_tool': {'exit_code': exit_code, 'timed_out': timed_out, 'execution_timeout_seconds': self.execution_timeout_seconds, 'usage': usage,
-                            'model': self.model_name, 'reasoning': self.reasoning,
+                            'model': self.model_name, 'provider': self.provider_name,
+                            'reasoning': self.reasoning,
                             'max_output_tokens': self.max_output_tokens,
                             'pricing': pricing}}
         if timed_out:

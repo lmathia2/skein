@@ -118,6 +118,21 @@ def test_pi_adapter_receives_the_same_output_limit(tmp_path: Path) -> None:
     assert "max_output_tokens=32768" in command
 
 
+def test_pi_adapter_receives_local_provider(tmp_path: Path) -> None:
+    runner = load_runner()
+    args = type("Args", (), {
+        "model": "Qwen3.8-27B-8bit", "provider": "mlx-dspark",
+        "reasoning": None, "config": "harness/core/config/profiles/four-tool.yaml",
+        "max_output_tokens": 32_768, "max_task_input_tokens": 200_000,
+        "max_iterations": 1_000, "api_key_env": "OPENROUTER_API_KEY",
+        "agent_import_path": "scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent",
+    })()
+    command = runner.run_command(
+        {"expected_runtime_seconds": 10_800}, args, 1, tmp_path / "job", tmp_path / "task")
+    assert "provider_name=mlx-dspark" in command
+    assert not any("reasoning=" in value for value in command)
+
+
 def test_deepswe_tasks_enable_submission_commit_packaging(tmp_path: Path) -> None:
     runner = load_runner()
     args = type("Args", (), {

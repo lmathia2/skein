@@ -531,6 +531,8 @@ def run_command(
         command += ["--agent-kwarg", f"execution_timeout_seconds={args.per_trial_timeout_seconds}"]
     if args.reasoning is not None:
         command += ["--agent-kwarg", f"reasoning={args.reasoning}"]
+    if args.agent_import_path.startswith("scripts.pi_code_tool_harbor:"):
+        command += ["--agent-kwarg", f"provider_name={args.provider}"]
     if args.max_output_tokens is not None and args.agent_import_path in {
         "harness.adapters.pier:SkeinPierAgent",
         "scripts.pi_code_tool_harbor:PiCodeToolPierAgent",

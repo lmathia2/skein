@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-import time
 import subprocess
+import time
 from types import SimpleNamespace
 
 from harness.ptc.repl import PersistentPythonWorker, PythonExecutionResult
 from harness.ptc.repl.preflight import helper_contract
 from scripts.pi_code_tool_harbor import (
-    _PierPtcBroker,
     _bounded_head_tail,
+    _load_plain_checkpoint,
+    _model_contract,
+    _PierPtcBroker,
     _price_usage,
     _pricing_from_catalog,
     _prior_binding_reads,
+    _provider_config,
     _ptc_record,
     _ptc_response,
-    _load_plain_checkpoint,
-    _model_contract,
     _save_plain_checkpoint,
 )
 
@@ -29,6 +30,17 @@ def test_openrouter_catalog_pricing_and_usage_cost():
     usage = {'input': 1_000_000, 'cache': 2_000_000, 'cache_write': 3_000_000,
              'output': 500_000}
     assert round(_price_usage(usage, rates), 6) == .204
+
+
+def test_local_mlx_provider_is_zero_cost_and_openai_compatible():
+    config, pricing = _provider_config('mlx-dspark', 'Qwen3.8-27B-8bit', 32_768)
+    provider = config['providers']['mlx-dspark']
+    model = provider['models'][0]
+    assert provider['baseUrl'] == 'http://127.0.0.1:8484/v1'
+    assert provider['api'] == 'openai-completions'
+    assert provider['compat']['supportsReasoningEffort'] is False
+    assert model['maxTokens'] == 32_768 and model['reasoning'] is True
+    assert set(pricing['usd_per_million_tokens'].values()) == {0.0}
 
 
 class Broker(_PierPtcBroker):
@@ -191,6 +203,7 @@ def test_process_output_is_durable_before_timeout(tmp_path):
     import asyncio
     import os
     import sys
+
     from scripts.pi_code_tool_harbor import _run_pi_process
 
     async def check():
