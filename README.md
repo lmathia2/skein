@@ -73,6 +73,39 @@ Provider, model, reasoning effort, token limits, concurrency, and attempts are
 runner flags. Tool topology, safety, verification, and evidence authority remain
 code-owned so benchmark modes stay comparable.
 
+### Pi + Skein PTC v4.1
+
+The E13 comparison runner also provides `PiSkeinPtcPierAgent`, a Pi extension backed
+by Skein's persistent CPython worker. This is separate from the ADK notebook profile:
+Pi owns the model loop, while Skein supplies the `code` tool, worker, Harbor bridge,
+and workspace helpers.
+
+One model call can submit a Python cell that calls synchronous `read`, `write`,
+`edit`, `bash`, and `verify` helpers. Python variables and functions persist between
+cells, so batching is ordinary Python composition—loops, filtering, and several
+helper calls in one cell—rather than a second batch API. `json`, `math`, and `re` are
+preloaded. The worker blocks direct host I/O and routes workspace effects through the
+confined broker.
+
+V4.1 provides:
+
+- conservative AST preflight for undefined names, helper signatures and arguments,
+  known result keys, simple literal types, and invalid operators;
+- readable text projections with merged shell diagnostics and exit status, plus
+  50 KiB model observations and pageable retained results;
+- rollback of supported in-memory values after a Python exception without rolling
+  back external effects;
+- a bounded JSON-only checkpoint after each successful cell, restored after worker
+  timeout or transport loss without replaying the transcript; and
+- a separate `verify` helper plus one completion-review follow-up when the last
+  possible mutation is not covered by successful verification.
+
+The general Skein default remains the four-tool profile. V4.1 is the default only for
+the Pi + Skein PTC evaluation arm; v4.2 remains an archived experiment because it
+reduced `verify()` calls without reducing total interactions, cost, or latency. See
+[the PTC architecture decision](docs/adr/trace-native-harness.md#pi-hosted-ptc-v41-evaluation-adapter)
+and [the v4.2 comparison](docs/experiments/e13-pi-skein-v4.2-comparison.md).
+
 ## Develop
 
 ```sh

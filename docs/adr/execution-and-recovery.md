@@ -2,7 +2,7 @@
 
 > Status: core contracts implemented; safe automatic recovery remains opt-in
 >
-> Updated: 2026-09-14
+> Updated: 2026-09-19
 
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
@@ -195,6 +195,29 @@ no assignment or capability ran. An existing same-name binding remains its old v
 not the output of the rejected program. `state_preserved` alone never establishes
 non-execution: runtime failure with snapshot rollback can follow completed effects.
 Successful compact replies omit the redundant field to preserve normal egress bounds.
+
+### Pi-hosted v4.1 recovery boundary
+
+The Pi evaluation adapter uses the same CPython worker with a smaller recovery
+contract than the ADK notebook path. Before each cell it snapshots supported live
+values for in-process exception rollback. After each successful cell it atomically
+writes a bounded JSON checkpoint containing exact JSON-safe plain values. A worker
+timeout or transport failure discards the process; the next cell restores only that
+checkpoint. External effects are never rolled back, opaque Python values are omitted,
+and submitted cells are never replayed.
+
+This design keeps model context independent from recovery cost and avoids Code Tool's
+transcript reconstruction. It does not reconstruct functions, imports, live handles,
+or every prior observation. The model-visible recovery notice names omitted bindings,
+and recovery remains subordinate to effect reconciliation when a timed-out broker
+operation may have changed the workspace.
+
+Pi provider failures currently have a separate limitation at the adapter boundary.
+Pi may emit an assistant message with `stopReason: "error"` and still exit zero. The
+v4.1 adapter accounts its event usage but does not yet promote that terminal message
+to a Pier agent error. Evaluation code must inspect the retained Pi events and treat
+those trials as provider-interrupted; a graded unchanged workspace is not evidence of
+agent failure or success.
 
 A timeout during a broker call can leave an effect unknown even after the worker is
 discarded. Retaining a variable, restoring a snapshot, or replaying a notebook cannot

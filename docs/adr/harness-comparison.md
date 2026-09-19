@@ -1,6 +1,6 @@
 # Skein compared with Codex, OpenCode, and Pi
 
-Status: architectural comparison, September 2026
+Status: architectural comparison, updated September 19, 2026
 
 This note positions the current simplified Skein implementation against three
 influential coding harnesses. It is not a feature checklist or a claim that Skein is
@@ -102,6 +102,16 @@ handoff; Skein treats each memory result as a versioned program over addressed e
 at a watermark. Pi deliberately leaves permissions and verification outside its core;
 Skein makes both non-optional host responsibilities.
 
+Skein also carries a narrow Pi-hosted evaluation adapter. Pi retains its ordinary
+model loop, while a single extension tool routes persistent Python cells through
+Skein's worker and Pier workspace broker. This adapter is deliberately not a second
+product architecture: it isolates the PTC interface from Skein's ADK orchestration.
+Its current v4.1 contract uses synchronous direct helpers, conservative stdlib AST
+preflight, compact text observations, bounded result paging, live variable reuse, and
+JSON-only checkpoint recovery without transcript replay. The project retains v4.1 as
+the Pi PTC reference after a v4.2 experiment reduced verification calls but failed to
+reduce total interactions, cost, or latency.
+
 ## What is genuinely novel in Skein
 
 None of Skein's ingredients is novel in isolation. Code execution, notebooks,
@@ -186,8 +196,8 @@ The simplified implementation matters more than the aspirational design:
 
 - Four direct tools remain the default because the completed PTC comparison did not
   clear the quality gate.
-- Skein ships one notebook PTC implementation; discarded experiment adapters are not
-  retained as product surface.
+- Skein ships one ADK notebook PTC implementation. The separate Pi-hosted v4.1 adapter
+  is retained only as evaluation infrastructure, not as product surface.
 - JSONL is sufficient for the default path. DuckDB is optional, and semantic retrieval
   is not active without an explicit embedding provider.
 - The local environment adapter is not a production security sandbox.
