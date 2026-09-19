@@ -47,8 +47,8 @@ else
     --reasoning xhigh
     --agent-import-path scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent
     --config harness/core/config/profiles/four-tool.yaml
-    --jobs-dir "$root/.artifacts/e13-muse-20-v4.2-pi-skein-ptc"
-    --trackio-run-name pi-skein-ptc-v4.2-xhigh
+    --jobs-dir "$root/.artifacts/e13-muse-20-v4.1-pi-skein-ptc"
+    --trackio-run-name pi-skein-ptc-v4.1-xhigh
   )
 fi
 

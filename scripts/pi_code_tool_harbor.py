@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-from harness.adapters.pier import HarborRepositoryRuntime, HarborWorkspaceEnvironment, _AsyncBridge
+from harness.adapters.pier import HarborWorkspaceEnvironment, _AsyncBridge
 from harness.execution.environment import sha256_bytes
 from harness.ptc.repl import PersistentPythonWorker, default_help_catalog
 from harness.ptc.repl.preflight import helper_contract
@@ -122,7 +122,7 @@ def _ptc_record(result, result_id: str, outcomes: list[dict] = ()) -> str:
 
 def _ptc_response(result, result_id: str, outcomes: list[dict] = (),
                   prior_names: set[str] = frozenset(), reuse: list[str] = (),
-                  checkpoint: dict | None = None, workspace_revision: str | None = None) -> dict:
+                  checkpoint: dict | None = None) -> dict:
     stdout = result.full_stdout or result.stdout
     value = result.full_value_repr or result.value_repr
     stderr = result.full_stderr or result.stderr
@@ -209,7 +209,6 @@ def _ptc_response(result, result_id: str, outcomes: list[dict] = (),
         'state_delta': new, 'state_deleted': list(result.state_deleted), 'state_preserved': result.state_preserved,
         'failure_stage': result.failure_stage, 'duration_ms': result.duration_ms,
         'output_truncated': omitted, 'broker_outcomes': telemetry,
-        'workspace_revision': workspace_revision,
         'prior_bindings_read_before_assignment': list(reuse),
         'checkpoint': ({'source_cell_id': checkpoint['source_cell_id'],
                         'value_count': len(checkpoint['values']),
@@ -466,8 +465,6 @@ class PiCodeToolPierAgent(BaseAgent):
         loop = asyncio.get_running_loop()
         bridge = _AsyncBridge(loop)
         files = HarborWorkspaceEnvironment(environment, bridge, self.workspace)
-        repository = (await asyncio.to_thread(HarborRepositoryRuntime, environment, bridge, files)
-                      if self.uses_skein_ptc else None)
         contract = helper_contract(_PierPtcBroker)
         catalog = default_help_catalog()
         for name, alias in [('read', 'fs.read'), ('write', 'fs.write'), ('edit', 'fs.edit'), ('bash', 'shell.run')]:
@@ -527,9 +524,8 @@ class PiCodeToolPierAgent(BaseAgent):
                 ptc_results[result_id] = _ptc_record(result, result_id, broker.outcomes)
                 if len(ptc_results) > PTC_RESULT_COUNT:
                     del ptc_results[next(iter(ptc_results))]
-                revision = await asyncio.to_thread(repository.fingerprint)
                 response = _ptc_response(result, result_id, broker.outcomes, prior_names, reuse,
-                                         checkpoint, revision)
+                                         checkpoint)
                 prior_names.difference_update(result.state_deleted)
                 if result.status == 'ok':
                     prior_names.update(result.state_delta)
@@ -678,4 +674,4 @@ class PiSkeinPtcPierAgent(PiCodeToolPierAgent):
         return 'pi-skein-ptc'
 
     def version(self) -> str:
-        return 'pi-local+skein-persistent-cpython-v4.2-revision-gated-verify'
+        return 'pi-local+skein-persistent-cpython-v4.1-checkpoint'
