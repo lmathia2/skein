@@ -1585,7 +1585,7 @@ async def _orchestrate_owned(
             )
             raise
         try:
-            step = parse_agent_step(raw_step)
+            step = parse_agent_step(raw_step, allow_freeform=deps.thin_loop)
         except ValueError as error:
             deps.event_store.append(
                 task_id,
@@ -1593,7 +1593,11 @@ async def _orchestrate_owned(
                 {"kind": "malformed_agent_step", "error": str(error)[:2_000]},
                 idempotency_key=f"malformed-step:{ledger.iteration + 1}",
             )
-            step = _malformed_step(error)
+            step = (
+                AgentStep(status="verify", message="Verify the current workspace.")
+                if deps.thin_loop
+                else _malformed_step(error)
+            )
 
         if reply_stream is not None:
             step = reply_stream.finish(step)

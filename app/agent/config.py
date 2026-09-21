@@ -183,7 +183,7 @@ that write or have unknown effects must never be replayed automatically.
 """.strip() + "\n\n" + WORKSPACE_EXECUTION_GUIDANCE
 
 THIN_PTC_INSTRUCTION = """
-Persistent CPython is available through `execute_code(code)`. The direct helpers are `read`, `write`, `edit`, `bash`, and `verify`; they are Pi-compatible, preloaded, and called without `await`:
+Persistent CPython is available through `code(code)`. The direct helpers are `read`, `write`, `edit`, `bash`, and `verify`; they are Pi-compatible, preloaded, and called without `await`:
 
 - `read(path, offset=1, limit=400)` returns file text directly.
 - `bash(command, timeout_seconds=120)` returns command output with `exit_code`, `stdout`, and `stderr` metadata.
@@ -307,6 +307,15 @@ def settings_from_composition(
     )
     worker_config = config.agents["coding_worker"]
     instruction = worker_config.instruction.strip()
+    if config.workflow.mode in {"thin", "pi_compatible"}:
+        instruction = instruction.replace(
+            "When finished, return the AgentStep schema. Use answer only for read-only conversation,\n"
+            "verify or done after code changes, and blocked only when human input is required. Return\n"
+            "every schema field, using empty arrays or null when a field is not useful. Each completion\n"
+            "claim contains criterion and an evidence array. The outer workflow decides whether\n"
+            "verification succeeds.",
+            "",
+        ).rstrip()
     project_instructions = (
         collect_project_instructions(workspace) if bindings.project_trusted else ""
     )
@@ -334,8 +343,9 @@ def settings_from_composition(
         if config.workflow.mode in {"thin", "pi_compatible"}:
             instruction += (
                 "\n\nOwn the complete inspect/edit/test/repair loop. Do not stop to report progress. "
-                "When ready, return only status (`answer`, `verify`, `done`, or `blocked`), message, "
-                "and an optional concrete question. Use blocked only when human input is required."
+                "When the work is complete, respond with an ordinary concise final answer; no JSON "
+                "or status envelope is required. Only for a genuine human dependency, return "
+                '`{"status":"blocked","message":"...","question":"..."}` with a concrete question.'
             )
         if config.workflow.mode == "structured":
             instruction += (

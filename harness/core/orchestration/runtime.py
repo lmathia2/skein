@@ -49,7 +49,11 @@ def can_answer_directly(
     )
 
 
-def parse_agent_step(value: str | dict[str, Any] | AgentStep | ThinAgentStep) -> AgentStep:
+def parse_agent_step(
+    value: str | dict[str, Any] | AgentStep | ThinAgentStep,
+    *,
+    allow_freeform: bool = False,
+) -> AgentStep:
     if isinstance(value, AgentStep):
         return value
     if isinstance(value, ThinAgentStep):
@@ -76,9 +80,15 @@ def parse_agent_step(value: str | dict[str, Any] | AgentStep | ThinAgentStep) ->
             continue
         try:
             payload, _ = decoder.raw_decode(text, index)
-            return AgentStep.model_validate(payload)
+            step = parse_agent_step(payload)
+            if allow_freeform and not step.message and text[:index].strip("` \n"):
+                step = step.model_copy(update={"message": text[:index].strip("` \n")})
+            return step
         except ValueError as error:
             last_error = error
+
+    if allow_freeform and text:
+        return AgentStep(status="done", message=text)
 
     raise ValueError(
         "model response did not contain a valid AgentStep JSON object"

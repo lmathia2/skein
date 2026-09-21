@@ -57,6 +57,29 @@ def test_parse_agent_step_expands_minimal_thin_blocker() -> None:
     assert step.questions == ["Which API version?"]
 
 
+def test_parse_agent_step_accepts_pi_compatible_terminal_text() -> None:
+    prose = parse_agent_step("Implemented the fix and tests pass.", allow_freeform=True)
+    assert prose == parse_agent_step(
+        '{"status":"done","message":"Implemented the fix and tests pass."}'
+    )
+
+    prefixed = parse_agent_step(
+        'Work complete.\n{"status":"verify","message":"","question":null}',
+        allow_freeform=True,
+    )
+    assert prefixed.status == "verify"
+    assert prefixed.message == "Work complete."
+
+
+def test_parse_agent_step_recovers_malformed_pi_compatible_terminal_json() -> None:
+    step = parse_agent_step(
+        'Finished the edit. {"status":"verify"', allow_freeform=True
+    )
+
+    assert step.status == "done"
+    assert step.message.startswith("Finished the edit.")
+
+
 def test_changed_paths_include_staged_renamed_and_untracked(tmp_path: Path) -> None:
     root = _repository(tmp_path / "repository")
     base = subprocess.run(

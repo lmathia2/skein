@@ -261,7 +261,7 @@ class SkeinHarnessFactory:
             raise TypeError("skein_v1 requires SkeinConfig")
         settings = settings_from_composition(composition, bindings)
         tool_names = (
-            ("execute_code",)
+            (("code",) if config.workflow.mode in {"thin", "pi_compatible"} else ("execute_code",))
             if config.notebook_ptc.enabled
             else FOUR_CODING_TOOLS
         )
@@ -331,6 +331,16 @@ class SkeinHarnessFactory:
         if not isinstance(config, SkeinConfig):
             raise TypeError("skein_v1 requires SkeinConfig")
         self._validate_supported_shape(config)
+        ptc_config = (
+            config.notebook_ptc.model_copy(update={
+                "state": "snapshot",
+                "recover_committed_values": True,
+                "max_output_bytes": 50 * 1024,
+                "max_capability_calls_per_cell": 64,
+            })
+            if config.workflow.mode == "pi_compatible"
+            else config.notebook_ptc
+        )
         settings = settings_from_composition(composition, bindings)
         settings.state_root.mkdir(parents=True, exist_ok=True)
         known_secrets = self._known_secrets(config)
@@ -493,7 +503,7 @@ class SkeinHarnessFactory:
         if config.memory.context_programs.mode == "active":
             tools = replace(tools, bash=reserved_bash)
         notebook_options = {}
-        if config.notebook_ptc.continuity == "conversation":
+        if ptc_config.continuity == "conversation":
             if not (bindings.conversation_id and bindings.user_id and bindings.notebook_state_root):
                 raise ValueError("conversation PTC requires a server-owned notebook binding")
             if not config.memory.enabled:
@@ -518,7 +528,7 @@ class SkeinHarnessFactory:
             tools=tools,
             generation_config=worker_config.generation,
             tool_config=config.tools,
-            ptc_config=config.notebook_ptc,
+            ptc_config=ptc_config,
             event_store=event_store,
             capture_read_evidence=canonical_ledger is not None,
             approvals=approvals,
@@ -609,7 +619,7 @@ class SkeinHarnessFactory:
                 handoff=context_handoff, known_secrets=tuple(known_secrets),
                 require_notes=config.memory.working_notes,
                 refresh_prior=bool(prior_tasks) and config.memory.context_programs.mode == "active",
-                max_tool_result_bytes=config.notebook_ptc.max_output_bytes,
+                max_tool_result_bytes=ptc_config.max_output_bytes,
             )
         deps = SkeinWorkflowDependencies(
             settings=settings,
@@ -755,7 +765,7 @@ class SkeinHarnessFactory:
                     name: model.provider for name, model in sorted(config.models.items())
                 },
                 tool_names=(
-                    ("execute_code",)
+                    (("code",) if config.workflow.mode in {"thin", "pi_compatible"} else ("execute_code",))
                     if config.notebook_ptc.enabled
                     else FOUR_CODING_TOOLS
                 ),

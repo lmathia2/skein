@@ -377,6 +377,9 @@ def test_thin_mode_uses_compact_direct_ptc_contract(tmp_path: Path) -> None:
 
     assert "The direct helpers are `read`, `write`, `edit`, `bash`, and `verify`" in settings.static_instruction
     assert "Phase-aware cell composition" not in settings.static_instruction
+    assert "AgentStep schema" not in settings.static_instruction
+    assert "ordinary concise final answer" in settings.static_instruction
+    assert '`{"status":"blocked"' in settings.static_instruction
 
 
 def test_search_default_page_size_cannot_exceed_maximum() -> None:

@@ -82,8 +82,9 @@ Each helper returns a readable string-like object with attributes and legacy map
 access. Shell text combines stdout, a labelled stderr section when present, and an
 `[exit N]` marker. A cell may make at most 64 helper calls.
 
-The ADK `pi_compatible` mode exposes the same five preloaded helpers through
-`execute_code`. Its stable prompt names their exact signatures, the three preloaded
+The ADK `pi_compatible` mode exposes the same five preloaded helpers through `code`.
+It also selects the v4.1 observation bound (50 KiB), helper-call bound (64), snapshot
+recovery, and committed plain-value checkpoints. Its stable prompt names the exact signatures, the three preloaded
 modules, blocked direct-I/O imports, and failure behavior. Internal result envelopes
 remain available to trace capture, but the model sees direct text and compact mutation
 results rather than canonical event records.

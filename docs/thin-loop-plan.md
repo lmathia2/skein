@@ -1,7 +1,8 @@
 # Pi-compatible loop implementation
 
-Status: implemented behind `workflow.mode: pi_compatible`; pinned comparison running,
-2026-09-21. `thin` remains a command/config compatibility alias.
+Status: implemented behind `workflow.mode: pi_compatible`; ready for a fresh pinned
+comparison, 2026-09-21. `thin` retains the lightweight-loop ablation without forcing
+the v4.1 runtime limits.
 
 ## Decision
 
@@ -85,9 +86,10 @@ latency, and cost. Do not use patch size as a quality proxy.
    safety limits, and never represent a host yield as a human blocker.
 2. **Projection:** add bounded Markdown projection while leaving canonical events
    unchanged.
-3. **Verification:** skip the structured counterexample-review detour in compatibility mode;
-   retain managed verification and return every failure for repair until the ordinary
-   task/model/time budget is exhausted.
+3. **Verification:** skip Skein's structured counterexample-review detour in compatibility
+   mode; retain managed verification and return every failure for repair until the ordinary
+   task/model/time budget is exhausted. Pi v4.1's one-shot pre-final evidence reminder
+   remains a documented host-loop difference.
 4. **Continuity:** retain the exact recent tool tail across genuine context compaction,
    persist projection checkpoints, and keep stable instructions outside summaries.
 5. **Parity:** match Pi v4.1's compact direct-helper contract and observation limits
@@ -115,7 +117,7 @@ comparison establishes quality and cost.
 - Thin model input is readable Markdown rather than serialized ledger/event envelopes.
 - Failed managed verification can re-enter implementation; verified completion remains
   host-owned.
-- Thin terminal output is limited to status, message, and an optional blocker question;
-  host-owned verification supplies criterion-level evidence.
+- Thin terminal output may be ordinary prose; the adapter derives the host terminal state,
+  and host-owned verification supplies criterion-level evidence.
 - Focused tests cover mode parsing, projection shape, minimal terminal output, absence
   of batch yields, and failed-verification repair followed by verified completion.

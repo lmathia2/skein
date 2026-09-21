@@ -18,7 +18,7 @@ from google.adk.tools import ToolContext
 from google.genai import types
 
 from harness.core.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
-from harness.core.models.agent_step import StructuredAgentStep, ThinAgentStep
+from harness.core.models.agent_step import StructuredAgentStep
 from harness.evidence.memory.models import ReadEvidence
 from harness.evidence.state import EventKind, EventStore, JsonlEventStore
 from harness.evidence.state.events import HarnessEvent
@@ -292,6 +292,16 @@ def build_coding_worker(
     )
 
     model_tools: list[Any] = [ptc_session.tool] if ptc_session else [read, bash, edit, write]
+    if ptc_session is not None and thin_loop:
+        async def code(
+            code: str,
+            tool_context: ToolContext | None = None,
+        ) -> dict[str, Any]:
+            """Run one persistent Python cell with Pi-compatible workspace helpers."""
+
+            return await ptc_session.tool(code=code, tool_context=tool_context)
+
+        model_tools = [code]
     generation = active_generation_config.model_dump(exclude_none=True)
     stable_request_prefix: bytes | None = None
 
@@ -336,7 +346,7 @@ def build_coding_worker(
         tools=model_tools,
         include_contents="default" if ptc_session is not None else "none",
         output_schema=(
-            (ThinAgentStep if thin_loop else StructuredAgentStep)
+            None if thin_loop else StructuredAgentStep
             if getattr(getattr(model, "capabilities", None), "output_schema_and_tools", False)
             else None
         ),

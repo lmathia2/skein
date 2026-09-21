@@ -76,10 +76,11 @@ code-owned so benchmark modes stay comparable.
 
 The notebook profile has two workflow policies. `structured` uses Skein's phased
 work packets, counterexample review, and bounded verification retries.
-`pi_compatible` keeps the same PTC worker, broker, verifier, and canonical trace but
-gives the model Pi's compact direct-helper contract and continuous repair loop.
-`thin` remains an experiment-compatible alias for that lightweight path. Select a
-policy with `--workflow-mode structured|pi_compatible`.
+`pi_compatible` keeps the same broker, verifier, and canonical trace but gives the
+model Pi's compact `code` tool, direct-helper contract, continuous repair loop,
+50 KiB observations, 64 helper calls per cell, and snapshot recovery of committed
+plain values. `thin` keeps the lightweight loop without forcing those v4.1 runtime
+limits. Select a policy with `--workflow-mode structured|pi_compatible`.
 
 In `pi_compatible` mode the model receives concise Markdown and readable helper
 results; the trace still records complete typed capability receipts and artifacts.

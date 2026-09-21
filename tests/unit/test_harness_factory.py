@@ -47,7 +47,7 @@ from harness.core.config import (
     load_harness_composition,
     parse_harness_composition,
 )
-from harness.core.models.agent_step import StructuredAgentStep, ThinAgentStep
+from harness.core.models.agent_step import StructuredAgentStep
 from harness.evidence.state import EventKind, JsonlEventStore
 from harness.execution.tools.adk_adapter import AdkCodingTools
 
@@ -57,6 +57,36 @@ def test_compound_virtual_memory_call_is_detected_without_matching_quoted_data()
     assert _compound_memory_call("git status; memory query --program tools.usage")
     assert not _compound_memory_call("memory note read")
     assert not _compound_memory_call("rg '&& memory' app")
+
+
+def test_pi_compatible_applies_v41_ptc_runtime_contract(tmp_path, monkeypatch) -> None:
+    from app.agent import factory
+
+    captured: dict[str, Any] = {}
+    original = factory.build_coding_worker
+
+    def worker(*args: Any, **kwargs: Any):
+        captured["ptc_config"] = kwargs["ptc_config"]
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(factory, "build_coding_worker", worker)
+    payload = load_harness_composition().model_dump(mode="json")
+    payload["harness"]["config"]["workflow"]["mode"] = "pi_compatible"
+    payload["harness"]["config"]["notebook_ptc"]["enabled"] = True
+    assembly = build_harness(
+        parse_harness_composition(payload),
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state", task_id="task"),
+    )
+    try:
+        ptc = captured["ptc_config"]
+        assert ptc.state == "snapshot"
+        assert ptc.recover_committed_values is True
+        assert ptc.max_output_bytes == 50 * 1024
+        assert ptc.max_capability_calls_per_cell == 64
+        assert assembly.build_info.tool_names == ("code",)
+    finally:
+        if assembly.close:
+            assembly.close()
 
 
 @pytest.mark.asyncio
@@ -750,9 +780,13 @@ def test_worker_uses_native_structured_output_without_adding_a_model_tool(tmp_pa
     thin = build_coding_worker(
         settings,
         OpenRouterResponsesLlm(model="openai/gpt-5.5", api_key="test"),
+        ptc_config=NotebookPtcConfig(enabled=True),
         thin_loop=True,
     )
-    assert thin.agent.output_schema is ThinAgentStep
+    assert thin.agent.output_schema is None
+    assert [tool.__name__ for tool in thin.agent.tools] == ["code"]
+    if thin.close is not None:
+        thin.close()
 
 
 @pytest.mark.asyncio
