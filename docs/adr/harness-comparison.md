@@ -114,12 +114,14 @@ reduce total interactions, cost, or latency.
 The exact implementation contract is recorded in the
 [programmatic tool calling ADR](programmatic-tool-calling.md).
 
-Skein now also exposes `workflow.mode: pi_compatible` as the native isolation arm.
-It uses the same direct `read`, `bash`, `edit`, `write`, and `verify` contract, compact
-model projection, and continuous failure-to-repair policy as the Pi-hosted reference.
-Unlike the Pi arm, ADK still owns inference and Skein retains its canonical structured
-events. This isolates whether the performance gap came from model-facing scaffolding
-and stopping policy rather than the PTC worker or capability broker.
+The old `workflow.mode: pi_compatible` arm was only approximate: provider API,
+observation rendering, and managed verification differed. The strict evaluation
+pair is now `PiParityPierAgent` versus `SkeinParityPierAgent`. Both share the v4.1
+tool adapter and Chat Completions serializer; Pi and ADK respectively own the loop.
+Neither adds compaction or independent host verification to the conversation.
+Offline differential tests compare complete model contexts and serialized provider
+requests. The strict pair needs fresh results, separately from historical v4.1 CLI
+and approximate native results. General application workflow defaults remain intact.
 
 ## What is genuinely novel in Skein
 

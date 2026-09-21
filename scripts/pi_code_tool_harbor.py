@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import sys
 import tempfile
 import threading
@@ -21,6 +22,7 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from harness.adapters.pier import HarborWorkspaceEnvironment, _AsyncBridge
+from harness.evidence.state import JsonlEventStore
 from harness.execution.environment import sha256_bytes
 from harness.ptc.repl import PersistentPythonWorker, default_help_catalog
 from harness.ptc.repl.preflight import helper_contract
@@ -436,7 +438,8 @@ async def _run_pi_process(argv, *, cwd, env, logs_dir, timeout_seconds):
     """Write child output directly to disk, including on cancellation or host death."""
     with (logs_dir / 'pi-events.jsonl').open('wb') as stdout, (logs_dir / 'pi-stderr.log').open('wb') as stderr:
         process = await asyncio.create_subprocess_exec(*argv, cwd=cwd, env=env,
-                                                       stdout=stdout, stderr=stderr)
+                                                       stdout=stdout, stderr=stderr,
+                                                       start_new_session=True)
         timed_out = False
         try:
             await asyncio.wait_for(process.wait(), timeout=timeout_seconds)
@@ -444,7 +447,7 @@ async def _run_pi_process(argv, *, cwd, env, logs_dir, timeout_seconds):
             timed_out = True
         finally:
             if process.returncode is None:
-                process.kill()
+                os.killpg(process.pid, signal.SIGKILL)
                 await process.wait()
         return process.returncode, timed_out
 
@@ -476,6 +479,7 @@ class PiCodeToolPierAgent(BaseAgent):
     package_env = 'PI_CODE_TOOL_PACKAGE'
     package = PACKAGE
     uses_skein_ptc = False
+    parity_loop: str | None = None
 
     async def setup(self, environment: BaseEnvironment) -> None:
         result = await environment.exec('pwd -P', timeout_sec=10)
@@ -502,6 +506,8 @@ class PiCodeToolPierAgent(BaseAgent):
                                          help_catalog=catalog, capture_committed=True)
                   if self.uses_skein_ptc else None)
         broker = _PierPtcBroker(environment, bridge, files, self.workspace)
+        native_ledger = (JsonlEventStore(self.logs_dir / 'skein-ptc-events')
+                         if self.parity_loop == 'adk' else None)
         ptc_results: dict[str, str] = {}
         prior_names: set[str] = set()
         checkpoint_path = self.logs_dir / 'ptc-checkpoint.json'
@@ -554,6 +560,12 @@ class PiCodeToolPierAgent(BaseAgent):
                     del ptc_results[next(iter(ptc_results))]
                 response = _ptc_response(result, result_id, broker.outcomes, prior_names, reuse,
                                          checkpoint)
+                if native_ledger is not None:
+                    native_ledger.append('parity', 'parity.ptc_cell', {
+                        'cell_id': cell_id, 'source': code, 'status': result.status,
+                        'broker_outcomes': broker.outcomes,
+                        'retained_result': ptc_results[result_id], 'projection': response,
+                    })
                 prior_names.difference_update(result.state_deleted)
                 if result.status == 'ok':
                     prior_names.update(result.state_delta)
@@ -640,6 +652,20 @@ class PiCodeToolPierAgent(BaseAgent):
         if self.reasoning is not None:
             argv += ['--thinking', self.reasoning]
         argv += ['--', instruction]
+        if self.parity_loop is not None:
+            env.pop('SKEIN_PARITY_REPLAY', None)  # Offline fixtures never enter a live campaign.
+            env['SKEIN_PI_ROOT'] = str(PI_CLI.parents[4])
+            env['SKEIN_PARITY_PROVIDER'] = self.provider_name
+            env['SKEIN_PARITY_MODEL'] = self.model_name or 'openai/gpt-5.6-luna'
+            env['SKEIN_PARITY_REASONING'] = self.reasoning or 'off'
+            env['SKEIN_PARITY_LOGS'] = str(self.logs_dir)
+            env['SKEIN_PARITY_WORKSPACE'] = self.workspace
+            env['SKEIN_PARITY_TASK'] = instruction
+            env['SKEIN_PARITY_MAX_TOKENS'] = str(self.max_output_tokens or 32768)
+            argv = ([sys.executable, '-m', 'scripts.skein_pi_parity']
+                    if self.parity_loop == 'adk' else
+                    ['node', str(ROOT / 'scripts/pi_parity_transport.mjs'), '--pi-loop'])
+            env['PYTHONPATH'] = str(ROOT) + os.pathsep + env.get('PYTHONPATH', '')
         try:
             exit_code, timed_out = await _run_pi_process(argv, cwd=str(pi_cwd), env=env,
                 logs_dir=self.logs_dir, timeout_seconds=self.execution_timeout_seconds)
@@ -671,6 +697,7 @@ class PiCodeToolPierAgent(BaseAgent):
         context.cost_usd = usage['cost']
         context.n_agent_steps = usage['steps']
         context.metadata = {'pi_code_tool': {'exit_code': exit_code, 'timed_out': timed_out, 'execution_timeout_seconds': self.execution_timeout_seconds, 'usage': usage,
+                            'parity_loop': self.parity_loop,
                             'model': self.model_name, 'provider': self.provider_name,
                             'reasoning': self.reasoning,
                             'max_output_tokens': self.max_output_tokens,
@@ -704,3 +731,25 @@ class PiSkeinPtcPierAgent(PiCodeToolPierAgent):
 
     def version(self) -> str:
         return 'pi-local+skein-persistent-cpython-v4.1-checkpoint'
+
+
+class PiParityPierAgent(PiSkeinPtcPierAgent):
+    """Fresh matched reference; keeps historical v4.1 runs unchanged."""
+
+    parity_loop = 'pi'
+
+    def version(self) -> str:
+        return 'pi-loop+shared-v4.1-contract-parity-v1'
+
+
+class SkeinParityPierAgent(PiSkeinPtcPierAgent):
+    """ADK owns the loop; the reference owns the shared PTC/transport contract."""
+
+    parity_loop = 'adk'
+
+    @staticmethod
+    def name() -> str:
+        return 'skein-pi-parity'
+
+    def version(self) -> str:
+        return 'adk-loop+shared-v4.1-contract-parity-v1'

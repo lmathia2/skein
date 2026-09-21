@@ -21,6 +21,83 @@ from scripts.pi_code_tool_harbor import (
 )
 
 
+def test_strict_adapters_share_real_ptc_dispatch_and_chat_loop(tmp_path, monkeypatch):
+    import asyncio
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from scripts import pi_code_tool_harbor as adapter
+
+    bodies = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers['content-length'])))
+            turn = len(bodies) % 3
+            bodies.append(body)
+            delta = ({'role': 'assistant', 'tool_calls': [{
+                'index': 0, 'id': f'call_{turn}', 'type': 'function',
+                'function': {'name': 'code', 'arguments': json.dumps({'code': 'print(verify("check"))'})},
+            }]} if turn < 2 else {'role': 'assistant', 'content': 'No known gaps.'})
+            chunks = [
+                {'id': 'response', 'model': 'fixture', 'choices': [{'index': 0, 'delta': delta,
+                 'finish_reason': None}]},
+                {'id': 'response', 'model': 'fixture', 'choices': [{'index': 0, 'delta': {},
+                 'finish_reason': 'tool_calls' if turn < 2 else 'stop'}]},
+            ]
+            data = (''.join('data: ' + json.dumps(x) + '\n\n' for x in chunks) + 'data: [DONE]\n\n').encode()
+            self.send_response(200)
+            self.send_header('content-type', 'text/event-stream')
+            self.send_header('content-length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+    class Environment:
+        checks = 0
+
+        async def exec(self, command, **kwargs):
+            if command == 'pwd -P':
+                return SimpleNamespace(return_code=0, stdout='/app', stderr='')
+            assert 'bash -o pipefail' in command
+            self.checks += 1
+            return SimpleNamespace(return_code=1 if self.checks == 1 else 0,
+                                   stdout='failed' if self.checks == 1 else 'passed', stderr='')
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    def config(*args):
+        return {'providers': {'openrouter': {
+            'baseUrl': f'http://127.0.0.1:{server.server_port}/v1', 'api': 'openai-completions',
+            'apiKey': 'test', 'models': [{'id': 'fixture', 'name': 'fixture', 'reasoning': True,
+            'contextWindow': 1000000, 'maxTokens': 32768,
+            'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}}],
+        }}}, {'usd_per_million_tokens': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}}
+
+    monkeypatch.setattr(adapter, '_provider_config', config)
+    monkeypatch.setattr(adapter, '_openrouter_key', lambda: 'test')
+    try:
+        for cls in (adapter.PiParityPierAgent, adapter.SkeinParityPierAgent):
+            logs = tmp_path / cls.__name__
+            logs.mkdir()
+            agent = cls(logs_dir=logs, model_name='fixture', execution_timeout_seconds=40)
+            environment = Environment()
+            asyncio.run(agent.run('Implement the task.', environment, SimpleNamespace()))
+            assert environment.checks == 2
+        assert len(bodies) == 6
+        assert bodies[:3] == bodies[3:]
+        assert (tmp_path / 'SkeinParityPierAgent/skein-ptc-events').is_dir()
+        assert 'AssertionError' in json.dumps(bodies[1])
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
 def test_openrouter_catalog_pricing_and_usage_cost():
     rates = _pricing_from_catalog({'data': [{'id': 'meta/muse', 'pricing': {
         'prompt': '0.0000001', 'completion': '0.0000002',
@@ -166,7 +243,8 @@ def test_head_tail_projection_and_review_trigger():
 
 def test_verify_is_pipe_safe_and_bash_keeps_normal_shell_semantics():
     class Environment:
-        commands = []
+        def __init__(self):
+            self.commands = []
 
         def exec(self, command, **_kwargs):
             self.commands.append(command)

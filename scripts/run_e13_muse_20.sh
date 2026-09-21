@@ -4,8 +4,8 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 export UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/skein-uv-cache}
 arm=${1:-}
-if [[ "$arm" != "pi" && "$arm" != "ptc" && "$arm" != "structured" && "$arm" != "thin" && "$arm" != "pi-compatible" ]]; then
-  echo "usage: $0 pi|ptc|structured|thin|pi-compatible [extra run_harbor_eval.py arguments]" >&2
+if [[ "$arm" != "pi" && "$arm" != "ptc" && "$arm" != "structured" && "$arm" != "thin" && "$arm" != "pi-compatible" && "$arm" != "pi-parity" ]]; then
+  echo "usage: $0 pi|ptc|structured|thin|pi-compatible|pi-parity [extra run_harbor_eval.py arguments]" >&2
   exit 2
 fi
 shift
@@ -50,6 +50,17 @@ elif [[ "$arm" == "ptc" ]]; then
     --config harness/core/config/profiles/four-tool.yaml
     --jobs-dir "$root/.artifacts/e13-muse-20-v4.1-pi-skein-ptc"
     --trackio-run-name pi-skein-ptc-v4.1-xhigh
+  )
+elif [[ "$arm" == "pi-compatible" || "$arm" == "pi-parity" ]]; then
+  common+=(--per-trial-timeout-seconds 6900)
+  parity_agent=PiParityPierAgent
+  [[ "$arm" == "pi-compatible" ]] && parity_agent=SkeinParityPierAgent
+  arm_args=(
+    --reasoning xhigh
+    --agent-import-path "scripts.pi_code_tool_harbor:$parity_agent"
+    --config harness/core/config/profiles/notebook-ptc-jsonl.yaml
+    --jobs-dir "$root/.artifacts/e13-muse-20-strict-$arm-v1"
+    --trackio-run-name "strict-$arm-v1-xhigh"
   )
 else
   jobs_name="e13-muse-20-skein-$arm"

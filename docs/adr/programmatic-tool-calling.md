@@ -20,10 +20,26 @@ Two integrations reuse the same
 - The Pi evaluation adapter exposes `code`; Pi owns inference and conversation state,
   while Skein owns Python execution and the Pier workspace bridge.
 
-The ADK integration can select `workflow.mode: pi_compatible`. This does not embed or
+The legacy ADK integration can select `workflow.mode: pi_compatible`. This does not embed or
 fork Pi. It copies the model-visible v4.1 capability contract and continuation policy
 onto Skein's existing worker while retaining ADK inference and Skein's native trace.
-`thin` is retained as a compatibility alias for prior experiment commands.
+`thin` retains the lightweight loop without imposing the v4.1 runtime defaults.
+
+For strict evaluation parity, `SkeinParityPierAgent` now uses the same v4.1 PTC
+dispatch implementation as `PiParityPierAgent`. ADK owns the treatment's tool loop;
+Pi agent-core owns the fresh reference loop. Both reuse the exact extension tool
+schema, descriptions, evidence-review predicate, and reminder. Both use the same
+Pi model runtime pinned to OpenRouter Chat Completions, including tool errors and
+reasoning-signature replay. The native transport bridge performs single provider
+requests and never delegates continuation to Pi. No native work packet, output
+schema, managed verification, compaction, or host repair prompt enters either loop.
+Canonical native ADK events and rich PTC results remain in separate single-writer
+ledger streams; provider requests and model contexts are separately inspectable.
+
+This strict pair is an evaluation boundary, not a replacement for the general
+application workflow. It requires a new Pi reference run; historical v4.1 CLI
+results are not interchangeable because the CLI's resource loading and automatic
+context maintenance are absent from both strict arms.
 
 This ADR specifies the Pi-hosted v4.1 reference implemented by
 [`pi_skein_ptc_extension.mjs`](../../scripts/pi_skein_ptc_extension.mjs) and

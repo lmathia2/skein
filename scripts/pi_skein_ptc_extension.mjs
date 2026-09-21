@@ -39,6 +39,8 @@ export function advanceEvidence(outcomes, mutationGeneration, verifiedGeneration
   return [mutationGeneration, verifiedGeneration]
 }
 
+export const evidenceReviewPrompt = 'Before finalizing, compare every requirement with concrete evidence. Run the required final check with verify(...). Do not finish while required behavior remains a known gap.'
+
 async function bridge(name, input) {
   const response = await fetch(process.env.PI_HARBOR_BRIDGE_URL, {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -79,7 +81,7 @@ export default async function (pi) {
       if (!needsEvidenceReview(finalText, mutationGeneration, verifiedGeneration)) return
       reviewQueued = true
       pi.sendMessage({ customType: 'ptc-evidence-review', display: true,
-        content: 'Before finalizing, compare every requirement with concrete evidence. Run the required final check with verify(...). Do not finish while required behavior remains a known gap.' },
+        content: evidenceReviewPrompt },
         { deliverAs: 'followUp', triggerTurn: true })
     })
   }

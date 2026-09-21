@@ -74,7 +74,7 @@ Provider, model, reasoning effort, token limits, concurrency, and attempts are
 runner flags. Tool topology, safety, verification, and evidence authority remain
 code-owned so benchmark modes stay comparable.
 
-The notebook profile has two workflow policies. `structured` uses Skein's phased
+The notebook profile has two legacy workflow policies. `structured` uses Skein's phased
 work packets, counterexample review, and bounded verification retries.
 `pi_compatible` keeps the same broker, verifier, and canonical trace but gives the
 model Pi's compact `code` tool, direct-helper contract, continuous repair loop,
@@ -86,6 +86,34 @@ In `pi_compatible` mode the model receives concise Markdown and readable helper
 results; the trace still records complete typed capability receipts and artifacts.
 Repeated verification failures return to the model until the task or execution budget
 ends. Only a genuine human dependency should produce `blocked`.
+
+### Strict Pi/Skein loop parity
+
+For the controlled comparison, use the matched adapters rather than the legacy
+`--workflow-mode pi_compatible` application policy:
+
+```bash
+scripts/run_e13_muse_20.sh pi-parity       # fresh Pi-loop reference
+scripts/run_e13_muse_20.sh pi-compatible  # native ADK-loop treatment
+```
+
+Both use OpenRouter **Chat Completions**, the same Pi provider serializer, raw task,
+system prompt, v4.1 `code` schema (including paging), Python worker, broker, output
+renderer, recovery, and 6,900-second trial deadline. They run the same optional
+one-shot evidence reminder. `verify(...)` is model-invoked; neither loop adds managed
+verification or host-generated repair feedback. Benchmark scoring remains external.
+Compaction is disabled in both; context overflow is an error, not an implicit handoff.
+
+ADK still owns native model/tool continuation. A small Node transport supplies Pi's
+provider serialization without running a Pi agent loop. Typed ADK/PTC traces are
+stored separately from the exact model contexts and serialized provider payloads.
+Each trial writes `parity-contract.json` with effective settings and runtime hashes.
+The offline differential test compares both contexts and actual Chat Completions
+request bodies through errors, paging, reasoning replay, and evidence review.
+
+This is a new matched reference, not a retroactive change to historical v4.1 results.
+Both strict arms need fresh runs. The ordinary application workflow and provider
+defaults are unchanged; strict parity currently applies to these evaluation adapters.
 
 ### Pi + Skein PTC v4.1
 

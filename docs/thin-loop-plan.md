@@ -1,5 +1,27 @@
 # Pi-compatible loop implementation
 
+## Strict parity (supersedes the approximate comparison below)
+
+The controlled E13 pair is now `PiParityPierAgent` / `SkeinParityPierAgent`, selected
+by `run_e13_muse_20.sh pi-parity` / `pi-compatible`. It shares the entire v4.1 tool
+adapter, prompt construction, schema, result paging/rendering, and Pi provider
+serialization. Both explicitly use OpenRouter Chat Completions, 6,900 seconds per
+trial, and one conditional evidence-review follow-up. ADK owns the treatment loop.
+There is no additional managed verifier, repair feedback, structured terminal
+schema, work packet, project-resource injection, or compaction in either arm.
+
+Native structured traces are separate from model contexts. `parity-contract.json`
+records the effective contract and hashes of the built Pi runtime. Differential
+tests exercise both real loops and assert equal serialized Chat Completions payloads
+against a local fixture server, including failed checks, paging, malformed/unknown
+tools, and both presence and absence of the one-shot evidence review.
+
+The application `workflow.mode: pi_compatible` remains the earlier approximate
+policy. Strict parity is currently an evaluation adapter, and its fresh Pi-core
+reference is distinct from the historical Pi CLI v4.1 campaign. This avoids silently
+reclassifying old results. The sections below document that earlier application
+policy and its differences, not the strict adapter.
+
 Status: implemented behind `workflow.mode: pi_compatible`; parity reconciliation in
 progress, 2026-09-21. `thin` retains the lightweight-loop ablation without forcing
 the v4.1 runtime limits.
