@@ -343,6 +343,10 @@ class SkeinHarnessFactory:
         )
         settings = settings_from_composition(composition, bindings)
         settings.state_root.mkdir(parents=True, exist_ok=True)
+        if config.workflow.mode == "pi_compatible":
+            config = config.model_copy(update={"tools": config.tools.model_copy(update={
+                "output": config.tools.output.model_copy(update={"max_bytes": 256_000})
+            })})
         known_secrets = self._known_secrets(config)
         if self._execution_runtime_factory is None:
             sandbox = create_configured_command_sandbox(
@@ -665,6 +669,7 @@ class SkeinHarnessFactory:
             steering_at_work_batch_boundary=("work_batch_boundary" in config.steering.safe_points),
             thin_loop=config.workflow.mode in {"thin", "pi_compatible"},
             plugin_owns_handoff=plugin_owns_handoff,
+            pi_evidence_review=config.workflow.mode == "pi_compatible",
             work_batch_handoff=context_plugin.work_batch_handoff if context_plugin is not None else None,
             approvals=approvals,
         )

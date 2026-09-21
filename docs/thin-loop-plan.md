@@ -1,7 +1,7 @@
 # Pi-compatible loop implementation
 
-Status: implemented behind `workflow.mode: pi_compatible`; ready for a fresh pinned
-comparison, 2026-09-21. `thin` retains the lightweight-loop ablation without forcing
+Status: implemented behind `workflow.mode: pi_compatible`; parity reconciliation in
+progress, 2026-09-21. `thin` retains the lightweight-loop ablation without forcing
 the v4.1 runtime limits.
 
 ## Decision
@@ -88,8 +88,8 @@ latency, and cost. Do not use patch size as a quality proxy.
    unchanged.
 3. **Verification:** skip Skein's structured counterexample-review detour in compatibility
    mode; retain managed verification and return every failure for repair until the ordinary
-   task/model/time budget is exhausted. Pi v4.1's one-shot pre-final evidence reminder
-   remains a documented host-loop difference.
+   task/model/time budget is exhausted. Compatibility mode adds Pi v4.1's conditional,
+   one-shot pre-final evidence reminder using native capability and verification events.
 4. **Continuity:** retain the exact recent tool tail across genuine context compaction,
    persist projection checkpoints, and keep stable instructions outside summaries.
 5. **Parity:** match Pi v4.1's compact direct-helper contract and observation limits
@@ -121,3 +121,25 @@ comparison establishes quality and cost.
   and host-owned verification supplies criterion-level evidence.
 - Focused tests cover mode parsing, projection shape, minimal terminal output, absence
   of batch yields, and failed-verification repair followed by verified completion.
+
+## Reconciled implementation differences
+
+The previous parity table overstated helper and observation equivalence. Direct
+`verify` was advertised but missing from the native broker; it now runs through
+managed Bash with pipefail, raises on failure, and records a distinct final-check
+event. Ordinary Bash observations do not satisfy the Pi evidence reminder.
+
+| Boundary | Native change | Remaining difference from Pi v4.1 |
+|---|---|---|
+| Terminal response | No forced output schema; accepts prose | Host still owns verified completion |
+| Tool name | `code` | Native arguments omit retained-result paging |
+| Helpers | Implemented missing `verify`, including pipefail | Native approvals and effect reconciliation remain |
+| Evidence review | One conditional follow-up for stale verification or declared gaps | Native events determine freshness; Pi uses counters |
+| Output | 50 KiB worker bound, 2,000-line projection; shell retention raised to 256,000 bytes | Native normalization counts characters in its final projection; Pi bounds UTF-8 bytes and has paging |
+| Recovery | Snapshot plus committed plain-value checkpoints | Native unknown effects require reconciliation |
+| Cell timeout | Allow helper timeout plus 30 seconds in continuous loops | Container-side process-group termination still differs |
+| Task budget | Unchanged | Native uses manifest runtime plus shared watchdog; Pi uses 6,900 seconds per trial |
+| Trace | Native typed events and artifacts retained | Projection is still a compact JSON tool envelope, not Pi's text-only tool content |
+
+These changes do not establish full parity or a measured quality improvement. A
+rerun must identify these remaining host differences and use fresh artifacts.

@@ -196,6 +196,8 @@ preloaded. Direct filesystem, process, and network imports such as `os`, `pathli
 `subprocess` are blocked; use the helpers instead. A rejected cell did not run: correct it
 and continue. A failed verification is feedback, not a reason to stop. Keep printed output
 to the facts needed for the next decision.
+Use verify(...) for the final required check after changes; bash(...) never counts
+as final verification. Custom probes must assert or exit nonzero on mismatch.
 """.strip() + "\n\n" + WORKSPACE_EXECUTION_GUIDANCE
 
 @dataclass(frozen=True, slots=True)

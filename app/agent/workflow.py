@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import inspect
 import json
+import re
 import time
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
@@ -109,11 +110,27 @@ class SkeinWorkflowDependencies:
     steering_enabled: bool
     steering_at_work_batch_boundary: bool
     thin_loop: bool = False
+    pi_evidence_review: bool = False
     delta_work_packets: bool = False
     plugin_owns_handoff: bool = False
     work_batch_handoff: Callable[[TaskLedger, str], str] | None = None
     approvals: ApprovalWaiter | None = None
     replies: PublicReplies | None = None
+
+
+def _needs_pi_evidence_review(events, final_text: str) -> bool:
+    mutation = max((event.sequence for event in events
+        if event.kind in {EventKind.CAPABILITY_COMPLETED, EventKind.CAPABILITY_FAILED}
+        and (event.payload.get("operation") == "shell.run"
+             or (event.payload.get("operation") in {"fs.write", "fs.edit"}
+                 and event.payload.get("effect") == "changed"))), default=0)
+    verified = max((event.sequence for event in events
+        if event.kind == "execution.ptc_verification"
+        and event.payload.get("status") == "ok"), default=0)
+    final_text = re.sub(r"\bno known gaps?\b", "", final_text, flags=re.I)
+    return mutation > verified or bool(re.search(
+        r"known gaps?|remaining (?:gap|issue)|unimplemented|failing probe", final_text, re.I
+    ))
 
 
 @dataclass(slots=True)
@@ -914,6 +931,7 @@ def _initialize_run(
                 "tool_action_fingerprints": [],
                 "workflow_tool_action_sequence": 0,
                 "verification_required_task": None,
+                "pi_evidence_review_queued": False,
                 "skill_selection_initialized": False,
                 "skill_context_text": "",
                 "selected_skill_names": [],
@@ -1577,6 +1595,14 @@ async def _orchestrate_owned(
             reply_stream.prepare(allow_reply)
         try:
             raw_step = await ctx.run_node(deps.coding_worker, node_input=packet)
+            if (deps.pi_evidence_review and not ctx.state.get("pi_evidence_review_queued")
+                    and _needs_pi_evidence_review(deps.event_store.read(task_id), str(raw_step))):
+                ctx.state["pi_evidence_review_queued"] = True
+                raw_step = await ctx.run_node(deps.coding_worker, node_input=(
+                    "Before finalizing, compare every requirement with concrete evidence. "
+                    "Run the required final check with verify(...). Do not finish while "
+                    "required behavior remains a known gap."
+                ))
         except BaseException:
             owned = deps.steering_queue.leased_by(task_id, owner)
             deps.steering_queue.release(

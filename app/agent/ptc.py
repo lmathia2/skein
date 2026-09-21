@@ -897,6 +897,14 @@ def build_notebook_session(
                 )
             return result
 
+        def verify(self, command: str, timeout_seconds: int = bash_default_timeout) -> dict[str, Any]:
+            result = self.bash(f"bash -o pipefail -c {shlex.quote(command)}", timeout_seconds)
+            active_event_store.append(self.task_id, "execution.ptc_verification", {
+                "status": result.get("status"),
+                "operation_id": f"{self.attempt_id}:{self.call_index}",
+            })
+            return result
+
         def edit(
             self,
             path: str,
@@ -1376,6 +1384,7 @@ def build_notebook_session(
             timeout_seconds,
             cell_id=cell_id,
             replay_policy=replay_policy,
+            shell_timeout_margin=30 if not bounded_work_batches else None,
         )
         if active_ptc_config.recover_committed_values and result.status == "ok" and result.checkpoint_values is None:
             raise ValueError("successful worker cell omitted its committed plain-value checkpoint")
@@ -1633,7 +1642,7 @@ def build_notebook_session(
         bounded = bound_output(
             visible,
             max_chars=active_ptc_config.max_output_bytes,
-            max_lines=400,
+            max_lines=400 if bounded_work_batches else 2000,
         )
         model_text = bounded.text
         displaced_bytes = 0
@@ -1643,7 +1652,7 @@ def build_notebook_session(
             preview = bound_output(
                 visible,
                 max_chars=max(1, active_ptc_config.max_output_bytes - len(notice)),
-                max_lines=400,
+                max_lines=400 if bounded_work_batches else 2000,
             )
             model_text = preview.text + notice
             bounded = preview
@@ -1711,6 +1720,7 @@ def build_notebook_session(
         compact = compact_tool_result(
             result,
             max_chars=active_ptc_config.max_output_bytes,
+            max_lines=400 if bounded_work_batches else 2000,
         )
         for key in (
             "failure_stage",

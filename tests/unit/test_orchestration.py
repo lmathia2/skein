@@ -8,6 +8,7 @@ import pytest
 
 from app.agent.workflow import (
     _latest_kernel_epoch,
+    _needs_pi_evidence_review,
     _render_recent_events,
     _verification_transition,
 )
@@ -37,6 +38,22 @@ from harness.core.orchestration import (
 from harness.core.orchestration.core import work_packet_sections
 from harness.evidence.state import EventKind, JsonlEventStore
 from harness.execution.tools.adk_adapter import create_adk_tools
+
+
+def test_pi_review_requires_fresh_verify_or_known_gap_resolution(tmp_path):
+    events = JsonlEventStore(tmp_path)
+    assert not _needs_pi_evidence_review([], "No known gaps remain.")
+    assert _needs_pi_evidence_review([], "One remaining issue.")
+    events.append("t", EventKind.CAPABILITY_COMPLETED,
+                  {"operation": "shell.run", "effect": "observed"})
+    assert _needs_pi_evidence_review(events.read("t"), "Done")
+    events.append("t", "execution.ptc_verification", {"status": "ok"})
+    assert not _needs_pi_evidence_review(events.read("t"), "Done")
+    events.append("t", EventKind.CAPABILITY_COMPLETED,
+                  {"operation": "fs.edit", "effect": "changed"})
+    assert _needs_pi_evidence_review(events.read("t"), "Done")
+    events.append("t", "execution.ptc_verification", {"status": "error"})
+    assert _needs_pi_evidence_review(events.read("t"), "Done")
 
 
 def _ledger():

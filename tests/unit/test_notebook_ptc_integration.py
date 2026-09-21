@@ -1173,6 +1173,44 @@ async def test_successful_complete_ptc_shell_result_becomes_validation_evidence(
 
 
 @pytest.mark.asyncio
+async def test_direct_verify_runs_and_rejects_failed_pipeline(tmp_path: Path) -> None:
+    import subprocess
+
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    events = JsonlEventStore(tmp_path / "state" / "events")
+
+    def shell(command, **kwargs):
+        completed = subprocess.run(["bash", "-c", command], capture_output=True, text=True)
+        return {"status": "ok" if completed.returncode == 0 else "error",
+                "exit_code": completed.returncode,
+                "data": {"stdout": completed.stdout, "stderr": completed.stderr,
+                         "exit_code": completed.returncode}}
+
+    worker = build_coding_worker(
+        settings_from_composition(composition, RuntimeBindings(
+            workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
+        cast(BaseLlm, "test-model"),
+        tools=AdkCodingTools(read=shell, bash=shell, edit=shell, write=shell),
+        ptc_config=config.notebook_ptc, event_store=events, thin_loop=True,
+        bounded_work_batches=False,
+    )
+    try:
+        tool = worker.agent.tools[0]
+        passed = await tool(code='print(verify("printf verified"))')
+        assert passed["status"] == "ok", passed
+        assert "verified" in passed["model_text"]
+        failed = await tool(code='verify("false | true")')
+        assert failed["status"] != "ok", failed
+        assert "AssertionError" in failed["model_text"]
+        observed = [event.payload["status"] for event in events.read("task")
+                    if event.kind == "execution.ptc_verification"]
+        assert observed == ["ok", "error"]
+    finally:
+        worker.close()
+
+
+@pytest.mark.asyncio
 async def test_worker_close_snapshots_complete_notebook_once(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
