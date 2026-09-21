@@ -8,7 +8,7 @@ from harness.core.models import (
     TaskLedger,
     TaskRequest,
 )
-from harness.core.models.agent_step import StructuredAgentStep
+from harness.core.models.agent_step import StructuredAgentStep, ThinAgentStep
 
 
 def test_task_request_adds_default_acceptance_criterion() -> None:
@@ -106,3 +106,8 @@ def test_provider_terminal_schema_requires_every_property() -> None:
     result = StructuredAgentStep.model_validate({"status": "done"})
     assert result.next_action is None
     assert result.progress == []
+
+    thin = ThinAgentStep.model_json_schema()
+    assert set(thin["properties"]) == {"status", "message", "question"}
+    assert set(thin["required"]) == set(thin["properties"])
+    assert ThinAgentStep.model_validate({"status": "done"}).question is None

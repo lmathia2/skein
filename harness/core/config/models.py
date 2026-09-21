@@ -133,6 +133,7 @@ class ProgressConfig(FrozenModel):
 class WorkflowConfig(FrozenModel):
     """Only executable loop settings; topology belongs to the harness factory."""
 
+    mode: Literal["structured", "thin", "pi_compatible"] = "structured"
     max_iterations: int = Field(default=40, ge=1, le=1_000)
     max_verification_attempts: int = Field(default=6, ge=1, le=40)
     progress: ProgressConfig = ProgressConfig()

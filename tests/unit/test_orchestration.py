@@ -6,13 +6,24 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.agent.workflow import _latest_kernel_epoch, _render_recent_events
+from app.agent.workflow import (
+    _latest_kernel_epoch,
+    _render_recent_events,
+    _verification_transition,
+)
 from harness.core.context import estimate_tokens
 from harness.core.context.compiler import ContextBudgetExceeded
 from harness.core.models.agent_step import AgentStep, CompletionClaim, CriterionProposal
-from harness.core.models.task import TaskPhase, TaskRequest, criterion_id
+from harness.core.models.task import (
+    TaskPhase,
+    TaskRequest,
+    TaskStatus,
+    ValidationResult,
+    criterion_id,
+)
 from harness.core.orchestration import (
     HarnessRoute,
+    build_thin_packet,
     build_work_packet,
     build_work_packet_update,
     create_initial_ledger,
@@ -47,6 +58,27 @@ def test_task_and_step_parsing() -> None:
     assert step.status == "verify"
 
 
+def test_thin_packet_is_markdown_without_trace_envelopes() -> None:
+    ledger = _ledger().model_copy(update={
+        "validations": [ValidationResult(
+            command="pytest -q", passed=False, exit_code=1,
+            summary="one targeted test failed",
+        )]
+    })
+    packet = build_thin_packet(
+        ledger, selected_skills="Use the repository skill.",
+        conversation="User clarified the login must preserve sessions.",
+        compaction_summary="The service boundary was identified.",
+    )
+
+    assert "## Goal\n\nFix login" in packet
+    assert "## Acceptance criteria\n\n- Login works" in packet
+    assert "## Selected skills\n\nUse the repository skill." in packet
+    assert '"packet_version"' not in packet
+    assert '"command"' not in packet
+    assert "**FAILED** — `pytest -q`" in packet
+
+
 def test_reducer_and_routes() -> None:
     ledger = _ledger()
     step = AgentStep(
@@ -71,6 +103,74 @@ def test_reducer_and_routes() -> None:
     replanned = replan_ledger(ledger)
     assert replanned.phase == "plan"
     assert replanned.no_progress_count == ledger.no_progress_count
+
+
+@pytest.mark.asyncio
+async def test_thin_verification_failure_reenters_repair_then_completes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = JsonlEventStore(tmp_path / "events")
+    reports = [
+        {"passed": False, "recommended_next_action": "Fix the targeted failure", "tests_failed": 1},
+        {"passed": False, "recommended_next_action": "Fix the targeted failure", "tests_failed": 1},
+        {"passed": True, "tests_passed": 1, "tests_failed": 0},
+    ]
+
+    class Context:
+        @staticmethod
+        async def run_node(*_args, **_kwargs):
+            report = reports.pop(0)
+            return {
+                "report": report,
+                "changed_paths": ["src/login.py"],
+                "workspace_fingerprint": "workspace-v2",
+            }
+
+        @staticmethod
+        def get_invocation_context():
+            return SimpleNamespace(invocation_id="invocation")
+
+    deps = SimpleNamespace(
+        event_store=events,
+        max_verification_attempts=6,
+        steering_enabled=False,
+        steering_at_work_batch_boundary=False,
+        thin_loop=True,
+        metrics_store=SimpleNamespace(task_summary=lambda _task_id: {}),
+    )
+    monkeypatch.setattr("app.agent.workflow._save_checkpoint", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.agent.workflow._record_outcome", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.agent.workflow._record_message", lambda *_args, **_kwargs: None)
+    ledger = _ledger().model_copy(
+        update={"phase": TaskPhase.VERIFY, "status": TaskStatus.VERIFYING}
+    )
+    step = AgentStep(status="verify", message="Ready")
+
+    failed = await _verification_transition(
+        deps, Context(), SimpleNamespace(), request=TaskRequest(goal="Fix login"),
+        ledger=ledger, step=step, session_id=None, compaction_id=None, started=0.0,
+    )
+    assert failed.result is None
+    assert failed.ledger.phase == TaskPhase.IMPLEMENT
+    assert failed.ledger.next_action == "Fix the targeted failure"
+
+    repair_ledger = failed.ledger.model_copy(update={"iteration": failed.ledger.iteration + 1})
+    failed_again = await _verification_transition(
+        deps, Context(), SimpleNamespace(), request=TaskRequest(goal="Fix login"),
+        ledger=repair_ledger, step=step, session_id=None, compaction_id=None, started=0.0,
+    )
+    assert failed_again.result is None
+    assert failed_again.ledger.phase == TaskPhase.IMPLEMENT
+
+    second_repair = failed_again.ledger.model_copy(
+        update={"iteration": failed_again.ledger.iteration + 1}
+    )
+    passed = await _verification_transition(
+        deps, Context(), SimpleNamespace(), request=TaskRequest(goal="Fix login"),
+        ledger=second_repair, step=step, session_id=None, compaction_id=None, started=0.0,
+    )
+    assert passed.result is not None
+    assert passed.ledger.phase == TaskPhase.COMPLETE
 
 
 def test_reducer_adopts_stable_child_rows_and_complete_transition_matrix() -> None:

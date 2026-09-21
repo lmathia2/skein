@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from harness.core.models.agent_step import AgentStep
+from harness.core.models.agent_step import AgentStep, ThinAgentStep
 from harness.core.models.task import TaskRequest
 
 from .reply import parse_reply
@@ -49,10 +49,18 @@ def can_answer_directly(
     )
 
 
-def parse_agent_step(value: str | dict[str, Any] | AgentStep) -> AgentStep:
+def parse_agent_step(value: str | dict[str, Any] | AgentStep | ThinAgentStep) -> AgentStep:
     if isinstance(value, AgentStep):
         return value
+    if isinstance(value, ThinAgentStep):
+        return AgentStep(
+            status=value.status,
+            message=value.message,
+            questions=[value.question] if value.question else [],
+        )
     if isinstance(value, dict):
+        if set(value) <= {"status", "message", "question"}:
+            return parse_agent_step(ThinAgentStep.model_validate(value))
         return AgentStep.model_validate(value)
 
     if not isinstance(value, str):

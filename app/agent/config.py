@@ -182,6 +182,22 @@ blocked; use the corresponding `agent.*` capability. A notebook is not proof tha
 that write or have unknown effects must never be replayed automatically.
 """.strip() + "\n\n" + WORKSPACE_EXECUTION_GUIDANCE
 
+THIN_PTC_INSTRUCTION = """
+Persistent CPython is available through `execute_code(code)`. The direct helpers are `read`, `write`, `edit`, `bash`, and `verify`; they are Pi-compatible, preloaded, and called without `await`:
+
+- `read(path, offset=1, limit=400)` returns file text directly.
+- `bash(command, timeout_seconds=120)` returns command output with `exit_code`, `stdout`, and `stderr` metadata.
+- `edit(path, old_text, new_text, expected_sha256=None)` performs one exact replacement.
+- `write(path, content, expected_sha256=None, expected_absent=False)` writes a complete file.
+- `verify(command, timeout_seconds=120)` returns command output and raises on failure.
+
+Variables and functions persist while the worker lives. `json`, `math`, and `re` are
+preloaded. Direct filesystem, process, and network imports such as `os`, `pathlib`, and
+`subprocess` are blocked; use the helpers instead. A rejected cell did not run: correct it
+and continue. A failed verification is feedback, not a reason to stop. Keep printed output
+to the facts needed for the next decision.
+""".strip() + "\n\n" + WORKSPACE_EXECUTION_GUIDANCE
+
 @dataclass(frozen=True, slots=True)
 class HarnessSettings:
     app_name: str
@@ -309,14 +325,25 @@ def settings_from_composition(
 
     tool_names = ("read", "bash", "edit", "write")
     if config.notebook_ptc.enabled:
-        instruction += (
-            "\n\n"
-            + NOTEBOOK_PTC_INSTRUCTION
-            + "\n\nPhase-aware cell composition:\n"
-            + config.notebook_ptc.batching_instruction.strip()
-            + f"\nagent.parallel accepts at most {config.notebook_ptc.max_parallel_reads} reads "
-            "per call. Split larger lists into batches and inspect each result's status."
+        ptc_instruction = (
+            THIN_PTC_INSTRUCTION
+            if config.workflow.mode in {"thin", "pi_compatible"}
+            else NOTEBOOK_PTC_INSTRUCTION
         )
+        instruction += "\n\n" + ptc_instruction
+        if config.workflow.mode in {"thin", "pi_compatible"}:
+            instruction += (
+                "\n\nOwn the complete inspect/edit/test/repair loop. Do not stop to report progress. "
+                "When ready, return only status (`answer`, `verify`, `done`, or `blocked`), message, "
+                "and an optional concrete question. Use blocked only when human input is required."
+            )
+        if config.workflow.mode == "structured":
+            instruction += (
+                "\n\nPhase-aware cell composition:\n"
+                + config.notebook_ptc.batching_instruction.strip()
+                + f"\nagent.parallel accepts at most {config.notebook_ptc.max_parallel_reads} reads "
+                "per call. Split larger lists into batches and inspect each result's status."
+            )
         tool_names = ("execute_code",)
     coding_model = config.models[worker_config.model].name
     skill_roots: list[Path] = []

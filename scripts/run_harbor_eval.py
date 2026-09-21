@@ -47,6 +47,7 @@ CONTRACT_FIELDS = (
     "agent_import_path",
     "reasoning",
     "config",
+    "workflow_mode",
     "max_output_tokens",
     "max_task_input_tokens",
     "max_iterations",
@@ -527,6 +528,8 @@ def run_command(
             "--agent-kwarg", f"max_task_input_tokens={args.max_task_input_tokens}",
             "--agent-kwarg", f"wall_time_seconds={task['expected_runtime_seconds']}",
         ]
+        if workflow_mode := getattr(args, "workflow_mode", None):
+            command += ["--agent-kwarg", f"workflow_mode={workflow_mode}"]
     if getattr(args, "per_trial_timeout_seconds", None) is not None:
         command += ["--agent-kwarg", f"execution_timeout_seconds={args.per_trial_timeout_seconds}"]
     if args.reasoning is not None:
@@ -714,6 +717,7 @@ def main() -> int:
         help="reasoning effort, or provider-default to leave it unset",
     )
     parser.add_argument("--config", default="harness/core/config/profiles/four-tool.yaml")
+    parser.add_argument("--workflow-mode", choices=("structured", "thin", "pi_compatible"))
     parser.add_argument("--attempts", type=int)
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--retries", type=int, default=0)
@@ -822,6 +826,7 @@ def main() -> int:
                     "provider": args.provider,
                     "agent_import_path": args.agent_import_path,
                     "config": args.config,
+                    "workflow_mode": args.workflow_mode,
                     "jobs_dir": str(args.jobs_dir),
                     "attempts": attempts,
                     "concurrency": args.concurrency,
@@ -874,6 +879,7 @@ def main() -> int:
         "agent_import_path": args.agent_import_path,
         "reasoning": args.reasoning,
         "config": args.config,
+        "workflow_mode": args.workflow_mode,
         "max_output_tokens": args.max_output_tokens,
         "max_task_input_tokens": args.max_task_input_tokens,
         "max_iterations": args.max_iterations,

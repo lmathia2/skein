@@ -1,6 +1,6 @@
 # Skein compared with Codex, OpenCode, and Pi
 
-Status: architectural comparison, updated September 19, 2026
+Status: architectural comparison, updated September 21, 2026
 
 This note positions the current simplified Skein implementation against three
 influential coding harnesses. It is not a feature checklist or a claim that Skein is
@@ -114,6 +114,13 @@ reduce total interactions, cost, or latency.
 The exact implementation contract is recorded in the
 [programmatic tool calling ADR](programmatic-tool-calling.md).
 
+Skein now also exposes `workflow.mode: pi_compatible` as the native isolation arm.
+It uses the same direct `read`, `bash`, `edit`, `write`, and `verify` contract, compact
+model projection, and continuous failure-to-repair policy as the Pi-hosted reference.
+Unlike the Pi arm, ADK still owns inference and Skein retains its canonical structured
+events. This isolates whether the performance gap came from model-facing scaffolding
+and stopping policy rather than the PTC worker or capability broker.
+
 ## What is genuinely novel in Skein
 
 None of Skein's ingredients is novel in isolation. Code execution, notebooks,
@@ -200,6 +207,8 @@ The simplified implementation matters more than the aspirational design:
   clear the quality gate.
 - Skein ships one ADK notebook PTC implementation. The separate Pi-hosted v4.1 adapter
   is retained only as evaluation infrastructure, not as product surface.
+- Native `pi_compatible` is an experimental workflow policy over that same ADK/PTC
+  implementation; it is not the default and does not claim parity before matched results.
 - JSONL is sufficient for the default path. DuckDB is optional, and semantic retrieval
   is not active without an explicit embedding provider.
 - The local environment adapter is not a production security sandbox.

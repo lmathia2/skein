@@ -1,8 +1,8 @@
 # Programmatic tool calling implementation and core design
 
-> Status: accepted; Pi-hosted reference implementation is v4.1
+> Status: accepted; Pi-hosted reference implementation is v4.1 and ADK compatibility mode is `pi_compatible`
 >
-> Updated: 2026-09-19
+> Updated: 2026-09-21
 
 ## Context
 
@@ -19,6 +19,11 @@ Two integrations reuse the same
   and materializes a notebook or JSONL projection.
 - The Pi evaluation adapter exposes `code`; Pi owns inference and conversation state,
   while Skein owns Python execution and the Pier workspace bridge.
+
+The ADK integration can select `workflow.mode: pi_compatible`. This does not embed or
+fork Pi. It copies the model-visible v4.1 capability contract and continuation policy
+onto Skein's existing worker while retaining ADK inference and Skein's native trace.
+`thin` is retained as a compatibility alias for prior experiment commands.
 
 This ADR specifies the Pi-hosted v4.1 reference implemented by
 [`pi_skein_ptc_extension.mjs`](../../scripts/pi_skein_ptc_extension.mjs) and
@@ -76,6 +81,12 @@ available without `await`:
 Each helper returns a readable string-like object with attributes and legacy mapping
 access. Shell text combines stdout, a labelled stderr section when present, and an
 `[exit N]` marker. A cell may make at most 64 helper calls.
+
+The ADK `pi_compatible` mode exposes the same five preloaded helpers through
+`execute_code`. Its stable prompt names their exact signatures, the three preloaded
+modules, blocked direct-I/O imports, and failure behavior. Internal result envelopes
+remain available to trace capture, but the model sees direct text and compact mutation
+results rather than canonical event records.
 
 ## Batching and variable reuse
 
@@ -169,6 +180,13 @@ reference implementation. See the
 [`v4.1 comparison`](../experiments/e13-pi-skein-v4.1-comparison.md) and
 [`v4.2 comparison`](../experiments/e13-pi-skein-v4.2-comparison.md).
 
+In ADK `structured` mode, repeated identical managed-verification failures may exhaust
+the configured retry policy. In `pi_compatible` mode those failures are observations:
+the concise report is projected into the next model turn and repair continues until
+verification passes or the ordinary task/model/time budget ends. Confinement,
+unknown-effect reconciliation, approvals, and independent terminal verification are
+unchanged; only continuation policy differs.
+
 ## Authority and isolation
 
 The CPython subprocess is a computation environment, not the task's project
@@ -202,3 +220,7 @@ lets the model compose mechanical work without granting ambient host authority. 
 also makes state loss explicit and bounded. Quality is competitive with Pi Code Tool
 on the completed v4.1 panel, but v4.1 still uses more interactions, tokens, and latency;
 it remains an evaluation reference rather than the general Skein default.
+
+The native compatibility mode makes the Pi loop a controlled Skein treatment instead
+of requiring Pi as the host. `structured` remains the default until the pinned matched
+evaluation establishes whether the lighter contract preserves quality.

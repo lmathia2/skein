@@ -7,6 +7,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from app.agent.config import settings_from_composition
 from harness.core.config import (
     FOUR_CODING_TOOLS,
     RuntimeBindings,
@@ -85,6 +86,7 @@ def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:
     assert config.context.project_instruction_bytes == 16_000
     assert config.workflow.progress.replan_after_no_progress == 2
     assert config.workflow.progress.block_after_no_progress == 4
+    assert config.workflow.mode == "structured"
     assert config.agents["coding_worker"].generation.temperature is None
     assert config.notebook_ptc.enabled is False
     assert config.notebook_ptc.default_timeout_seconds == 120
@@ -358,6 +360,23 @@ def test_runtime_bindings_are_not_part_of_declarative_behavior(tmp_path: Path) -
     serialized = composition.canonical_json()
     assert "task-123" not in serialized
     assert str(tmp_path) not in serialized
+
+
+def test_thin_mode_uses_compact_direct_ptc_contract(tmp_path: Path) -> None:
+    payload = _composition_payload()
+    payload["harness"]["config"]["workflow"]["mode"] = "thin"
+    payload["harness"]["config"]["notebook_ptc"] = {"enabled": True}
+    composition = parse_harness_composition(payload)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    settings = settings_from_composition(
+        composition,
+        RuntimeBindings(workspace=workspace, state_root=tmp_path / "state"),
+    )
+
+    assert "The direct helpers are `read`, `write`, `edit`, `bash`, and `verify`" in settings.static_instruction
+    assert "Phase-aware cell composition" not in settings.static_instruction
 
 
 def test_search_default_page_size_cannot_exceed_maximum() -> None:

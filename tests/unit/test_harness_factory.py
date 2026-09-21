@@ -47,7 +47,7 @@ from harness.core.config import (
     load_harness_composition,
     parse_harness_composition,
 )
-from harness.core.models.agent_step import StructuredAgentStep
+from harness.core.models.agent_step import StructuredAgentStep, ThinAgentStep
 from harness.evidence.state import EventKind, JsonlEventStore
 from harness.execution.tools.adk_adapter import AdkCodingTools
 
@@ -620,6 +620,47 @@ async def test_ptc_worker_yields_before_an_extra_model_call_after_read_only_chur
 
 
 @pytest.mark.asyncio
+async def test_thin_ptc_worker_does_not_create_work_batch_yields(tmp_path: Path) -> None:
+    events = JsonlEventStore(tmp_path / "events")
+    events.append(
+        "task-1",
+        EventKind.REPL_CELL_COMPLETED,
+        {"work_batch_id": "1", "effect": "observed", "cell_id": "read"},
+        idempotency_key="cell:read",
+    )
+    settings = settings_from_composition(
+        load_harness_composition(),
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
+    )
+    worker = build_coding_worker(
+        settings,
+        cast(BaseLlm, "test-model"),
+        ptc_config=NotebookPtcConfig(
+            enabled=True, no_progress_cells_per_batch=1, max_cells_per_batch=1,
+        ),
+        event_store=events,
+        bounded_work_batches=False,
+    )
+    callback = worker.agent.canonical_before_model_callbacks[0]
+    context = SimpleNamespace(
+        state={"task_id": "task-1", "ptc_work_batch_id": "1", "task_phase": "review"}
+    )
+
+    response = await callback(
+        callback_context=cast(Any, context),
+        llm_request=LlmRequest(
+            model="test-model",
+            config=types.GenerateContentConfig(system_instruction="stable"),
+        ),
+    )
+
+    assert response is None
+    assert all(event.kind != EventKind.WORK_BATCH_YIELDED for event in events.read("task-1"))
+    if worker.close is not None:
+        worker.close()
+
+
+@pytest.mark.asyncio
 async def test_ptc_worker_bounds_review_to_one_cell(tmp_path: Path) -> None:
     events = JsonlEventStore(tmp_path / "events")
     events.append(
@@ -705,6 +746,13 @@ def test_worker_uses_native_structured_output_without_adding_a_model_tool(tmp_pa
 
     assert worker.agent.output_schema is StructuredAgentStep
     assert [tool.__name__ for tool in worker.agent.tools] == ["read", "bash", "edit", "write"]
+
+    thin = build_coding_worker(
+        settings,
+        OpenRouterResponsesLlm(model="openai/gpt-5.5", api_key="test"),
+        thin_loop=True,
+    )
+    assert thin.agent.output_schema is ThinAgentStep
 
 
 @pytest.mark.asyncio

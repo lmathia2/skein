@@ -338,6 +338,7 @@ def build_notebook_session(
     runtime_identity: Callable[[ToolContext | None], tuple[str | None, str | None]],
     require_verification: Callable[[ToolContext | None], None],
     redactor: SecretRedactor,
+    bounded_work_batches: bool = True,
 ) -> PtcSession:
     _runtime_identity = runtime_identity
     _require_verification = require_verification
@@ -1761,7 +1762,7 @@ def build_notebook_session(
             python_worker.close()
 
     async def before_model(callback_context: CallbackContext) -> LlmResponse | None:
-        if callback_context is not None:
+        if callback_context is not None and bounded_work_batches:
             state = callback_context.state
             if (state.get("review_decision_pending") and
                     int(state.get("review_decision_rejections", 0) or 0) > 1):

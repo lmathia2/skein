@@ -51,6 +51,12 @@ def test_parse_agent_step_normalizes_scalar_claim_evidence_from_local_models() -
     assert step.completion_claims[0].evidence == ["python test.py passed"]
 
 
+def test_parse_agent_step_expands_minimal_thin_blocker() -> None:
+    step = parse_agent_step({"status": "blocked", "question": "Which API version?"})
+
+    assert step.questions == ["Which API version?"]
+
+
 def test_changed_paths_include_staged_renamed_and_untracked(tmp_path: Path) -> None:
     root = _repository(tmp_path / "repository")
     base = subprocess.run(

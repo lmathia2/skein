@@ -18,7 +18,7 @@ from google.adk.tools import ToolContext
 from google.genai import types
 
 from harness.core.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
-from harness.core.models.agent_step import StructuredAgentStep
+from harness.core.models.agent_step import StructuredAgentStep, ThinAgentStep
 from harness.evidence.memory.models import ReadEvidence
 from harness.evidence.state import EventKind, EventStore, JsonlEventStore
 from harness.evidence.state.events import HarnessEvent
@@ -71,6 +71,8 @@ def build_coding_worker(
     notebook_root: Path | None = None,
     workspace_fingerprint: Callable[[], str] | None = None,
     redactor: SecretRedactor | None = None,
+    bounded_work_batches: bool = True,
+    thin_loop: bool = False,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -283,6 +285,7 @@ def build_coding_worker(
             read_default_lines=read_default_lines, bash_default_timeout=bash_default_timeout,
             runtime_identity=_runtime_identity, require_verification=_require_verification,
             redactor=active_redactor,
+            bounded_work_batches=bounded_work_batches,
         )
         if active_ptc_config.enabled
         else None
@@ -333,7 +336,7 @@ def build_coding_worker(
         tools=model_tools,
         include_contents="default" if ptc_session is not None else "none",
         output_schema=(
-            StructuredAgentStep
+            (ThinAgentStep if thin_loop else StructuredAgentStep)
             if getattr(getattr(model, "capabilities", None), "output_schema_and_tools", False)
             else None
         ),

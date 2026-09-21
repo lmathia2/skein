@@ -250,6 +250,47 @@ def build_work_packet(
     return packet(rendered)
 
 
+def build_thin_packet(
+    ledger: TaskLedger,
+    *,
+    selected_skills: str = "",
+    conversation: str = "",
+    compaction_summary: str = "",
+    steering_messages: Iterable[str] = (),
+    max_tokens: int = 20_000,
+) -> str:
+    """Render the durable ledger as a small model-facing continuation."""
+
+    criteria = "\n".join(f"- {row.text}" for row in ledger.criterion_rows) or "- Complete the requested outcome."
+    constraints = "\n".join(f"- {item}" for item in ledger.constraints) or "- None."
+    changed = "\n".join(f"- `{path}`" for path in ledger.files_modified) or "- None yet."
+    latest_validation = ledger.compact_projection().get("latest_validation")
+    if isinstance(latest_validation, dict):
+        mark = "passed" if latest_validation.get("passed") else "failed"
+        validation = f"**{mark.upper()}** — `{latest_validation.get('command', 'verification')}`"
+        if latest_validation.get("summary"):
+            validation += f"\n\n{latest_validation['summary']}"
+        if latest_validation.get("artifact_uri"):
+            validation += f"\n\nDetails: `{latest_validation['artifact_uri']}`"
+    else:
+        validation = "No independent verification result yet."
+    sections = [
+        ("Goal", ledger.goal),
+        ("Acceptance criteria", criteria),
+        ("Constraints", constraints),
+        ("Workspace changes", changed),
+        ("Latest verification", validation),
+        ("Next action", ledger.next_action or "Continue the task."),
+        ("Selected skills", selected_skills.strip()),
+        ("Earlier context", compaction_summary.strip()),
+        ("Recent conversation", conversation.strip()),
+        ("User steering", "\n".join(steering_messages).strip()),
+    ]
+    text = "\n\n".join(f"## {title}\n\n{body}" for title, body in sections if body)
+    bounded, truncated = truncate_to_tokens(text, max_tokens)
+    return bounded + ("\n\n[projection truncated to configured budget]" if truncated else "")
+
+
 def work_packet_sections(packet: str) -> dict[str, str]:
     """Recover complete, ordered work-packet sections for append-only updates."""
     sections: dict[str, str] = {}

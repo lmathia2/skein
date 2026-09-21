@@ -58,6 +58,7 @@ class EvaluationRunRequest(BaseModel):
         pattern=r"^[A-Z][A-Z0-9_]{1,127}$",
     )
     config_template: Path = DEFAULT_COMPOSITION_PATH
+    workflow_mode: Literal["structured", "thin", "pi_compatible"] | None = None
     client_version: str | None = None
     max_iterations: int | None = Field(default=None, ge=1, le=1_000)
     max_task_input_tokens: int | None = Field(default=None, ge=8_000, le=1_000_000_000)
@@ -191,6 +192,8 @@ def prepare_evaluation_config(request: EvaluationRunRequest) -> tuple[Path, Harn
     models[coding_model_key] = selected
     if request.max_iterations is not None:
         config["workflow"]["max_iterations"] = request.max_iterations
+    if request.workflow_mode is not None:
+        config["workflow"]["mode"] = request.workflow_mode
     if request.max_task_input_tokens is not None:
         config["context"]["max_task_input_tokens"] = request.max_task_input_tokens
     if request.max_output_tokens is not None:

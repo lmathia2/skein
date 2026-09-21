@@ -105,3 +105,20 @@ class StructuredAgentStep(BaseModel):
         ):
             completed.setdefault(field, [])
         return completed
+
+
+class ThinAgentStep(BaseModel):
+    """Minimal terminal contract for the model-owned thin loop."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["answer", "verify", "blocked", "done"]
+    message: str = Field(max_length=16_000)
+    question: str | None = Field(max_length=4_096)
+
+    @model_validator(mode="before")
+    @classmethod
+    def fill_omitted_optional_fields(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        return {"message": "", "question": None, **value}

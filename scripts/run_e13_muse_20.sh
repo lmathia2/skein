@@ -4,8 +4,8 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 export UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/skein-uv-cache}
 arm=${1:-}
-if [[ "$arm" != "pi" && "$arm" != "ptc" ]]; then
-  echo "usage: $0 pi|ptc [extra run_harbor_eval.py arguments]" >&2
+if [[ "$arm" != "pi" && "$arm" != "ptc" && "$arm" != "structured" && "$arm" != "thin" && "$arm" != "pi-compatible" ]]; then
+  echo "usage: $0 pi|ptc|structured|thin|pi-compatible [extra run_harbor_eval.py arguments]" >&2
   exit 2
 fi
 shift
@@ -21,9 +21,8 @@ common=(
   --benchmark deep_swe
   --model meta/muse-spark-1.3-contributor
   --attempts 3
-  --concurrency 3
+  --concurrency 8
   --retries 0
-  --per-trial-timeout-seconds 6900
   --max-iterations 1000
   --max-output-tokens 32768
   --max-task-input-tokens 1000000000
@@ -35,6 +34,7 @@ if [[ -n "${TRACKIO_SPACE_ID:-}" ]]; then
 fi
 
 if [[ "$arm" == "pi" ]]; then
+  common+=(--per-trial-timeout-seconds 6900)
   arm_args=(
     --reasoning xhigh
     --agent-import-path scripts.pi_code_tool_harbor:PiCodeToolPierAgent
@@ -42,13 +42,27 @@ if [[ "$arm" == "pi" ]]; then
     --jobs-dir "$root/.artifacts/e13-muse-20-v3-pricing-fixed-pi-code-tool"
     --trackio-run-name pi-code-tool-xhigh-pricing-fixed
   )
-else
+elif [[ "$arm" == "ptc" ]]; then
+  common+=(--per-trial-timeout-seconds 6900)
   arm_args=(
     --reasoning xhigh
     --agent-import-path scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent
     --config harness/core/config/profiles/four-tool.yaml
     --jobs-dir "$root/.artifacts/e13-muse-20-v4.1-pi-skein-ptc"
     --trackio-run-name pi-skein-ptc-v4.1-xhigh
+  )
+else
+  jobs_name="e13-muse-20-skein-$arm"
+  [[ "$arm" == "thin" ]] && jobs_name+="-fixed2"
+  workflow_mode=${arm//-/_}
+  arm_args=(
+    --reasoning xhigh
+    --agent-import-path harness.adapters.pier:SkeinPierAgent
+    --config harness/core/config/profiles/notebook-ptc-jsonl.yaml
+    --workflow-mode "$workflow_mode"
+    --timeout-seconds 7200
+    --jobs-dir "$root/.artifacts/$jobs_name"
+    --trackio-run-name "skein-$arm-xhigh"
   )
 fi
 

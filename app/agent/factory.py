@@ -525,6 +525,8 @@ class SkeinHarnessFactory:
             replies=replies,
             workspace_fingerprint=execution.repository.fingerprint,
             redactor=SecretRedactor(known_secrets=known_secrets),
+            bounded_work_batches=config.workflow.mode == "structured",
+            thin_loop=config.workflow.mode in {"thin", "pi_compatible"},
             **notebook_options,
         )
         steering = SteeringQueue(
@@ -651,6 +653,7 @@ class SkeinHarnessFactory:
             delta_work_packets=config.context.delta_work_packets,
             steering_enabled=config.steering.enabled,
             steering_at_work_batch_boundary=("work_batch_boundary" in config.steering.safe_points),
+            thin_loop=config.workflow.mode in {"thin", "pi_compatible"},
             plugin_owns_handoff=plugin_owns_handoff,
             work_batch_handoff=context_plugin.work_batch_handoff if context_plugin is not None else None,
             approvals=approvals,

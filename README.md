@@ -45,6 +45,7 @@ Trackio is installed by default. Log one live dashboard run per campaign:
 uv sync
 scripts/run_e13_muse_20.sh pi
 scripts/run_e13_muse_20.sh ptc
+scripts/run_e13_muse_20.sh pi-compatible
 scripts/show_e13_trackio.sh
 ```
 
@@ -72,6 +73,18 @@ The profile passed to `--config` selects the model interface and memory policy:
 Provider, model, reasoning effort, token limits, concurrency, and attempts are
 runner flags. Tool topology, safety, verification, and evidence authority remain
 code-owned so benchmark modes stay comparable.
+
+The notebook profile has two workflow policies. `structured` uses Skein's phased
+work packets, counterexample review, and bounded verification retries.
+`pi_compatible` keeps the same PTC worker, broker, verifier, and canonical trace but
+gives the model Pi's compact direct-helper contract and continuous repair loop.
+`thin` remains an experiment-compatible alias for that lightweight path. Select a
+policy with `--workflow-mode structured|pi_compatible`.
+
+In `pi_compatible` mode the model receives concise Markdown and readable helper
+results; the trace still records complete typed capability receipts and artifacts.
+Repeated verification failures return to the model until the task or execution budget
+ends. Only a genuine human dependency should produce `blocked`.
 
 ### Pi + Skein PTC v4.1
 

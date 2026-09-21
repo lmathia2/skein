@@ -6,15 +6,14 @@ arm=${1:-}
 case "$arm" in
   pi-code) agent=scripts.pi_code_tool_harbor:PiCodeToolPierAgent ;;
   pi-skein|pi-skein-v3|pi-skein-v4) agent=scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent ;;
-  skein) agent=harness.adapters.pier:SkeinPierAgent ;;
-  *) echo "usage: $0 pi-code|pi-skein|pi-skein-v3|pi-skein-v4|skein" >&2; exit 2 ;;
+  skein|skein-structured|skein-thin|skein-pi-compatible) agent=harness.adapters.pier:SkeinPierAgent ;;
+  *) echo "usage: $0 pi-code|pi-skein|pi-skein-v3|pi-skein-v4|skein-structured|skein-thin|skein-pi-compatible" >&2; exit 2 ;;
 esac
 
-concurrency=2
+concurrency=6
 jobs_name="e13-ptc-isolation-$arm"
 trackio_group=e13-ptc-isolation
 if [[ "$arm" == pi-skein-v3 || "$arm" == pi-skein-v4 ]]; then
-  concurrency=6
   jobs_name="e13-$arm"
   trackio_group="e13-$arm"
   export PTC_COMPLETION_CHECKLIST=0
@@ -34,8 +33,14 @@ task_args=()
 for task in "${tasks[@]}"; do task_args+=(--task-id "$task"); done
 
 extra=()
-if [[ "$arm" == skein ]]; then
+if [[ "$arm" == skein || "$arm" == skein-structured || "$arm" == skein-thin || "$arm" == skein-pi-compatible ]]; then
   extra+=(--config harness/core/config/profiles/notebook-ptc-jsonl.yaml)
+  if [[ "$arm" == skein-thin || "$arm" == skein-pi-compatible ]]; then
+    workflow_mode=${arm#skein-}
+    extra+=(--workflow-mode "${workflow_mode//-/_}")
+  else
+    extra+=(--workflow-mode structured)
+  fi
 else
   extra+=(--config harness/core/config/profiles/four-tool.yaml)
 fi

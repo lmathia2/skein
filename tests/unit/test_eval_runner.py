@@ -56,6 +56,14 @@ def test_evaluation_config_pins_luna_max_without_auth_state(tmp_path: Path) -> N
     assert not config.safety.allow_unknown_commands
 
 
+def test_evaluation_config_selects_thin_workflow(tmp_path: Path) -> None:
+    request = _request(tmp_path, tmp_path).model_copy(update={"workflow_mode": "thin"})
+
+    _, composition = runner.prepare_evaluation_config(request)
+
+    assert composition.harness.config.workflow.mode == "thin"
+
+
 def test_isolated_evaluation_delegates_authority_to_the_task_environment(
     tmp_path: Path,
 ) -> None:

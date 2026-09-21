@@ -24,6 +24,7 @@ from harness.core.models.ledger import TaskLedger
 from harness.core.models.task import TaskPhase, TaskRequest
 from harness.core.orchestration import (
     HarnessRoute,
+    build_thin_packet,
     build_work_packet,
     build_work_packet_update,
     create_initial_ledger,
@@ -107,6 +108,7 @@ class SkeinWorkflowDependencies:
     steering_batch_limit: int
     steering_enabled: bool
     steering_at_work_batch_boundary: bool
+    thin_loop: bool = False
     delta_work_packets: bool = False
     plugin_owns_handoff: bool = False
     work_batch_handoff: Callable[[TaskLedger, str], str] | None = None
@@ -783,7 +785,7 @@ async def _verify_task(
         criterion_validations={
             row.criterion_id: (
                 list(range(len(command_results)))
-                if row.probe == "general"
+                if getattr(deps, "thin_loop", False) or row.probe == "general"
                 else [
                     index
                     for index, result in enumerate(command_results)
@@ -1201,7 +1203,10 @@ async def _verification_transition(
                 break
             consecutive += 1
         attempts = _verification_attempts(deps.event_store.read(ledger.task_id))
-        blocked_on_verification = consecutive >= 2 or attempts >= deps.max_verification_attempts
+        blocked_on_verification = (
+            not deps.thin_loop
+            and (consecutive >= 2 or attempts >= deps.max_verification_attempts)
+        )
         previous = ledger
         blockers = list(ledger.blockers)
         if blocked_on_verification:
@@ -1371,24 +1376,53 @@ async def _orchestrate_owned(
             )
 
         manifest = deps.repository.manifest()
-        full_packet = build_work_packet(
-            ledger,
-            conversation=history,
-            selected_skills=skill_runtime.text,
-            repository_manifest=manifest.to_compact_text(),
-            compaction_summary="" if deps.plugin_owns_handoff else compaction_summary,
-            evidence_navigation=deps.work_batch_handoff(ledger, ctx.get_invocation_context().invocation_id)
-            if deps.work_batch_handoff is not None else "",
-            recent_events=_render_recent_events(deps, task_id),
-            steering_messages=[_render_received_steering(deps, task_id)],
-            max_tokens=deps.work_packet_tokens,
-            section_token_limits=deps.work_packet_section_tokens,
+        steering_projection = [_render_received_steering(deps, task_id)]
+        full_packet = (
+            build_thin_packet(
+                ledger,
+                selected_skills=skill_runtime.text,
+                conversation=history,
+                compaction_summary=compaction_summary,
+                steering_messages=steering_projection,
+                max_tokens=deps.work_packet_tokens,
+            )
+            if deps.thin_loop
+            else build_work_packet(
+                ledger,
+                conversation=history,
+                selected_skills=skill_runtime.text,
+                repository_manifest=manifest.to_compact_text(),
+                compaction_summary="" if deps.plugin_owns_handoff else compaction_summary,
+                evidence_navigation=deps.work_batch_handoff(ledger, ctx.get_invocation_context().invocation_id)
+                if deps.work_batch_handoff is not None else "",
+                recent_events=_render_recent_events(deps, task_id),
+                steering_messages=steering_projection,
+                max_tokens=deps.work_packet_tokens,
+                section_token_limits=deps.work_packet_section_tokens,
+            )
         )
         invocation_id = ctx.get_invocation_context().invocation_id
         packet_events = deps.event_store.read(task_id)
+        if deps.thin_loop:
+            source_watermark = packet_events[-1].sequence if packet_events else 0
+            projection_hash = hashlib.sha256(full_packet.encode()).hexdigest()
+            deps.event_store.append(
+                task_id,
+                "context.projection_created",
+                {
+                    "mode": "thin_markdown_v1",
+                    "source_watermark": source_watermark,
+                    "content": full_packet,
+                    "content_hash": projection_hash,
+                    "bytes": len(full_packet.encode()),
+                },
+                idempotency_key=f"thin-projection:{invocation_id}:{ledger.iteration + 1}:{projection_hash}",
+            )
+            packet_events = deps.event_store.read(task_id)
+        use_delta_packets = deps.delta_work_packets and not deps.thin_loop
         previous_packet = (next((event for event in reversed(packet_events)
                                  if event.kind == EventKind.WORK_PACKET_CREATED), None)
-                           if deps.delta_work_packets else None)
+                           if use_delta_packets else None)
         same_batch = (previous_packet is not None and
                       previous_packet.payload.get("invocation_id") == invocation_id and
                       previous_packet.payload.get("work_batch_id") == str(ledger.iteration + 1))
@@ -1420,7 +1454,9 @@ async def _orchestrate_owned(
                                           separators=(",", ":")).encode()).hexdigest()
                 != previous_packet.payload.get("full_sections_hash")):
             raise ValueError("work packet baseline identity mismatch")
-        if same_batch and previous_packet is not None:
+        if deps.thin_loop:
+            packet, full_sections, recent_sequence = full_packet, {}, 0
+        elif same_batch and previous_packet is not None:
             packet, full_sections, recent_sequence = (
                 previous_packet.payload["content"], previous_packet.payload["full_sections"],
                 int(previous_packet.payload.get("recent_sequence", 0)))
@@ -1479,7 +1515,7 @@ async def _orchestrate_owned(
             return
 
         latest_epoch = _latest_kernel_epoch(deps.event_store.read(task_id))
-        if deps.delta_work_packets and not same_batch:
+        if use_delta_packets and not same_batch:
             deps.event_store.append(task_id, EventKind.WORK_PACKET_CREATED, {
             "program": "work_packet_update@1", "invocation_id": invocation_id,
             "work_batch_id": str(ledger.iteration + 1),
@@ -1753,6 +1789,8 @@ async def _orchestrate_owned(
                 idempotency_key=f"steering-safe-point:{ledger.iteration}",
             )
         elif (
+            not deps.thin_loop
+            and
             step.status in {"verify", "done"}
             and (
                 ctx.state.get("verification_required_task") == task_id

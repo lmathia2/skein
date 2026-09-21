@@ -48,6 +48,7 @@ harness:
             claim contains criterion and an evidence array. The outer workflow decides whether
             verification succeeds.
     workflow:
+      mode: structured  # Control arm; pi_compatible uses direct helpers + Markdown projection.
       max_iterations: 40  # Maximum model work batches per task.
       progress:
         replan_after_no_progress: 2  # Repeated stagnant batches before replanning.

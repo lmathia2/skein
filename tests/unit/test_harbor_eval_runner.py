@@ -342,6 +342,26 @@ def test_metadata_rejects_changed_fixed_intelligence(tmp_path: Path) -> None:
         runner.write_or_validate_metadata(path, metadata)
 
 
+def test_plan_records_workflow_mode() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--suite",
+            "smoke",
+            "--plan",
+            "--workflow-mode",
+            "thin",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(completed.stdout)["workflow_mode"] == "thin"
+
+
 def test_append_row_is_actual_resumable_jsonl(tmp_path: Path) -> None:
     runner = load_runner()
     path = tmp_path / "runs.jsonl"

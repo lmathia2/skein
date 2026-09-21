@@ -45,6 +45,7 @@ harness:
             claim contains criterion and an evidence array. The outer workflow decides whether
             verification succeeds.
     workflow:
+      mode: structured  # Set pi_compatible for the lightweight continuous-loop treatment.
       max_iterations: 40
       progress:
         replan_after_no_progress: 2
