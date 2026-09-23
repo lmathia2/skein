@@ -91,7 +91,7 @@ async def test_recovery_probe_through_actual_workflow(tmp_path, monkeypatch, cap
             code += "agent.fs.write('answer.json', json.dumps(answer))"
         else:
             code = None
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{calls}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{calls}", args={"code": code}))
                 if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify the answer."})))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),

@@ -10,6 +10,7 @@ from google.adk.events import Event
 from google.genai import types
 
 from harness.core.context import estimate_tokens, truncate_to_tokens
+from harness.core.models import HarnessOutcome
 
 
 def conversation_history(
@@ -54,21 +55,21 @@ def message_event(message: str) -> Event:
 
 def result_events(result: Mapping[str, Any]) -> tuple[Event, Event]:
     """Publish one reply and a small result, after the workflow decides its outcome."""
-    status = str(result.get("status", "blocked"))
+    outcome = HarnessOutcome.from_mapping(result)
+    status = outcome.status
     if status == "answered":
-        reply = result["message"]
+        reply = outcome.message
     elif status == "complete":
-        reply = result.get("message") or "Completed; deterministic verification passed."
+        reply = outcome.message or "Completed; deterministic verification passed."
     else:
-        details = result.get("questions") or result.get("blockers") or [
-            result.get("reason") or "Human input is required to continue."
-        ]
+        details = outcome.questions or outcome.blockers or (
+            outcome.reason or "Human input is required to continue.",
+        )
         reply = "\n\n".join(str(item) for item in details)
-    report = result.get("verification", {})
     public = {
         "status": status,
-        "verified": report.get("passed") is True,
-        "changed_paths": result.get("changed_paths", []),
+        "verified": outcome.verification is not None and outcome.verification.passed,
+        "changed_paths": list(outcome.changed_paths),
     }
     return message_event(str(reply)), Event(
         output=public, custom_metadata={"coding.public_result": True}

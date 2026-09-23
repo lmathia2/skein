@@ -104,14 +104,15 @@ def test_provider_defaults_omit_reasoning_and_output_limit(tmp_path: Path) -> No
     assert not any("max_output_tokens=" in value for value in command)
 
 
-def test_pi_adapter_receives_the_same_output_limit(tmp_path: Path) -> None:
+@pytest.mark.parametrize("adapter", ["PiSkeinPtcPierAgent", "PiParityPierAgent", "SkeinParityPierAgent"])
+def test_pi_adapter_receives_the_same_output_limit(tmp_path: Path, adapter: str) -> None:
     runner = load_runner()
     args = type("Args", (), {
         "model": "meta/muse-spark-1.3-contributor", "provider": "openrouter",
         "reasoning": "xhigh", "config": "harness/core/config/profiles/four-tool.yaml",
         "max_output_tokens": 32_768, "max_task_input_tokens": 200_000,
         "max_iterations": 1_000, "api_key_env": "OPENROUTER_API_KEY",
-        "agent_import_path": "scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent",
+        "agent_import_path": f"scripts.pi_code_tool_harbor:{adapter}",
     })()
     command = runner.run_command(
         {"expected_runtime_seconds": 10_800}, args, 1, tmp_path / "job", tmp_path / "task")
@@ -342,26 +343,6 @@ def test_metadata_rejects_changed_fixed_intelligence(tmp_path: Path) -> None:
         runner.write_or_validate_metadata(path, metadata)
 
 
-def test_plan_records_workflow_mode() -> None:
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--suite",
-            "smoke",
-            "--plan",
-            "--workflow-mode",
-            "thin",
-        ],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    assert json.loads(completed.stdout)["workflow_mode"] == "thin"
-
-
 def test_append_row_is_actual_resumable_jsonl(tmp_path: Path) -> None:
     runner = load_runner()
     path = tmp_path / "runs.jsonl"
@@ -454,6 +435,48 @@ def test_completed_harbor_job_is_recovered_without_rerun(tmp_path: Path) -> None
     assert recovered is not None
     assert recovered[0] == task_dir
     assert recovered[2] == [0]
+    assert runner.completed_task(tmp_path, "001-example", attempts=3) is None
+
+
+def test_recovery_only_never_launches_and_is_idempotent(tmp_path, monkeypatch):
+    runner = load_runner()
+    (tmp_path / "run-metadata.json").write_text(json.dumps({
+        "suite": "confirm", "config": "original-config", "attempts": 1}))
+    for index in (1, 2):
+        task_dir = tmp_path / f"{index:03d}-task-{index}-attempt-01"
+        (task_dir / "job").mkdir(parents=True)
+        (task_dir / "task.json").write_text(json.dumps({
+            "task_id": f"task-{index}", "artifact_sha256": "pinned", "benchmark": "deep_swe"}))
+    (tmp_path / "001-task-1-attempt-01/job/result.json").write_text(json.dumps({
+        "verifier_result": {"rewards": {"reward": 1}}}))
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Recovery must not execute or prepare trials")
+    monkeypatch.setattr(runner, "cached_task", forbidden)
+    monkeypatch.setattr(runner, "execute", forbidden)
+    assert runner.recover_campaign(tmp_path) == 1  # Second task still incomplete.
+    assert runner.recover_campaign(tmp_path) == 1
+    rows = runner.ledger_rows(tmp_path / "runs.jsonl")
+    assert len(rows) == 1 and rows[0]["recovered"]
+
+
+def test_detached_runner_has_independent_session_and_persistent_log(tmp_path, monkeypatch):
+    runner = load_runner()
+    calls = []
+    def spawn(command, **kwargs):
+        calls.append((command, kwargs))
+        kwargs["stdout"].write("child output\n")
+        return type("Process", (), {"pid": 123})()
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--jobs-dir", str(tmp_path), "--detach"])
+    monkeypatch.setattr(runner, "validate_jobs_dir", lambda path: None)
+    monkeypatch.setattr(runner.subprocess, "Popen", spawn)
+    assert runner.main() == 0
+    command, options = calls[0]
+    assert "--detach" not in command
+    assert options["start_new_session"] and options["stdin"] == subprocess.DEVNULL
+    assert options["stdout"] is options["stderr"]
+    assert options["env"]["PYTHONUNBUFFERED"] == "1"
+    assert (tmp_path / "runner.log").read_text() == "child output\n"
+    assert (tmp_path / "runner.pid").read_text() == "123\n"
 
 
 def test_scored_harbor_result_is_complete_even_when_skein_stopped_on_budget(

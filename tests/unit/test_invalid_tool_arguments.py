@@ -45,7 +45,7 @@ def _plugin(tmp_path, **overrides):
 
 
 def _response(raw='{"code":' + '\t' * 40_000, *, call_id="call"):
-    part = _function_call_part({"name": "execute_code", "call_id": call_id, "arguments": raw})
+    part = _function_call_part({"name": "code", "call_id": call_id, "arguments": raw})
     return LlmResponse(content=types.Content(role="model", parts=[part]), partial=False)
 
 
@@ -70,14 +70,14 @@ async def test_archived_rejection_is_bounded_redacted_and_replayable(tmp_path, r
     assert "fixture-secret-value" not in json.dumps(wire) + events[0].model_dump_json()
     restored = LlmResponse.model_validate_json(response.model_dump_json())
     restarted = _plugin(tmp_path)
-    result = await restarted.before_tool_callback(tool=SimpleNamespace(name="execute_code"),
+    result = await restarted.before_tool_callback(tool=SimpleNamespace(name="code"),
         tool_args=restored.content.parts[0].function_call.args, tool_context=_context())
     assert result["status"] == "error" and result["execution_started"] is False
     assert result["artifact_uri"] == record["artifact_uri"]
     await restarted.after_model_callback(callback_context=_context(), llm_response=_response(raw))
     assert restarted.event_store.read("task") == events
     extended = LlmRequest(contents=[restored.content, types.Content(role="user", parts=[
-        types.Part.from_function_response(name="execute_code", response=result)])])
+        types.Part.from_function_response(name="code", response=result)])])
     second = build_openrouter_request_body(extended, model="test", reasoning_effort="max")
     assert second["input"][:len(wire["input"])] == wire["input"]
 
@@ -86,7 +86,7 @@ async def test_archived_rejection_is_bounded_redacted_and_replayable(tmp_path, r
 async def test_partial_and_final_share_evidence_and_keep_usage(tmp_path):
     plugin = _plugin(tmp_path)
     accumulator = _ResponseAccumulator()
-    item = {"type": "function_call", "name": "execute_code", "call_id": "call", "arguments": '{"code":'}
+    item = {"type": "function_call", "name": "code", "call_id": "call", "arguments": '{"code":'}
     partial = accumulator.consume({"type": "response.output_item.done", "item": item})
     await plugin.after_model_callback(callback_context=_context(), llm_response=LlmResponse(
         content=types.Content(role="model", parts=[partial]), partial=True))
@@ -131,12 +131,12 @@ async def test_rejection_faults_fail_closed_before_publication(tmp_path, monkeyp
 @pytest.mark.asyncio
 async def test_reserved_marker_cannot_execute_code_or_grant_artifact_access(tmp_path):
     plugin = _plugin(tmp_path)
-    result = await plugin.before_tool_callback(tool=SimpleNamespace(name="execute_code"),
+    result = await plugin.before_tool_callback(tool=SimpleNamespace(name="code"),
         tool_args={INVALID_ARGUMENTS_KEY: {"artifact_uri": "artifact://sha256/" + "a" * 64},
                    "code": "raise AssertionError('must not run')"}, tool_context=_context())
     assert result["execution_started"] is False and "artifact_uri" not in result
     assert plugin.event_store.read("task") == []
-    assert await plugin.before_tool_callback(tool=SimpleNamespace(name="execute_code"),
+    assert await plugin.before_tool_callback(tool=SimpleNamespace(name="code"),
         tool_args={"code": "answer = 42"}, tool_context=_context()) is None
 
 
@@ -147,7 +147,7 @@ async def test_dispatch_checks_exact_receipt_identity(tmp_path, fault):
     response = _response()
     await plugin.after_model_callback(callback_context=_context(), llm_response=response)
     args = response.content.parts[0].function_call.args
-    tool = SimpleNamespace(name="execute_code")
+    tool = SimpleNamespace(name="code")
     context = _context()
     if fault == "tool":
         tool.name = "write"

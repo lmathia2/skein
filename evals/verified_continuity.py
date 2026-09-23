@@ -281,7 +281,7 @@ async def run_verified_case(trial: Continuation) -> dict[str, Any]:
                 new_message=types.Content(role="user", parts=[types.Part.from_text(text=request.model_dump_json())])):
             for part in event.content.parts or [] if event.content else []:
                 response = part.function_response
-                if response and response.name == "execute_code":
+                if response and response.name == "code":
                     trial.record("ptc_output", str((response.response or {}).get("model_text", "")))
     except Exception as exc:
         result["terminal"] = "context_control_budget_exceeded" if exception_chain_contains(exc, ContextBudgetExceeded) else "task_input_budget_exhausted" if is_task_input_budget_error(exc) else str(exc) if isinstance(exc, EvaluationLimit) else (

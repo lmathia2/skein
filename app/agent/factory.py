@@ -55,6 +55,8 @@ from harness.evidence.ledger.importers import (
 from harness.evidence.memory.lance import LanceMemorySearch
 from harness.evidence.state import (
     CheckpointStore,
+    EventKind,
+    EventStore,
     JsonlEventStore,
     SteeringQueue,
     ToolReceiptStore,
@@ -66,7 +68,12 @@ from harness.evidence.telemetry.adk_plugin import (
     ModelPricing,
     pricing_from_env,
 )
-from harness.evidence.tracing import CodingToolArtifactPlugin, HarnessTracePlugin, TraceContentMode
+from harness.evidence.tracing import (
+    CodingToolArtifactPlugin,
+    HarnessTracePlugin,
+    TraceContentMode,
+    TraceSpan,
+)
 from harness.execution.approvals import ApprovalStore
 from harness.execution.approvals.waiting import ApprovalWaiter
 from harness.execution.environment import (
@@ -93,6 +100,38 @@ from .streaming import PublicReplies
 from .workflow import SkeinWorkflowDependencies, build_root_agent
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _append_trace_span(
+    event_store: EventStore,
+    canonical_ledger: LedgerStore | None,
+    span: TraceSpan,
+) -> None:
+    """Dual-write ADK lifecycle metadata while the specialized trace store remains."""
+
+    if canonical_ledger is not None:
+        import_trace_span(canonical_ledger, span)
+    events = event_store.read(span.task_id)
+    if not events or events[0].kind != EventKind.TASK_CREATED:
+        return
+    event_store.append(
+        span.task_id,
+        EventKind.TRACE_SPAN_RECORDED,
+        {
+            "span_id": span.span_id,
+            "trace_sequence": span.sequence,
+            "category": span.category,
+            "phase": span.phase,
+            "name": span.name,
+            "timestamp": span.timestamp,
+            "content_hash": span.content_hash,
+            "payload": span.payload(),
+            "omitted_bytes": span.omitted_bytes,
+        },
+        correlation_id=span.correlation_id,
+        parent_event_id=span.parent_span_id,
+        idempotency_key=f"trace:{span.idempotency_key}",
+    )
 
 
 def _compound_memory_call(command: str) -> bool:
@@ -260,11 +299,7 @@ class SkeinHarnessFactory:
         if not isinstance(config, SkeinConfig):
             raise TypeError("skein_v1 requires SkeinConfig")
         settings = settings_from_composition(composition, bindings)
-        tool_names = (
-            (("code",) if config.workflow.mode in {"thin", "pi_compatible"} else ("execute_code",))
-            if config.notebook_ptc.enabled
-            else FOUR_CODING_TOOLS
-        )
+        tool_names = ("code",) if config.notebook_ptc.enabled else FOUR_CODING_TOOLS
         items = [ResourceItem(kind="tool", name=name) for name in tool_names]
         items.append(ResourceItem(kind="prompt", name="coding-worker"))
         warnings = []
@@ -331,19 +366,15 @@ class SkeinHarnessFactory:
         if not isinstance(config, SkeinConfig):
             raise TypeError("skein_v1 requires SkeinConfig")
         self._validate_supported_shape(config)
-        ptc_config = (
-            config.notebook_ptc.model_copy(update={
-                "state": "snapshot",
-                "recover_committed_values": True,
-                "max_output_bytes": 50 * 1024,
-                "max_capability_calls_per_cell": 64,
-            })
-            if config.workflow.mode == "pi_compatible"
-            else config.notebook_ptc
-        )
+        ptc_config = config.notebook_ptc.model_copy(update={
+            "state": "snapshot",
+            "recover_committed_values": True,
+            "max_output_bytes": 50 * 1024,
+            "max_capability_calls_per_cell": 64,
+        })
         settings = settings_from_composition(composition, bindings)
         settings.state_root.mkdir(parents=True, exist_ok=True)
-        if config.workflow.mode == "pi_compatible":
+        if config.notebook_ptc.enabled:
             config = config.model_copy(update={"tools": config.tools.model_copy(update={
                 "output": config.tools.output.model_copy(update={"max_bytes": 256_000})
             })})
@@ -539,8 +570,7 @@ class SkeinHarnessFactory:
             replies=replies,
             workspace_fingerprint=execution.repository.fingerprint,
             redactor=SecretRedactor(known_secrets=known_secrets),
-            bounded_work_batches=config.workflow.mode == "structured",
-            thin_loop=config.workflow.mode in {"thin", "pi_compatible"},
+            bounded_work_batches=False,
             **notebook_options,
         )
         steering = SteeringQueue(
@@ -667,9 +697,7 @@ class SkeinHarnessFactory:
             delta_work_packets=config.context.delta_work_packets,
             steering_enabled=config.steering.enabled,
             steering_at_work_batch_boundary=("work_batch_boundary" in config.steering.safe_points),
-            thin_loop=config.workflow.mode in {"thin", "pi_compatible"},
             plugin_owns_handoff=plugin_owns_handoff,
-            pi_evidence_review=config.workflow.mode == "pi_compatible",
             work_batch_handoff=context_plugin.work_batch_handoff if context_plugin is not None else None,
             approvals=approvals,
         )
@@ -725,10 +753,8 @@ class SkeinHarnessFactory:
                     max_payload_bytes=config.tracing.max_content_bytes,
                     known_secrets=known_secrets,
                     default_task_id=settings.task_id_override,
-                    span_sink=(
-                        (lambda span: import_trace_span(canonical_ledger, span))
-                        if canonical_ledger is not None
-                        else None
+                    span_sink=lambda span: _append_trace_span(
+                        event_store, canonical_ledger, span
                     ),
                 )
             except Exception:
@@ -769,11 +795,7 @@ class SkeinHarnessFactory:
                 model_providers={
                     name: model.provider for name, model in sorted(config.models.items())
                 },
-                tool_names=(
-                    (("code",) if config.workflow.mode in {"thin", "pi_compatible"} else ("execute_code",))
-                    if config.notebook_ptc.enabled
-                    else FOUR_CODING_TOOLS
-                ),
+                tool_names=("code",) if config.notebook_ptc.enabled else FOUR_CODING_TOOLS,
                 max_iterations=config.workflow.max_iterations,
             ),
             agents=agents,

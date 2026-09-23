@@ -26,6 +26,7 @@ def test_strict_adapters_share_real_ptc_dispatch_and_chat_loop(tmp_path, monkeyp
     import json
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from io import BytesIO
 
     from scripts import pi_code_tool_harbor as adapter
 
@@ -70,13 +71,20 @@ def test_strict_adapters_share_real_ptc_dispatch_and_chat_loop(tmp_path, monkeyp
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    catalog = {'data': [{'id': 'fixture', 'name': 'fixture', 'context_length': 1000000,
+        'top_provider': {'max_completion_tokens': 65536},
+        'supported_parameters': ['reasoning'], 'architecture': {'input_modalities': ['text', 'image', 'audio']},
+        'pricing': {'prompt': '0.0000001', 'completion': '0.0000002', 'input_cache_read': '0.000000002'}}]}
+    monkeypatch.setattr(adapter, 'urlopen', lambda *a, **kw: BytesIO(json.dumps(catalog).encode()))
+    adapter._openrouter_pricing.cache_clear()
+
     def config(*args):
-        return {'providers': {'openrouter': {
-            'baseUrl': f'http://127.0.0.1:{server.server_port}/v1', 'api': 'openai-completions',
-            'apiKey': 'test', 'models': [{'id': 'fixture', 'name': 'fixture', 'reasoning': True,
-            'contextWindow': 1000000, 'maxTokens': 32768,
-            'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}}],
-        }}}, {'usd_per_million_tokens': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0}}
+        config, pricing = _provider_config(*args)
+        provider = config['providers']['openrouter']
+        provider.update(baseUrl=f'http://127.0.0.1:{server.server_port}/v1', apiKey='test')
+        assert provider['models'][0]['input'] == ['text', 'image']
+        assert provider['models'][0]['maxTokens'] == 32768
+        return config, pricing
 
     monkeypatch.setattr(adapter, '_provider_config', config)
     monkeypatch.setattr(adapter, '_openrouter_key', lambda: 'test')
@@ -84,7 +92,7 @@ def test_strict_adapters_share_real_ptc_dispatch_and_chat_loop(tmp_path, monkeyp
         for cls in (adapter.PiParityPierAgent, adapter.SkeinParityPierAgent):
             logs = tmp_path / cls.__name__
             logs.mkdir()
-            agent = cls(logs_dir=logs, model_name='fixture', execution_timeout_seconds=40)
+            agent = cls(logs_dir=logs, model_name='fixture', max_output_tokens=32768, execution_timeout_seconds=40)
             environment = Environment()
             asyncio.run(agent.run('Implement the task.', environment, SimpleNamespace()))
             assert environment.checks == 2
@@ -93,6 +101,7 @@ def test_strict_adapters_share_real_ptc_dispatch_and_chat_loop(tmp_path, monkeyp
         assert (tmp_path / 'SkeinParityPierAgent/skein-ptc-events').is_dir()
         assert 'AssertionError' in json.dumps(bodies[1])
     finally:
+        adapter._openrouter_pricing.cache_clear()
         server.shutdown()
         server.server_close()
         thread.join()

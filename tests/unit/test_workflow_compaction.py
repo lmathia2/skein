@@ -11,7 +11,7 @@ from harness.core.context.compiler import ContextBudgetExceeded
 from harness.core.models.agent_step import AgentStep
 from harness.core.models.ledger import TaskLedger
 from harness.core.models.task import TaskRequest
-from harness.core.orchestration import build_work_packet
+from harness.core.orchestration import build_coding_packet
 from harness.evidence.state import EventKind, JsonlEventStore, SteeringQueue
 
 
@@ -136,11 +136,10 @@ def test_delivered_steering_survives_acknowledgement_and_recent_event_eviction(t
     assert payload["source_clock"] == {"task_harness_event_sequence": 23}
     digest = payload.pop("content_hash")
     assert digest == hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    packet = build_work_packet(_ledger(), steering_messages=[rendered], max_tokens=3000,
-                               section_token_limits={"USER STEERING": 10})
-    assert packet.endswith(rendered) and "do not import" not in packet
+    packet = build_coding_packet(_ledger(), steering_messages=[rendered], max_tokens=3000)
+    assert rendered in packet and "do not import" not in packet
     with pytest.raises(ContextBudgetExceeded):
-        build_work_packet(_ledger(), steering_messages=[rendered], max_tokens=100)
+        build_coding_packet(_ledger(), steering_messages=[rendered], max_tokens=100)
 
 
 @pytest.mark.parametrize("fault", ("foreign", "missing", "conflicting"))

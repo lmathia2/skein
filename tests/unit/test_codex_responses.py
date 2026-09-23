@@ -19,7 +19,7 @@ from harness.adapters.providers.codex_responses import CodexResponsesLlm, build_
 def test_malformed_arguments_are_bounded_without_repairing_a_callable_object(arguments):
     from harness.adapters.providers.codex_responses import _function_call_part
 
-    part = _function_call_part({"name": "execute_code", "call_id": "bad-1", "arguments": arguments})
+    part = _function_call_part({"name": "code", "call_id": "bad-1", "arguments": arguments})
     assert part is not None and part.function_call is not None
     assert len(part.model_dump_json().encode()) < 1024
     assert "code" not in part.function_call.args

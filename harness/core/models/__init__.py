@@ -3,6 +3,7 @@
 from .agent_step import AgentStep
 from .base import StrictModel
 from .context import CompactionSnapshot
+from .outcome import HarnessOutcome, OutcomeStatus, parse_outcome_status
 from .persistence import Checkpoint
 from .task import (
     Decision,
@@ -26,6 +27,8 @@ __all__ = [
     "CriterionEvidence",
     "Decision",
     "EvidenceReference",
+    "HarnessOutcome",
+    "OutcomeStatus",
     "PlanStep",
     "PlanStepStatus",
     "StrictModel",
@@ -37,4 +40,5 @@ __all__ = [
     "ToolStatus",
     "ValidationResult",
     "VerificationReport",
+    "parse_outcome_status",
 ]

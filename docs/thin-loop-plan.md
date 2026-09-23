@@ -1,4 +1,8 @@
-# Pi-compatible loop implementation
+# Pi-compatible loop implementation (superseded)
+
+> Historical plan only. The application workflow selector and structured mode were
+> removed by [ADR: ADK-native PTC v4.1 core](adr/adk-native-ptc-v4.1-core.md).
+> Strict Pi/Skein parity remains isolated evaluation infrastructure.
 
 ## Strict parity (supersedes the approximate comparison below)
 

@@ -25,7 +25,7 @@ from harness.core.config.models import ContextConfig
 from harness.core.context import estimate_tokens
 from harness.core.context.compiler import ContextBudgetExceeded
 from harness.core.models import TaskLedger, TaskRequest
-from harness.core.orchestration import build_work_packet
+from harness.core.orchestration import build_coding_packet
 from harness.evidence.ledger import JsonlLedgerStore
 from harness.evidence.ledger.models import canonical_json
 from harness.evidence.memory.models import ViewResult
@@ -317,9 +317,9 @@ async def test_checkpoint_reminder_retains_prefix_after_note_and_plugin_restart(
     first = LlmRequest(contents=deepcopy(raw))
     await plugin.before_model_callback(callback_context=context, llm_request=first)
     assert "working-note checkpoint is pending" in _serialized(first.contents)
-    raw += [types.Content(role="model", parts=[types.Part.from_function_call(name="execute_code", args={})]),
+    raw += [types.Content(role="model", parts=[types.Part.from_function_call(name="code", args={})]),
             types.Content(role="user", parts=[types.Part.from_function_response(
-                name="execute_code", response={"error": "code is required"})])]
+                name="code", response={"error": "code is required"})])]
     note.update(note={"status": "ok", "version": 1}, note_excerpt="Completed source finding")
     second = LlmRequest(contents=deepcopy(raw))
     await plugin.before_model_callback(callback_context=context, llm_request=second)
@@ -1013,7 +1013,7 @@ async def test_work_batch_navigation_appends_once_and_replays_captured_bytes(tmp
                                                     "delta_work_packets": True})
     task = rebuild_ledger(events.read("task"))
     assert plugin.work_batch_handoff(task, "invocation") == ""
-    raw = [text(build_work_packet(task))]
+    raw = [text(build_coding_packet(task))]
     first = LlmRequest(contents=deepcopy(raw))
     await plugin.before_model_callback(callback_context=context, llm_request=first)
     evidence = {"path": "src/a.py", "sha256": "a" * 64, "offset": 7, "returned_lines": 3,
@@ -1044,15 +1044,15 @@ async def test_work_batch_navigation_appends_once_and_replays_captured_bytes(tmp
     assert '"offset":7,"path":"src/a.py","returned_lines":3' in snapshot
     assert estimate_tokens(snapshot) <= 2000
     raw += [types.Content(role="model", parts=[types.Part.from_text(text="batch complete")]),
-            text(build_work_packet(task, evidence_navigation=snapshot))]
+            text(build_coding_packet(task, compaction_summary=snapshot))]
     second = LlmRequest(contents=deepcopy(raw))
     await plugin.before_model_callback(callback_context=context, llm_request=second)
     assert _serialized(second.contents[:len(first.contents)]) == _serialized(first.contents)
     assert snapshot in second.contents[-1].parts[0].text
     events.append("task", EventKind.READ_OBSERVED, {"read_evidence": {
         "path": "src/a.py", "sha256": "c" * 64, "offset": 10, "returned_lines": 1}})
-    raw += [types.Content(role="model", parts=[types.Part.from_function_call(name="execute_code", args={})]),
-            types.Content(role="user", parts=[types.Part.from_function_response(name="execute_code", response={"status": "ok"})])]
+    raw += [types.Content(role="model", parts=[types.Part.from_function_call(name="code", args={})]),
+            types.Content(role="user", parts=[types.Part.from_function_response(name="code", response={"status": "ok"})])]
     third = LlmRequest(contents=deepcopy(raw))
     await plugin.before_model_callback(callback_context=context, llm_request=third)
     assert _serialized(third.contents[:len(second.contents)]) == _serialized(second.contents)
@@ -1289,7 +1289,7 @@ async def test_completed_ptc_read_emits_prior_metadata_once_without_changing_exe
     plugin.refresh_prior = True
     plugin.config = plugin.config.model_copy(update={"continuity_representation": "findings"})
     plugin.handoff = lambda _: _prior_details()
-    tool = SimpleNamespace(name="execute_code")
+    tool = SimpleNamespace(name="code")
     result = {"status": "ok", "attempt_id": "cell-1", "model_text": "évidence complete", "result_hash": "execution-hash"}
     base = deepcopy(result)
     kwargs = dict(tool=tool, tool_args={}, tool_context=context, result=result)
@@ -1337,7 +1337,7 @@ async def test_prior_updates_do_not_override_failure_profile_or_egress_contracts
                   {"attempt_id": "cell"})
     result = {"status": "ok", "attempt_id": "cell", "model_text": "é" * (500 if case == "full_output" else 1)}
     original = deepcopy(result)
-    kwargs = dict(tool=SimpleNamespace(name="execute_code"), tool_args={}, tool_context=context, result=result)
+    kwargs = dict(tool=SimpleNamespace(name="code"), tool_args={}, tool_context=context, result=result)
     if case == "publication_failure":
         def fail(*args, **kwargs):
             raise OSError("publication failed")

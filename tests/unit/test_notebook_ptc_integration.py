@@ -40,11 +40,34 @@ def _enabled_composition():
     composition = load_harness_composition()
     config = cast(SkeinConfig, composition.harness.config)
     enabled = config.model_copy(
-        update={"notebook_ptc": config.notebook_ptc.model_copy(update={"enabled": True})}
+        update={
+            "notebook_ptc": config.notebook_ptc.model_copy(update={
+                "enabled": True,
+                "state": "native",
+                "recover_committed_values": False,
+                "max_output_bytes": 16_000,
+                "max_capability_calls_per_cell": 256,
+            }),
+        }
     )
     return composition.model_copy(
         update={"harness": composition.harness.model_copy(update={"config": enabled})}
     )
+
+
+def test_registered_capability_cannot_collide_with_ptc_surface(tmp_path: Path) -> None:
+    composition = _enabled_composition()
+    config = cast(SkeinConfig, composition.harness.config)
+    with pytest.raises(ValueError, match="collides with PTC surface"):
+        build_coding_worker(
+            settings_from_composition(
+                composition,
+                RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
+            ),
+            cast(BaseLlm, "test-model"),
+            ptc_config=config.notebook_ptc,
+            capabilities={"code": lambda _: {"status": "ok"}},
+        )
 
 
 @pytest.mark.asyncio
@@ -841,7 +864,7 @@ async def test_conversation_notebook_restores_only_safe_cells_with_run_attributi
     assert set(notebook["metadata"]["agent"]["source_watermarks"]) == {"a", "b"}
 
 
-def test_factory_exposes_only_execute_code_when_notebook_ptc_is_enabled(tmp_path: Path) -> None:
+def test_factory_exposes_only_code_when_notebook_ptc_is_enabled(tmp_path: Path) -> None:
     registry = default_harness_registry()
     payload = load_harness_composition(config_models=registry.config_models()).model_dump(
         mode="python"
@@ -857,25 +880,23 @@ def test_factory_exposes_only_execute_code_when_notebook_ptc_is_enabled(tmp_path
 
     worker = cast(LlmAgent, assembly.agents["coding_worker"])
     tool_names = {getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.tools}
-    assert tool_names == {"execute_code"}
+    assert tool_names == {"code"}
     assert worker.include_contents == "default"
     assert "include_contents" in worker.model_fields_set
-    assert "Capability calls\nreturn mappings" in worker.static_instruction
-    assert "agent.parallel" in worker.static_instruction
-    assert "`open()`" in worker.static_instruction
-    assert assembly.build_info.tool_names == ("execute_code",)
+    assert "read`, `write`, `edit`, `bash`, and `verify`" in worker.static_instruction
+    assert assembly.build_info.tool_names == ("code",)
     assert "never parse notebook JSON" in worker.static_instruction
     resources = registry.resources(
         composition,
         RuntimeBindings(workspace=workspace, state_root=tmp_path / "state", task_id="task"),
     )
     assert resources is not None
-    assert {item.name for item in resources.items if item.kind == "tool"} == {"execute_code"}
+    assert {item.name for item in resources.items if item.kind == "tool"} == {"code"}
     assert assembly.close is not None
     assembly.close()
 
 
-def test_default_factory_keeps_main_four_tool_path_without_canonical_memory(
+def test_default_factory_uses_ptc_without_canonical_memory(
     tmp_path: Path,
 ) -> None:
     registry = default_harness_registry()
@@ -890,13 +911,14 @@ def test_default_factory_keeps_main_four_tool_path_without_canonical_memory(
     try:
         worker = cast(LlmAgent, assembly.agents["coding_worker"])
         tool_names = {getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.tools}
-        assert tool_names == {"read", "bash", "edit", "write"}
-        assert worker.include_contents == "none"
+        assert tool_names == {"code"}
+        assert worker.include_contents == "default"
         assert "include_contents" in worker.model_fields_set
         assert not (state / "ledger.duckdb").exists()
         assert not (state / "ledger.jsonl").exists()
     finally:
-        assert assembly.close is None
+        assert assembly.close is not None
+        assembly.close()
 
 
 def test_pi_memory_keeps_simple_adk_history_without_a_second_ledger(tmp_path: Path) -> None:
@@ -914,7 +936,7 @@ def test_pi_memory_keeps_simple_adk_history_without_a_second_ledger(tmp_path: Pa
         RuntimeBindings(workspace=workspace, state_root=state, task_id="task"),
     )
 
-    assert assembly.build_info.tool_names == ("read", "bash", "edit", "write")
+    assert assembly.build_info.tool_names == ("code",)
     assert assembly.app.events_compaction_config is not None
     assert assembly.app.events_compaction_config.token_threshold == 183_616
     assert (
@@ -1055,7 +1077,7 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
     tool_names = {
         getattr(tool, "name", getattr(tool, "__name__", "")) for tool in worker.agent.tools
     }
-    assert tool_names == {"execute_code"}
+    assert tool_names == {"code"}
     assert first["status"] == "ok"
     assert second["status"] == "ok"
     assert rich["status"] == "ok"
@@ -1110,8 +1132,8 @@ async def test_notebook_native_ptc_is_one_tool_and_persists_code_state_and_effec
         assert uri in event.payload["artifact_refs"]
     assert "notebook_path" not in second and "state_delta" not in second
     assert kinds[-1] == EventKind.NOTEBOOK_SNAPSHOTTED
-    assert '"tools":["execute_code"]' in settings.static_prefix
-    assert "During verify, group already-selected" in settings.static_instruction
+    assert '"tools":["code"]' in settings.static_prefix
+    assert "Persistent CPython is available through `code(code=...)`" in settings.static_instruction
 
 
 @pytest.mark.asyncio
@@ -1192,7 +1214,7 @@ async def test_direct_verify_runs_and_rejects_failed_pipeline(tmp_path: Path) ->
             workspace=tmp_path, state_root=tmp_path / "state", task_id="task")),
         cast(BaseLlm, "test-model"),
         tools=AdkCodingTools(read=shell, bash=shell, edit=shell, write=shell),
-        ptc_config=config.notebook_ptc, event_store=events, thin_loop=True,
+        ptc_config=config.notebook_ptc, event_store=events,
         bounded_work_batches=False,
     )
     try:
@@ -1379,6 +1401,13 @@ async def test_search_rejection_effects_survive_ptc_publication_and_replay(tmp_p
     try:
         result = await worker.execute_code(code, tool_context=context)
         assert result["effect"] == ("unknown" if case == "backend_failure" else "none")
+        boundaries = [e for e in events.read("task")
+                      if e.kind == EventKind.RECOVERY_BOUNDARY
+                      and e.payload.get("phase") == "after_effect"]
+        projections = [e for e in events.read("task")
+                       if e.kind == EventKind.TOOL_PROJECTION_CREATED]
+        assert len(boundaries) == len(projections) == 1
+        assert boundaries[0].payload["source_attempt_id"] == result["attempt_id"]
         failures = [e for e in events.read("task") if e.kind == EventKind.CAPABILITY_FAILED]
         assert len(failures) == 1 and failures[0].payload["effect"] == result["effect"]
         if case == "backend_failure":
@@ -1389,6 +1418,11 @@ async def test_search_rejection_effects_survive_ptc_publication_and_replay(tmp_p
             assert replay["replayed"]  # Duplicate acknowledgement is not a new execution result.
             assert not unresolved_execution(events.read("task"))
             assert len([e for e in events.read("task") if e.kind == EventKind.CAPABILITY_FAILED]) == 1
+            assert len([e for e in events.read("task")
+                        if e.kind == EventKind.RECOVERY_BOUNDARY
+                        and e.payload.get("phase") == "after_effect"]) == 2
+            assert len([e for e in events.read("task")
+                        if e.kind == EventKind.TOOL_PROJECTION_CREATED]) == 2
         assert dispatches == (["backend"] if case == "backend_failure" else [])
     finally:
         worker.close()
@@ -2018,10 +2052,10 @@ async def test_provider_payload_growth_tracks_selected_egress_not_ptc_heap(
     profiles: list[dict[str, Any]] = []
     for index in range(24):
         call_id = f"cell-{index}"
-        call = types.Part.from_function_call(name="execute_code", args={"code": "len(records)"})
+        call = types.Part.from_function_call(name="code", args={"code": "len(records)"})
         assert call.function_call is not None
         call.function_call.id = call_id
-        result = types.Part.from_function_response(name="execute_code", response=selected)
+        result = types.Part.from_function_response(name="code", response=selected)
         assert result.function_response is not None
         result.function_response.id = call_id
         contents.extend(

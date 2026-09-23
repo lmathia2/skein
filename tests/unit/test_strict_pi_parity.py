@@ -149,7 +149,7 @@ def test_pi_and_adk_model_contexts_match_through_tools_errors_paging_and_review(
                      if message['role'] == 'user' and
                      message['content'][0]['text'].startswith('Before finalizing')]
         assert len(reminders) == int(needs_review)
-        assert len([x for x in requests if x["name"] == "execute_code"]) == 4
+        assert len([x for x in requests if x["name"] == "code"]) == 4
     finally:
         server.shutdown()
         server.server_close()

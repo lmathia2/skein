@@ -1,5 +1,9 @@
 # Package layout
 
+> The main path is one ADK workflow, one context builder, one PTC dispatcher, one
+> broker, one canonical trace, and one verifier. Strict comparison adapters live at
+> the evaluation boundary rather than in the application workflow.
+
 Skein separates its agent authority from the machinery used to run benchmarks.
 The runtime ownership flow is:
 

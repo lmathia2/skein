@@ -6,8 +6,8 @@ arm=${1:-}
 case "$arm" in
   pi-code) agent=scripts.pi_code_tool_harbor:PiCodeToolPierAgent ;;
   pi-skein|pi-skein-v3|pi-skein-v4) agent=scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent ;;
-  skein|skein-structured|skein-thin|skein-pi-compatible) agent=harness.adapters.pier:SkeinPierAgent ;;
-  *) echo "usage: $0 pi-code|pi-skein|pi-skein-v3|pi-skein-v4|skein-structured|skein-thin|skein-pi-compatible" >&2; exit 2 ;;
+  skein) agent=harness.adapters.pier:SkeinPierAgent ;;
+  *) echo "usage: $0 pi-code|pi-skein|pi-skein-v3|pi-skein-v4|skein" >&2; exit 2 ;;
 esac
 
 concurrency=6
@@ -33,14 +33,8 @@ task_args=()
 for task in "${tasks[@]}"; do task_args+=(--task-id "$task"); done
 
 extra=()
-if [[ "$arm" == skein || "$arm" == skein-structured || "$arm" == skein-thin || "$arm" == skein-pi-compatible ]]; then
+if [[ "$arm" == skein ]]; then
   extra+=(--config harness/core/config/profiles/notebook-ptc-jsonl.yaml)
-  if [[ "$arm" == skein-thin || "$arm" == skein-pi-compatible ]]; then
-    workflow_mode=${arm#skein-}
-    extra+=(--workflow-mode "${workflow_mode//-/_}")
-  else
-    extra+=(--workflow-mode structured)
-  fi
 else
   extra+=(--config harness/core/config/profiles/four-tool.yaml)
 fi

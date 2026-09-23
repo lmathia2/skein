@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Iterable
 from enum import StrEnum
 
@@ -163,94 +161,7 @@ def resume_for_steering(ledger: TaskLedger) -> TaskLedger:
     return TaskLedger.model_validate(data)
 
 
-def build_work_packet(
-    ledger: TaskLedger,
-    *,
-    selected_skills: str = "",
-    conversation: str = "",
-    repository_manifest: str = "",
-    compaction_summary: str = "",
-    evidence_navigation: str = "",
-    recent_events: Iterable[str] = (),
-    steering_messages: Iterable[str] = (),
-    max_tokens: int = 20_000,
-    section_token_limits: dict[str, int] | None = None,
-) -> str:
-    """Reserve complete control first; section targets bound optional detail.
-
-    Required sections may exceed their preferred allocation, never the packet
-    ceiling. No JSON or active instruction is head/tail-spliced to make it fit.
-    """
-
-    limits = {
-        "TASK": 2_000,
-        "CONVERSATION": 2_000,
-        "SELECTED SKILLS": 6_000,
-        "REPOSITORY MANIFEST": 800,
-        "COMPACTED HISTORY": 3_000,
-        "RECENT EVENTS": 3_500,
-        "USER STEERING": 1_000,
-    }
-    limits.update(section_token_limits or {})
-    projection = ledger.compact_projection()
-    optional_fields = ("latest_validation", "files_in_focus", "files_modified",
-                       "completed_step_ids", "recent_progress", "open_questions")
-    task = {key: value for key, value in projection.items() if key not in optional_fields}
-    task.update(packet_version="work_packet@3", permitted_paths=ledger.permitted_paths,
-                forbidden_paths=ledger.forbidden_paths,
-                verification_requirements=ledger.verification_requirements,
-                verification_level=ledger.verification_level,
-                omitted_fields=list(optional_fields))
-
-    def task_text(value: dict[str, object]) -> str:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"))
-
-    sections: list[tuple[str, str]] = [
-        ("TASK", task_text(task)),
-        ("CONVERSATION", conversation),
-        ("SELECTED SKILLS", selected_skills.strip()),
-        ("REPOSITORY MANIFEST", repository_manifest.strip()),
-        ("COMPACTED HISTORY", compaction_summary.strip()),
-        ("EVIDENCE NAVIGATION", evidence_navigation.strip()),
-        ("RECENT EVENTS", "\n".join(recent_events).strip()),
-        ("USER STEERING", "\n".join(steering_messages).strip()),
-    ]
-    required = {"TASK", "SELECTED SKILLS", "COMPACTED HISTORY", "EVIDENCE NAVIGATION", "USER STEERING"}
-    rendered = {title: f"## {title}\n{body}" for title, body in sections if body and title in required}
-
-    def packet(values: dict[str, str]) -> str:
-        return "\n\n".join(values[title] for title, _ in sections if title in values)
-
-    required_tokens = estimate_tokens(packet(rendered))
-    if required_tokens > max_tokens:
-        raise ContextBudgetExceeded(required_tokens, max_tokens)
-    for field in optional_fields:
-        candidate = {**task, field: projection[field]}
-        candidate["omitted_fields"] = [key for key in optional_fields if key not in candidate]
-        body = task_text(candidate)
-        proposed = {**rendered, "TASK": f"## TASK\n{body}"}
-        if estimate_tokens(body) <= limits["TASK"] and estimate_tokens(packet(proposed)) <= max_tokens:
-            task, rendered = candidate, proposed
-    for title, body in sections:
-        if not body or title in required:
-            continue
-        header = f"## {title}\n"
-        available = (max_tokens * 4 - len(packet(rendered)) - len(header) - 2) // 4
-        limit = max(0, min(limits[title], available))
-        if limit <= 0:
-            continue
-        bounded, truncated = truncate_to_tokens(body, limit)
-        if truncated:
-            marker = f"\n[{title.lower()} truncated to configured budget]"
-            if estimate_tokens(marker) >= limit:
-                continue
-            bounded, _ = truncate_to_tokens(body, limit - estimate_tokens(marker))
-            bounded += marker
-        rendered[title] = header + bounded
-    return packet(rendered)
-
-
-def build_thin_packet(
+def build_coding_packet(
     ledger: TaskLedger,
     *,
     selected_skills: str = "",
@@ -259,7 +170,7 @@ def build_thin_packet(
     steering_messages: Iterable[str] = (),
     max_tokens: int = 20_000,
 ) -> str:
-    """Render the durable ledger as a small model-facing continuation."""
+    """Render the coding continuation without splitting required control."""
 
     criteria = "\n".join(f"- {row.text}" for row in ledger.criterion_rows) or "- Complete the requested outcome."
     constraints = "\n".join(f"- {item}" for item in ledger.constraints) or "- None."
@@ -273,107 +184,52 @@ def build_thin_packet(
         if latest_validation.get("artifact_uri"):
             validation += f"\n\nDetails: `{latest_validation['artifact_uri']}`"
     else:
-        validation = "No independent verification result yet."
+        validation = ""
+    task = f"Goal: {ledger.goal}\n\nAcceptance criteria:\n{criteria}\n\nConstraints:\n{constraints}"
+    continuation = (
+        f"Workspace changes:\n{changed}\n\n"
+        f"Next action: {ledger.next_action or 'Continue the task.'}"
+    )
     sections = [
-        ("Goal", ledger.goal),
-        ("Acceptance criteria", criteria),
-        ("Constraints", constraints),
-        ("Workspace changes", changed),
-        ("Latest verification", validation),
-        ("Next action", ledger.next_action or "Continue the task."),
-        ("Selected skills", selected_skills.strip()),
-        ("Earlier context", compaction_summary.strip()),
-        ("Recent conversation", conversation.strip()),
-        ("User steering", "\n".join(steering_messages).strip()),
+        ("TASK", task, True),
+        ("SELECTED SKILLS", selected_skills.strip(), True),
+        ("LATEST USER STEERING", "\n".join(steering_messages).strip(), True),
+        ("CONTINUATION", continuation, True),
+        ("RECENT COMPLETE TURNS", conversation.strip(), False),
+        ("LATEST VERIFICATION", validation, True),
+        ("EVIDENCE NAVIGATION", compaction_summary.strip(), True),
     ]
-    text = "\n\n".join(f"## {title}\n\n{body}" for title, body in sections if body)
-    bounded, truncated = truncate_to_tokens(text, max_tokens)
-    return bounded + ("\n\n[projection truncated to configured budget]" if truncated else "")
 
+    def render(rows: dict[str, str]) -> str:
+        return "\n\n".join(
+            f"## {title}\n\n{rows[title]}"
+            for title, _, _ in sections
+            if title in rows
+        )
 
-def work_packet_sections(packet: str) -> dict[str, str]:
-    """Recover complete, ordered work-packet sections for append-only updates."""
-    sections: dict[str, str] = {}
-    titles = {"TASK", "CONVERSATION", "SELECTED SKILLS", "REPOSITORY MANIFEST",
-              "COMPACTED HISTORY", "EVIDENCE NAVIGATION", "RECENT EVENTS", "USER STEERING"}
-    boundary = r"\n\n(?=## (?:" + "|".join(sorted(titles)) + r")\n)"
-    for block in re.split(boundary, packet):
-        block = block.removeprefix("## ")
-        title, separator, body = block.partition("\n")
-        if not separator or title not in titles or title in sections:
-            raise ValueError("invalid work-packet section")
-        sections[title] = body
-    return sections
-
-
-def _field_patch(previous: dict[str, object], current: dict[str, object]) -> dict[str, object]:
-    """A field-level merge patch; null explicitly removes an old field."""
-    return {key: current.get(key) for key in sorted(previous.keys() | current.keys())
-            if previous.get(key, object()) != current.get(key, object())}
-
-
-def build_work_packet_update(
-    full_packet: str,
-    previous_sections: dict[str, str] | None,
-    *,
-    previous_recent_sequence: int = 0,
-) -> tuple[str, dict[str, str], int]:
-    """Append only changed sections while retaining a full replayable snapshot."""
-    sections = work_packet_sections(full_packet)
-    if previous_sections is None:
-        recent = sections.get("RECENT EVENTS", "")
-        sequence = max((int(line.split(".", 1)[0]) for line in recent.splitlines()
-                        if line.split(".", 1)[0].isdigit()), default=0)
-        return full_packet, sections, sequence
-    updates: list[str] = []
-    recent_sequence = previous_recent_sequence
-    for title, body in sections.items():
-        old = previous_sections.get(title)
-        if title == "RECENT EVENTS":
-            fresh = []
-            for line in body.splitlines():
-                prefix = line.split(".", 1)[0]
-                if prefix.isdigit():
-                    sequence = int(prefix)
-                    recent_sequence = max(recent_sequence, sequence)
-                    if sequence > previous_recent_sequence:
-                        fresh.append(line)
-            if fresh:
-                updates.append("## RECENT EVENTS\n" + "\n".join(fresh))
+    rendered = {
+        title: body for title, body, required in sections if required and body
+    }
+    required_tokens = estimate_tokens(render(rendered))
+    if required_tokens > max_tokens:
+        raise ContextBudgetExceeded(required_tokens, max_tokens)
+    for title, body, required in sections:
+        if required or not body:
             continue
-        if body == old:
+        remaining = max_tokens - estimate_tokens(render(rendered))
+        available = remaining - estimate_tokens(f"\n\n## {title}\n\n")
+        if available <= 0:
             continue
-        if title == "TASK" and old is not None:
-            patch = _field_patch(json.loads(old), json.loads(body))
-            if patch:
-                updates.append("## TASK UPDATE\n" + json.dumps(
-                    {"program": "work_packet_task_update@1", "fields": patch},
-                    sort_keys=True, separators=(",", ":")))
-            continue
-        if title == "USER STEERING" and old is not None:
-            # The projection's source watermark changes on unrelated events.
-            # Only new delivered messages are a new model instruction.
-            try:
-                old_messages = json.loads(old.partition("\n")[2]).get("messages", [])
-                new_messages = json.loads(body.partition("\n")[2]).get("messages", [])
-            except (ValueError, TypeError, AttributeError):
-                old_messages, new_messages = [], []
-            seen = {item.get("message_id") for item in old_messages}
-            fresh = [item for item in new_messages if item.get("message_id") not in seen]
-            if not fresh:
+        bounded, truncated = truncate_to_tokens(body, available)
+        marker = "\n[section truncated to configured budget]"
+        if truncated:
+            marker_tokens = estimate_tokens(marker)
+            if marker_tokens >= available:
                 continue
-            updates.append("## USER STEERING\n" + json.dumps(
-                {"program": "delivered_steering_update@1", "messages": fresh},
-                sort_keys=True, separators=(",", ":")))
-            continue
-        if old is not None and not body:
-            updates.append(f"## {title} UPDATE\nUnavailable (previous section withdrawn).")
-        elif body:
-            updates.append(f"## {title}\n{body}")
-    for title in previous_sections.keys() - sections.keys():
-        if title != "RECENT EVENTS":
-            updates.append(f"## {title} UPDATE\nUnavailable (previous section withdrawn).")
-    return "\n\n".join(updates) or "## TASK UPDATE\nNo change to previously supplied work packet.", sections, recent_sequence
+            bounded, _ = truncate_to_tokens(body, available - marker_tokens)
+        if bounded:
+            rendered[title] = bounded + (marker if truncated else "")
+    return render(rendered)
 
 
 def replan_ledger(ledger: TaskLedger) -> TaskLedger:

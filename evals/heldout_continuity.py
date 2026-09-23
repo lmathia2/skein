@@ -56,7 +56,7 @@ def heldout_fixture(case: str) -> dict:
         f"{acquisition} Preserve a concise public checkpoint using working notes if available, otherwise "
         "available Python/artifact facilities or a printed summary. You may retain values or publish a "
         "bounded artifact; do not modify source files or create answer.json yet. After preparing your "
-        "checkpoint, print LEARNING_COMPLETE on its own line in a successful execute_code cell. "
+        "checkpoint, print LEARNING_COMPLETE on its own line in a successful code cell. "
         "The coordinator will request one acknowledgement, then deliver the question at a context boundary. "
         "The Python worker will stop between completed cells at that boundary; durable artifacts/history "
         "remain, and normal safe restoration remains enabled. Do not search for host oracle code."

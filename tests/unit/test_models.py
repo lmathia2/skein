@@ -8,7 +8,7 @@ from harness.core.models import (
     TaskLedger,
     TaskRequest,
 )
-from harness.core.models.agent_step import StructuredAgentStep, ThinAgentStep
+from harness.core.models.agent_step import TerminalEnvelope
 
 
 def test_task_request_adds_default_acceptance_criterion() -> None:
@@ -95,19 +95,8 @@ def test_agent_step_round_trip() -> None:
     assert AgentStep.model_validate_json(step.model_dump_json()) == step
 
 
-def test_provider_terminal_schema_requires_every_property() -> None:
-    schema = StructuredAgentStep.model_json_schema()
-
-    assert set(schema["required"]) == set(schema["properties"])
-    assert schema["$defs"]["StructuredCompletionClaim"]["required"] == [
-        "criterion_id",
-        "evidence",
-    ]
-    result = StructuredAgentStep.model_validate({"status": "done"})
-    assert result.next_action is None
-    assert result.progress == []
-
-    thin = ThinAgentStep.model_json_schema()
-    assert set(thin["properties"]) == {"status", "message", "question"}
-    assert set(thin["required"]) == set(thin["properties"])
-    assert ThinAgentStep.model_validate({"status": "done"}).question is None
+def test_optional_pi_terminal_envelope_is_minimal() -> None:
+    pi_step = TerminalEnvelope.model_json_schema()
+    assert set(pi_step["properties"]) == {"status", "message", "question"}
+    assert set(pi_step["required"]) == set(pi_step["properties"])
+    assert TerminalEnvelope.model_validate({"status": "done"}).question is None

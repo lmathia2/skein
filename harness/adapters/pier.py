@@ -413,7 +413,6 @@ class SkeinPierAgent(BaseAgent):
         api_key_env: str | None = None,
         auth_state_root: str | Path | None = None,
         config: str | Path = DEFAULT_COMPOSITION_PATH,
-        workflow_mode: Literal["structured", "thin", "pi_compatible"] | None = None,
         max_iterations: int = 24,
         max_task_input_tokens: int = 2_000_000,
         max_output_tokens: int | None = None,
@@ -429,7 +428,6 @@ class SkeinPierAgent(BaseAgent):
             auth_state_root or Path.home() / ".local" / "state" / "skein"
         ).expanduser().resolve()
         self.config = Path(config).expanduser().resolve()
-        self.workflow_mode = workflow_mode
         self.max_iterations = max_iterations
         self.max_task_input_tokens = max_task_input_tokens
         self.max_output_tokens = max_output_tokens
@@ -514,7 +512,6 @@ class SkeinPierAgent(BaseAgent):
             reasoning=self._skein_reasoning,
             api_key_env=self.api_key_env,
             config_template=self.config,
-            workflow_mode=self.workflow_mode,
             max_iterations=self.max_iterations,
             max_task_input_tokens=self.max_task_input_tokens,
             max_output_tokens=self.max_output_tokens,

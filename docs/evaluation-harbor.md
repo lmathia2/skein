@@ -22,17 +22,14 @@ the standard restrictive approval policy.
   (1,000) by default, so Skein does not normally stop before the benchmark does
 - task state: a fresh `agent/skein-state` directory per Harbor trial
 
-Install Harbor without changing the normal Skein runtime:
+Create the project virtual environment and install the pinned Harbor and Pier runtimes:
 
 ```bash
-uv sync --extra eval
+./install.sh
 ```
 
-Pier is the benchmark runner, matching DeepSWE's mini-SWE-agent interface:
-
-```bash
-uv tool install datacurve-pier==0.3.1
-```
+Harbor lives in `.venv`; Pier stays in uv's isolated tool environment and imports this
+checkout plus `.venv` dependencies through the runner's bounded `PYTHONPATH`.
 
 ## Resumable suite runner
 

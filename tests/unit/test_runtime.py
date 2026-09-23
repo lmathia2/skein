@@ -51,13 +51,13 @@ def test_parse_agent_step_normalizes_scalar_claim_evidence_from_local_models() -
     assert step.completion_claims[0].evidence == ["python test.py passed"]
 
 
-def test_parse_agent_step_expands_minimal_thin_blocker() -> None:
+def test_parse_agent_step_expands_minimal_blocker() -> None:
     step = parse_agent_step({"status": "blocked", "question": "Which API version?"})
 
     assert step.questions == ["Which API version?"]
 
 
-def test_parse_agent_step_accepts_pi_compatible_terminal_text() -> None:
+def test_parse_agent_step_accepts_terminal_text() -> None:
     prose = parse_agent_step("Implemented the fix and tests pass.", allow_freeform=True)
     assert prose == parse_agent_step(
         '{"status":"done","message":"Implemented the fix and tests pass."}'
@@ -71,7 +71,7 @@ def test_parse_agent_step_accepts_pi_compatible_terminal_text() -> None:
     assert prefixed.message == "Work complete."
 
 
-def test_parse_agent_step_recovers_malformed_pi_compatible_terminal_json() -> None:
+def test_parse_agent_step_recovers_malformed_terminal_json() -> None:
     step = parse_agent_step(
         'Finished the edit. {"status":"verify"', allow_freeform=True
     )

@@ -114,7 +114,7 @@ reduce total interactions, cost, or latency.
 The exact implementation contract is recorded in the
 [programmatic tool calling ADR](programmatic-tool-calling.md).
 
-The old `workflow.mode: pi_compatible` arm was only approximate: provider API,
+The removed application compatibility arm was only approximate: provider API,
 observation rendering, and managed verification differed. The strict evaluation
 pair is now `PiParityPierAgent` versus `SkeinParityPierAgent`. Both share the v4.1
 tool adapter and Chat Completions serializer; Pi and ADK respectively own the loop.
@@ -205,12 +205,12 @@ evidence?
 
 The simplified implementation matters more than the aspirational design:
 
-- Four direct tools remain the default because the completed PTC comparison did not
-  clear the quality gate.
+- PTC v4.1 `code` is the default model-facing surface; four direct tools remain only
+  as a controlled surface ablation.
 - Skein ships one ADK notebook PTC implementation. The separate Pi-hosted v4.1 adapter
   is retained only as evaluation infrastructure, not as product surface.
-- Native `pi_compatible` is an experimental workflow policy over that same ADK/PTC
-  implementation; it is not the default and does not claim parity before matched results.
+- The application has one ADK-owned workflow. Strict Pi/Skein parity adapters remain
+  evaluation-only and do not claim parity before matched results.
 - JSONL is sufficient for the default path. DuckDB is optional, and semantic retrieval
   is not active without an explicit embedding provider.
 - The local environment adapter is not a production security sandbox.

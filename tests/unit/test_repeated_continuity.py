@@ -188,7 +188,7 @@ async def test_repeated_questions_use_real_evidence_and_worker_loss_without_forc
                         )
                     code += checkpoint(revised=True)
                 code += f"print('USE_{question + 1}_COMPLETE')"
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{raw_index}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{raw_index}", args={"code": code}))
                 if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify."})))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),

@@ -155,7 +155,7 @@ async def test_validation_controls_through_actual_root_workflow(tmp_path, monkey
                 "        assert agent.fs.write('answer.json', json.dumps({'value': value}))['status'] == 'ok'\n"
             )
         proposal = {"status": "verify" if guess or case == "validation_complete" else "blocked", "message": "Check the recorded evidence."}
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{index}", args={"code": code}))
                 if code else types.Part(text=json.dumps(proposal)))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
@@ -288,7 +288,7 @@ async def test_fresh_validation_reuse_requires_the_actual_completed_check(tmp_pa
                     "summary = json.loads(agent.artifacts.load(uri)['data']['text'])\n")
             code += "assert agent.fs.write('answer.json', json.dumps(summary['answer']))['status'] == 'ok'\n"
         proposal = {"status": "blocked" if failed and bad != "force" else "verify", "message": "Check recorded evidence."}
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{index}", args={"code": code}))
                 if code else types.Part(text=json.dumps(proposal)))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),

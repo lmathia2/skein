@@ -22,6 +22,7 @@ from app.agent.builders import build_coding_worker
 from app.agent.config import settings_from_composition
 from app.agent.factory import (
     SkeinHarnessFactory,
+    _append_trace_span,
     _compound_memory_call,
     build_harness,
     default_harness_registry,
@@ -47,8 +48,8 @@ from harness.core.config import (
     load_harness_composition,
     parse_harness_composition,
 )
-from harness.core.models.agent_step import StructuredAgentStep
 from harness.evidence.state import EventKind, JsonlEventStore
+from harness.evidence.tracing import TraceSpan
 from harness.execution.tools.adk_adapter import AdkCodingTools
 
 
@@ -59,7 +60,37 @@ def test_compound_virtual_memory_call_is_detected_without_matching_quoted_data()
     assert not _compound_memory_call("rg '&& memory' app")
 
 
-def test_pi_compatible_applies_v41_ptc_runtime_contract(tmp_path, monkeypatch) -> None:
+def test_adk_trace_span_is_linked_into_the_task_event_stream(tmp_path: Path) -> None:
+    events = JsonlEventStore(tmp_path / "events")
+    events.append("task", EventKind.TASK_CREATED, {"ledger": {}})
+    span = TraceSpan(
+        span_id="span",
+        task_id="task",
+        sequence=3,
+        correlation_id="invocation",
+        parent_span_id="parent",
+        category="model",
+        phase="start",
+        name="coding-model",
+        timestamp="2026-09-22T00:00:00+00:00",
+        content_hash="a" * 64,
+        payload_json='{"type":"object"}',
+        omitted_bytes=0,
+        idempotency_key="model-start",
+    )
+
+    _append_trace_span(events, None, span)
+    _append_trace_span(events, None, span)
+
+    recorded = events.read("task")[-1]
+    assert recorded.kind == EventKind.TRACE_SPAN_RECORDED
+    assert recorded.correlation_id == "invocation"
+    assert recorded.parent_event_id == "parent"
+    assert recorded.payload["payload"] == {"type": "object"}
+    assert len(events.read("task")) == 2
+
+
+def test_default_applies_v41_ptc_runtime_contract(tmp_path, monkeypatch) -> None:
     from app.agent import factory
 
     captured: dict[str, Any] = {}
@@ -71,7 +102,6 @@ def test_pi_compatible_applies_v41_ptc_runtime_contract(tmp_path, monkeypatch) -
 
     monkeypatch.setattr(factory, "build_coding_worker", worker)
     payload = load_harness_composition().model_dump(mode="json")
-    payload["harness"]["config"]["workflow"]["mode"] = "pi_compatible"
     payload["harness"]["config"]["notebook_ptc"]["enabled"] = True
     assembly = build_harness(
         parse_harness_composition(payload),
@@ -357,7 +387,7 @@ def test_default_skein_factory_builds_from_composition_without_credentials(
     assert assembly.build_info.behavior_sha256 == configured.behavior_sha256
     assert assembly.build_info.models["coding"] == configured_model
     assert assembly.build_info.model_providers["coding"] == "google_adk"
-    assert assembly.build_info.tool_names == ("read", "bash", "edit", "write")
+    assert assembly.build_info.tool_names == ("code",)
     assert assembly.build_info.max_iterations == 7
     assert "environment-model-must-not-win" not in assembly.build_info.models.values()
     assert registry.available() == ("skein_v1",)
@@ -391,6 +421,7 @@ def test_verification_shares_yaml_sandbox_and_task_scoped_approvals(
     monkeypatch.setenv("SKEIN_ALLOW_NETWORK", "true")
     monkeypatch.setenv("SKEIN_SANDBOX", "local")
     payload = load_harness_composition().model_dump(mode="json")
+    payload["harness"]["config"]["notebook_ptc"]["enabled"] = False
     payload["harness"]["config"]["sandbox"] = {"kind": "docker", "image": "test:local"}
     state = tmp_path / "state"
     build_harness(
@@ -489,7 +520,7 @@ def test_composition_loads_project_instructions_only_after_explicit_trust(
     assert trusted.skill_roots == (workspace / ".agents" / "skills",)
 
 
-def test_ptc_prompt_teaches_versioned_reuse_and_search(tmp_path: Path) -> None:
+def test_ptc_prompt_teaches_single_code_surface(tmp_path: Path) -> None:
     composition = load_harness_composition()
     config = cast(SkeinConfig, composition.harness.config)
     configured = composition.model_copy(
@@ -513,16 +544,10 @@ def test_ptc_prompt_teaches_versioned_reuse_and_search(tmp_path: Path) -> None:
         RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
     ).static_instruction
 
-    assert "Reuse covered ranges of the same source" in instruction
-    assert "expected_sha256 for guarded edits" in instruction
-    assert "exact calculation, parsing, aggregation, comparison" in instruction
-    assert "return prose directly when" in instruction
-    assert "execution adds no evidence" in instruction
-    assert "result = agent.fs.read(path)" in instruction
-    assert "agent.state.annotate" in instruction
-    assert "--entries JSON" in instruction
-    assert "search grep --pattern TEXT" in instruction
-    assert "--path PATH --limit 20" in instruction
+    assert "code(code=...)" in instruction
+    assert "code(more=result_id" in instruction
+    assert "read`, `write`, `edit`, `bash`, and `verify`" in instruction
+    assert "AgentStep schema" not in instruction
 
 
 def test_project_instruction_budget_is_executable_configuration(tmp_path: Path) -> None:
@@ -650,7 +675,7 @@ async def test_ptc_worker_yields_before_an_extra_model_call_after_read_only_chur
 
 
 @pytest.mark.asyncio
-async def test_thin_ptc_worker_does_not_create_work_batch_yields(tmp_path: Path) -> None:
+async def test_default_worker_does_not_create_work_batch_yields(tmp_path: Path) -> None:
     events = JsonlEventStore(tmp_path / "events")
     events.append(
         "task-1",
@@ -764,7 +789,7 @@ def test_worker_passes_generation_settings_through_adk(tmp_path: Path) -> None:
     assert worker.agent.generate_content_config.max_output_tokens == 8_192
 
 
-def test_worker_uses_native_structured_output_without_adding_a_model_tool(tmp_path: Path) -> None:
+def test_worker_uses_freeform_output_without_adding_a_model_tool(tmp_path: Path) -> None:
     settings = settings_from_composition(
         load_harness_composition(),
         RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
@@ -774,19 +799,43 @@ def test_worker_uses_native_structured_output_without_adding_a_model_tool(tmp_pa
         OpenRouterResponsesLlm(model="openai/gpt-5.5", api_key="test"),
     )
 
-    assert worker.agent.output_schema is StructuredAgentStep
+    assert worker.agent.output_schema is None
     assert [tool.__name__ for tool in worker.agent.tools] == ["read", "bash", "edit", "write"]
 
-    thin = build_coding_worker(
+    pi_worker = build_coding_worker(
         settings,
         OpenRouterResponsesLlm(model="openai/gpt-5.5", api_key="test"),
         ptc_config=NotebookPtcConfig(enabled=True),
-        thin_loop=True,
     )
-    assert thin.agent.output_schema is None
-    assert [tool.__name__ for tool in thin.agent.tools] == ["code"]
-    if thin.close is not None:
-        thin.close()
+    assert pi_worker.agent.output_schema is None
+    assert [tool.__name__ for tool in pi_worker.agent.tools] == ["code"]
+    if pi_worker.close is not None:
+        pi_worker.close()
+
+
+@pytest.mark.asyncio
+async def test_default_code_tool_pages_retained_results(tmp_path: Path) -> None:
+    settings = settings_from_composition(
+        load_harness_composition(),
+        RuntimeBindings(workspace=tmp_path, state_root=tmp_path / "state"),
+    )
+    worker = build_coding_worker(
+        settings,
+        cast(BaseLlm, "test-model"),
+        ptc_config=NotebookPtcConfig(enabled=True, max_output_bytes=50 * 1_024),
+    )
+    code = cast(Any, worker.agent.tools[0])
+    try:
+        result = await code(code="'x' * 60000")
+        page = await code(more=result["result_id"], offset=0, limit=100)
+        invalid = await code(code="1", more=result["result_id"])
+    finally:
+        assert worker.close is not None
+        worker.close()
+
+    assert page["status"] == "ok" and page["next_offset"] == 100
+    assert page["result_id"] == result["result_id"]
+    assert invalid["status"] == "error"
 
 
 @pytest.mark.asyncio
@@ -914,6 +963,7 @@ async def test_skein_factory_wires_tool_defaults_limits_and_dynamic_task_scope(
                 update={
                     "config": config.model_copy(
                         update={
+                            "notebook_ptc": config.notebook_ptc.model_copy(update={"enabled": False}),
                             "tools": config.tools.model_copy(
                                 update={
                                     "read_default_lines": 123,

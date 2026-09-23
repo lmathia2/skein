@@ -68,7 +68,7 @@ def test_ptc_memory_context_support_matrix(
             parse_harness_composition(payload)
 
 
-def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:
+def test_default_composition_is_adk_native_ptc_v41() -> None:
     composition = load_harness_composition()
     config = composition.harness.config
     assert isinstance(config, SkeinConfig)
@@ -86,12 +86,14 @@ def test_default_composition_is_strict_and_uses_the_four_tool_surface() -> None:
     assert config.context.project_instruction_bytes == 16_000
     assert config.workflow.progress.replan_after_no_progress == 2
     assert config.workflow.progress.block_after_no_progress == 4
-    assert config.workflow.mode == "structured"
     assert config.agents["coding_worker"].generation.temperature is None
-    assert config.notebook_ptc.enabled is False
+    assert config.notebook_ptc.enabled is True
+    assert config.notebook_ptc.state == "snapshot"
+    assert config.notebook_ptc.recover_committed_values is True
     assert config.notebook_ptc.default_timeout_seconds == 120
     assert config.notebook_ptc.max_timeout_seconds == 600
-    assert config.notebook_ptc.max_output_bytes == 16_000
+    assert config.notebook_ptc.max_output_bytes == 50 * 1_024
+    assert config.notebook_ptc.max_capability_calls_per_cell == 64
     assert config.memory.enabled is False
     assert config.memory.implementation == "trace_native"
     assert config.memory.ledger == "jsonl"
@@ -362,9 +364,8 @@ def test_runtime_bindings_are_not_part_of_declarative_behavior(tmp_path: Path) -
     assert str(tmp_path) not in serialized
 
 
-def test_thin_mode_uses_compact_direct_ptc_contract(tmp_path: Path) -> None:
+def test_default_uses_compact_direct_ptc_contract(tmp_path: Path) -> None:
     payload = _composition_payload()
-    payload["harness"]["config"]["workflow"]["mode"] = "thin"
     payload["harness"]["config"]["notebook_ptc"] = {"enabled": True}
     composition = parse_harness_composition(payload)
     workspace = tmp_path / "workspace"
@@ -380,6 +381,7 @@ def test_thin_mode_uses_compact_direct_ptc_contract(tmp_path: Path) -> None:
     assert "AgentStep schema" not in settings.static_instruction
     assert "ordinary concise final answer" in settings.static_instruction
     assert '`{"status":"blocked"' in settings.static_instruction
+    assert '"tools":["code"]' in settings.static_prefix
 
 
 def test_search_default_page_size_cannot_exceed_maximum() -> None:

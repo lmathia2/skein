@@ -115,7 +115,7 @@ Both launchers provide standalone help without requiring a token or running serv
 The final deterministic gate contains 521 Python unit/integration cases and 46 Node
 terminal cases. All pass. Ruff, Pyright over `app`/`harness`, Python compilation and
 `git diff --check` are clean. The tracked Go client is absent, production code has no
-Magnitude references, and every Pi-terminal delivery item in `docs/TODO.md` is checked.
+Magnitude references and the Pi-terminal delivery checks were completed before this design was archived.
 
 The live acceptance set covers short non-coding replies without tools; `hello.py`,
 Unicode RLE, JSON Pointer and slugification coding tasks with independent tests;

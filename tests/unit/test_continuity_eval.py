@@ -77,7 +77,7 @@ async def test_seed_cut_recover_and_current_version_gate(tmp_path, monkeypatch, 
         await trial.prepare()
         request = await trial.request()
         body = build_openrouter_request_body(request, model="openai/gpt-5.6-luna", reasoning_effort="max")
-        assert [tool["name"] for tool in body["tools"]] == ["execute_code"]
+        assert [tool["name"] for tool in body["tools"]] == ["code"]
         assert "Checkpoint padding." not in wire_text(body)
         assert trial.cut_sequence > 0
         source_task = "fixture-prior" if family == "prior" else trial.task_id

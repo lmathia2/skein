@@ -191,9 +191,9 @@ class Continuation:
             self.seed_cells += 1
         if call_id is None:
             self.history.append(types.Content(role="model", parts=[types.Part(function_call=types.FunctionCall(
-                name="execute_code", id=self.context.function_call_id, args={"code": code}))]))
+                name="code", id=self.context.function_call_id, args={"code": code}))]))
         self.history.append(types.Content(role="user", parts=[types.Part(function_response=types.FunctionResponse(
-            name="execute_code", id=self.context.function_call_id, response=result))]))
+            name="code", id=self.context.function_call_id, response=result))]))
         operations = {event.payload.get("operation") for event in self.ledger.read(self.task_id)
                       if event.kind == "capability.requested" and event.payload.get("attempt_id") == result.get("attempt_id")}
         route = "artifact_output" if operations and all(str(op).startswith("artifacts.") for op in operations) else (
@@ -400,7 +400,7 @@ async def run_case(
                 result["terminal"] = "fixture_completed"
                 break
             for call in calls:
-                if call.name != "execute_code" or not isinstance((call.args or {}).get("code"), str):
+                if call.name != "code" or not isinstance((call.args or {}).get("code"), str):
                     raise ValueError("provider generated an invalid PTC call")
                 await trial.cell((call.args or {})["code"], call_id=call.id)
         answer = trial.workspace / "answer.json"

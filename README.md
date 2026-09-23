@@ -1,174 +1,146 @@
 # Skein
 
-Skein is a minimal Google ADK coding harness for evaluating a fixed model in
-Harbor tasks through Pier. It keeps the model-facing interface small, records
-append-only execution evidence, and requires deterministic verification before a
-coding task can complete.
+Skein is a small coding-agent harness built on Google ADK. It gives the model one
+programmable tool, keeps effects behind a controlled host boundary, and verifies the
+workspace before declaring a coding task complete.
 
-## Setup
+A skein is a length of thread gathered into a usable form. The name reflects the
+design: model conversation, Python cells, file and shell effects, verification, and
+trace evidence are separate threads joined into one inspectable run.
 
-Requirements: Python 3.12+, `uv`, Docker with Compose and Buildx, and Pier 0.3.1.
+## The idea
+
+Skein keeps the coding loop deliberately narrow:
+
+```text
+task -> ADK coding agent -> code -> read/write/edit/bash/verify
+                              |
+                              v
+                       effect broker
+                              |
+                              v
+                     trace + host verifier
+```
+
+Google ADK owns model calls, native tool continuation, streaming, sessions,
+cancellation, and resume. The model sees PTC v4.1's single persistent `code` tool.
+Inside it, synchronous `read`, `write`, `edit`, `bash`, and `verify` helpers
+compose ordinary Python work.
+
+Skein adds three boundaries around that simple loop:
+
+- Every workspace effect passes through the same broker and produces a typed receipt.
+- Model context and tool output are bounded projections; complete evidence stays in an
+  append-only trace and content-addressed artifacts.
+- The model can request completion, but only the host verifier can complete the task.
+
+This is the main innovation: programmatic tool use, context, recovery, tracing, and
+verification share one causal record without replacing ADK's event loop or expanding
+the model's tool surface.
+
+## Install
+
+Requirements:
+
+- Python 3.12 or newer
+- [uv](https://docs.astral.sh/uv/)
+- Docker with Compose v2 and Buildx for Harbor tasks
+
+Run:
 
 ```sh
-uv tool install datacurve-pier==0.3.1
 ./install.sh
 ```
 
-Set the provider credential used by your selected mode, for example
-`OPENROUTER_API_KEY`. The runner can also read it from a mode-`0600` `.env` file.
+The script creates `.venv`, installs Skein and pinned Harbor dependencies from
+`uv.lock`, and installs Pier 0.3.1 in uv's isolated tool environment. A successful
+run ends with:
 
-## Run Harbor evaluations
+```text
+Skein Harbor/Pier environment ready.
+```
 
-Inspect a frozen suite without starting Docker or calling a model:
+Set the provider credential used by the evaluation runner. Its default provider is
+OpenRouter:
+
+```sh
+export OPENROUTER_API_KEY=...
+```
+
+The runner also reads `~/.env` by default. Keep that file mode `0600`.
+
+## Run coding evaluations
+
+First inspect the frozen smoke suite without starting Docker or calling a model:
 
 ```sh
 .venv/bin/python scripts/run_harbor_eval.py --suite smoke --plan
 ```
 
-Run the smoke suite with two isolated Pier trials at a time:
+Run one smoke task through the default ADK + PTC v4.1 harness:
 
 ```sh
 .venv/bin/python scripts/run_harbor_eval.py \
   --suite smoke \
-  --config harness/core/config/profiles/four-tool.yaml \
-  --concurrency 2
+  --task-id modernize-scientific-stack
+```
+
+Run the complete six-task smoke suite with two isolated Pier trials at a time:
+
+```sh
+.venv/bin/python scripts/run_harbor_eval.py \
+  --suite smoke \
+  --concurrency 2 \
+  --jobs-dir "$HOME/skein-runs/smoke"
 ```
 
 Suites are `smoke` (6 tasks), `broader` (10 tasks), and `full` (105 tasks).
-Use `--benchmark`, `--task-id`, or `--limit` to narrow a run. Each trial retains
-its Pier job, Skein events, traces, verification output, and metrics. Reusing the
-jobs directory resumes incomplete Pier jobs and skips completed task keys.
+Use `--benchmark`, `--task-id`, or `--limit` to narrow a run. Every trial keeps
+its Pier job, model and tool trace, workspace evidence, verification output, and
+metrics below the jobs directory.
 
-Trackio is installed by default. Log one live dashboard run per campaign:
+Rerun the same command with the same `--jobs-dir` to skip completed task keys and
+resume incomplete Pier jobs. To rebuild a missing campaign ledger without launching
+work:
 
 ```sh
-uv sync
-scripts/run_e13_muse_20.sh pi
-scripts/run_e13_muse_20.sh ptc
-scripts/run_e13_muse_20.sh pi-compatible
-scripts/show_e13_trackio.sh
+.venv/bin/python scripts/run_harbor_eval.py \
+  --recover-only \
+  --jobs-dir "$HOME/skein-runs/smoke"
 ```
 
-Add `--trackio-space-id USER/SPACE` to sync to a Hugging Face Space. Trackio logs
-campaign progress, pass rate, cost, tokens, and latency; `runs.jsonl` remains the
-task-level source of truth. Incomplete trials, timeouts, nonzero exits, and runner
-exceptions also create Trackio error alerts. Set `TRACKIO_WEBHOOK_URL` to forward
-those alerts to Slack or Discord.
+The default configuration is [`harness/core/config/default.yaml`](harness/core/config/default.yaml).
+It exposes PTC v4.1 `code`. The
+[`four-tool.yaml`](harness/core/config/profiles/four-tool.yaml) profile is retained
+only for controlled tool-surface comparisons:
 
-To resume after an interruption, rerun the exact command with the same `--jobs-dir`.
-The wrapper skips completed task keys, recovers results already written to disk, and
-calls `pier job resume` for unfinished Pier jobs. Pier 0.3.1 resumes at the job/trial
-boundary; the Skein Pier adapter does not currently resume a model midway through an
-interrupted trial, so that one active task may restart while completed tasks do not.
-
-## Modes
-
-The profile passed to `--config` selects the model interface and memory policy:
-
-| Profile | Model-facing execution | Memory |
-|---|---|---|
-| `four-tool.yaml` | `read`, `bash`, `edit`, `write` | bounded task log |
-| `notebook-ptc-jsonl.yaml` | persistent Skein `execute_code` notebook | canonical JSONL |
-
-Provider, model, reasoning effort, token limits, concurrency, and attempts are
-runner flags. Tool topology, safety, verification, and evidence authority remain
-code-owned so benchmark modes stay comparable.
-
-The notebook profile has two legacy workflow policies. `structured` uses Skein's phased
-work packets, counterexample review, and bounded verification retries.
-`pi_compatible` keeps the same broker, verifier, and canonical trace but gives the
-model Pi's compact `code` tool, direct-helper contract, continuous repair loop,
-50 KiB observations, 64 helper calls per cell, and snapshot recovery of committed
-plain values. `thin` keeps the lightweight loop without forcing those v4.1 runtime
-limits. Select a policy with `--workflow-mode structured|pi_compatible`.
-
-In `pi_compatible` mode the model receives concise Markdown and readable helper
-results; the trace still records complete typed capability receipts and artifacts.
-Repeated verification failures return to the model until the task or execution budget
-ends. Only a genuine human dependency should produce `blocked`.
-
-### Strict Pi/Skein loop parity
-
-For the controlled comparison, use the matched adapters rather than the legacy
-`--workflow-mode pi_compatible` application policy:
-
-```bash
-scripts/run_e13_muse_20.sh pi-parity       # fresh Pi-loop reference
-scripts/run_e13_muse_20.sh pi-compatible  # native ADK-loop treatment
+```sh
+.venv/bin/python scripts/run_harbor_eval.py \
+  --suite smoke \
+  --config harness/core/config/profiles/four-tool.yaml
 ```
-
-Both use OpenRouter **Chat Completions**, the same Pi provider serializer, raw task,
-system prompt, v4.1 `code` schema (including paging), Python worker, broker, output
-renderer, recovery, and 6,900-second trial deadline. They run the same optional
-one-shot evidence reminder. `verify(...)` is model-invoked; neither loop adds managed
-verification or host-generated repair feedback. Benchmark scoring remains external.
-Compaction is disabled in both; context overflow is an error, not an implicit handoff.
-
-ADK still owns native model/tool continuation. A small Node transport supplies Pi's
-provider serialization without running a Pi agent loop. Typed ADK/PTC traces are
-stored separately from the exact model contexts and serialized provider payloads.
-Each trial writes `parity-contract.json` with effective settings and runtime hashes.
-The offline differential test compares both contexts and actual Chat Completions
-request bodies through errors, paging, reasoning replay, and evidence review.
-
-This is a new matched reference, not a retroactive change to historical v4.1 results.
-Both strict arms need fresh runs. The ordinary application workflow and provider
-defaults are unchanged; strict parity currently applies to these evaluation adapters.
-
-### Pi + Skein PTC v4.1
-
-The E13 comparison runner also provides `PiSkeinPtcPierAgent`, a Pi extension backed
-by Skein's persistent CPython worker. This is separate from the ADK notebook profile:
-Pi owns the model loop, while Skein supplies the `code` tool, worker, Harbor bridge,
-and workspace helpers.
-
-One model call can submit a Python cell that calls synchronous `read`, `write`,
-`edit`, `bash`, and `verify` helpers. Python variables and functions persist between
-cells, so batching is ordinary Python composition—loops, filtering, and several
-helper calls in one cell—rather than a second batch API. `json`, `math`, and `re` are
-preloaded. The worker blocks direct host I/O and routes workspace effects through the
-confined broker.
-
-V4.1 provides:
-
-- conservative AST preflight for undefined names, helper signatures and arguments,
-  known result keys, simple literal types, and invalid operators;
-- readable text projections with merged shell diagnostics and exit status, plus
-  50 KiB model observations and pageable retained results;
-- rollback of supported in-memory values after a Python exception without rolling
-  back external effects;
-- a bounded JSON-only checkpoint after each successful cell, restored after worker
-  timeout or transport loss without replaying the transcript; and
-- a separate `verify` helper plus one completion-review follow-up when the last
-  possible mutation is not covered by successful verification.
-
-The general Skein default remains the four-tool profile. V4.1 is the default only for
-the Pi + Skein PTC evaluation arm; v4.2 remains an archived experiment because it
-reduced `verify()` calls without reducing total interactions, cost, or latency. See
-[the PTC architecture decision](docs/adr/programmatic-tool-calling.md)
-and [the v4.2 comparison](docs/experiments/e13-pi-skein-v4.2-comparison.md).
 
 ## Develop
 
 ```sh
-uv run --extra eval pytest tests/unit/test_harbor_adapter.py tests/unit/test_harbor_eval_runner.py
-uv run --extra eval ruff check app harness scripts tests/unit/test_harbor_adapter.py tests/unit/test_harbor_eval_runner.py
-uv run --extra eval pyright app harness
+.venv/bin/python -m pytest -q tests/unit
+.venv/bin/python -m ruff check app harness evals tests
+.venv/bin/python -m pyright app harness
 ```
 
-The source tree separates product code from benchmark support:
+The code is organized by authority:
 
-| Path | Responsibility |
-|---|---|
-| `app/agent/` | Concrete ADK worker and composition root |
-| `harness/core/` | Task contracts, configuration, context, and orchestration |
-| `harness/execution/` | Brokered tools, policy, approvals, and workspace runtimes |
-| `harness/evidence/` | Append-only state, ledger projections, traces, and metrics |
-| `harness/ptc/` | Persistent Python worker and notebook projection |
+| Path | Owns |
+| --- | --- |
+| `app/agent/` | ADK worker and the coding/verification loop |
+| `harness/core/` | Configuration, task contracts, and bounded context |
+| `harness/ptc/` | Persistent Python execution and recovery |
+| `harness/execution/` | Brokered filesystem and command effects |
+| `harness/evidence/` | Trace, artifacts, projections, and learning episodes |
 | `harness/verification/` | Independent completion checks |
-| `harness/adapters/` | ADK, provider, and Pier integration code |
-| `evals/` | Harbor manifests, campaign runner, and result analysis—not harness core |
+| `harness/adapters/` | ADK, provider, and Pier boundaries |
+| `evals/` | Frozen Harbor task manifests and campaign analysis |
 
-See `docs/evaluation-harbor.md` for Pier details and `docs/architecture.md` for
-the component wiring. See `docs/package-layout.md` for dependency rules and the
-contents of each package.
+For the precise runtime contract, read
+[`docs/architecture.md`](docs/architecture.md) and
+[`docs/adr/adk-native-ptc-v4.1-core.md`](docs/adr/adk-native-ptc-v4.1-core.md).

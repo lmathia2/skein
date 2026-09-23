@@ -195,7 +195,7 @@ async def test_two_worker_losses_require_revised_evidence_and_current_sources(tm
             code = recover(2 if bad == "repair_ack" else 1) + answer()
             if bad == "reverted":
                 code += f"\nassert agent.fs.write('policy.toml', {trial.fixture['files']['policy.toml']!r})['status'] == 'ok'"
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{index}", args={"code": code}))
                 if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify."})))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),

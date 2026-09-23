@@ -19,7 +19,7 @@ from harness.core.config.models import ContextConfig
 from harness.core.context import estimate_tokens
 from harness.core.context.compiler import ContextBudgetExceeded, estimate_model_tokens
 from harness.core.models import TaskLedger
-from harness.core.orchestration import build_work_packet
+from harness.core.orchestration import build_coding_packet
 from harness.evidence.ledger import LedgerStore
 from harness.evidence.ledger.models import canonical_json
 from harness.evidence.memory.models import ReadEvidence, ViewResult
@@ -703,7 +703,7 @@ class ContextWindowPlugin(BasePlugin):
         """
         del tool_args
         if (not self.refresh_prior or self.config.continuity_representation != "findings"
-                or getattr(tool, "name", "") != "execute_code" or result.get("status") != "ok"):
+                or getattr(tool, "name", "") != "code" or result.get("status") != "ok"):
             return
         task_id = str(tool_context.state.get("task_id", ""))
         attempt = str(result.get("attempt_id", ""))
@@ -991,18 +991,12 @@ class ContextWindowPlugin(BasePlugin):
         # Preserve delivery order, with newer corrections after earlier instructions.
         steering = [str(event.payload.get("content", "")) for event in events
                     if event.kind == EventKind.STEERING_RECEIVED]
-        control = build_work_packet(
+        control = build_coding_packet(
             task,
             selected_skills=str(callback_context.state.get("skill_context_text", "")),
             compaction_summary=active_handoff,
             steering_messages=steering,
             max_tokens=self.config.work_packet_tokens,
-            section_token_limits={
-                "TASK": self.config.ledger_tokens,
-                "SELECTED SKILLS": self.config.skill_context_bytes // 4,
-                "COMPACTED HISTORY": self.config.compaction_tokens,
-                "USER STEERING": self.config.steering_tokens,
-            },
         )
         control = self.redactor.redact_text(control)
         header = types.Content(role="user", parts=[types.Part.from_text(text=control)])
@@ -1113,18 +1107,12 @@ class ContextWindowPlugin(BasePlugin):
                 return
         if self.config.window_management and should_compact:
             if active_handoff != handoff:
-                control = build_work_packet(
+                control = build_coding_packet(
                     task,
                     selected_skills=str(callback_context.state.get("skill_context_text", "")),
                     compaction_summary=handoff,
                     steering_messages=steering,
                     max_tokens=self.config.work_packet_tokens,
-                    section_token_limits={
-                        "TASK": self.config.ledger_tokens,
-                        "SELECTED SKILLS": self.config.skill_context_bytes // 4,
-                        "COMPACTED HISTORY": self.config.compaction_tokens,
-                        "USER STEERING": self.config.steering_tokens,
-                    },
                 )
                 control = self.redactor.redact_text(control)
                 header = types.Content(role="user", parts=[types.Part.from_text(text=control)])

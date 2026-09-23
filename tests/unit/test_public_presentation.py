@@ -34,7 +34,7 @@ def test_public_result_does_not_duplicate_reply_or_publish_diagnostics() -> None
     )
     events = result_events({
         "status": "complete", "message": "Updated parser.",
-        "verification": {"passed": True, "internal": "hidden"},
+        "verification": {"passed": True},
         "metrics": {"hidden": True}, "changed_paths": ["parser.py"],
     })
     public = [item for event in events for item in mapper.push(event)]

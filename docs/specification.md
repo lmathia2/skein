@@ -2,7 +2,7 @@
 
 > Version: 1
 >
-> Updated: 2026-09-07
+> Updated: 2026-09-22
 >
 > Scope: current local, single-process Google ADK 2.x implementation
 
@@ -34,8 +34,7 @@ run registry / ADK Runner
 Skein workflow
   |
 coding worker
-  +-- default: read, bash, edit, write
-  `-- opt-in: python -> capability broker -> same managed operations
+  `-- code -> read, write, edit, bash, verify -> capability broker
 ```
 
 | Contract | Code owner | Principal tests |
@@ -58,8 +57,9 @@ configuration.
 
 | Profile/capability | Current status |
 | --- | --- |
-| [`default.yaml`](../harness/core/config/default.yaml) / [`four-tool.yaml`](../harness/core/config/profiles/four-tool.yaml) | Supported default; four tools; canonical memory off |
-| [`notebook-ptc-jsonl.yaml`](../harness/core/config/profiles/notebook-ptc-jsonl.yaml) | Opt-in one-tool PTC and canonical JSONL |
+| [`default.yaml`](../harness/core/config/default.yaml) | Supported default; ADK-native PTC v4.1 `code`; canonical memory off |
+| [`four-tool.yaml`](../harness/core/config/profiles/four-tool.yaml) | Compatibility profile; four tools; canonical memory off |
+| [`notebook-ptc-jsonl.yaml`](../harness/core/config/profiles/notebook-ptc-jsonl.yaml) | PTC v4.1 `code` with canonical JSONL |
 
 Unsupported combinations MUST fail rather than silently downgrade. Conversation
 notebook continuity requires PTC. Live semantic retrieval requires an explicitly
@@ -159,9 +159,10 @@ MUST share workspace confinement, command classification, approvals, operation a
 invocation identity, receipts, redaction, output bounds, timeout/cancellation, and
 artifact externalization.
 
-The default model sees `read`, `bash`, `edit`, and `write`. Reserved search and memory
-commands MAY route within `bash`. PTC sees only `execute_code`; its `agent.fs.*`,
-`agent.shell.run`, state metadata, and registered MCP operations use the same broker.
+The default model sees only PTC v4.1 `code`. Its synchronous `read`, `write`, `edit`,
+`bash`, and `verify` helpers use the same broker. The retained four-tool surface
+ablation sees `read`, `bash`, `edit`, and `write`; it does not select another workflow.
+`execute_code` is an internal callable name and never a model-facing wire name.
 
 Unknown capabilities MUST fail closed. Network, dependency installation, destructive
 commands, and Git-history mutation remain disabled unless explicit policy and
@@ -176,7 +177,7 @@ PTC is assembled in [`app/agent/builders.py`](../app/agent/builders.py), execute
 
 ### 7.1 Cell execution protocol
 
-For `python(code)`, the harness MUST:
+For `code(code)`, the harness MUST:
 
 ```text
 1  resolve task/invocation/notebook identity

@@ -131,7 +131,7 @@ async def test_owned_prior_tasks_use_completed_applicable_evidence_with_full_cos
         blocked = (fault == "producer_failed" and producer) or (fault == "guess" and not producer and index > 4)
         blocked |= fault == "stale" and arm == "findings" and not producer and index > 4
         blocked |= fault == "identity_only" and not producer and index > 5
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{index}", args={"code": code}))
                 if code else types.Part(text=json.dumps({"status": "blocked" if blocked else "verify", "message": "Report completed evidence."})))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),

@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import inspect
 import json
-import re
 import time
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
@@ -22,12 +21,11 @@ from harness.core.context import estimate_tokens
 from harness.core.models.agent_step import AgentStep
 from harness.core.models.checkpoint import Checkpoint
 from harness.core.models.ledger import TaskLedger
-from harness.core.models.task import TaskPhase, TaskRequest
+from harness.core.models.outcome import HarnessOutcome
+from harness.core.models.task import TaskRequest
 from harness.core.orchestration import (
     HarnessRoute,
-    build_thin_packet,
-    build_work_packet,
-    build_work_packet_update,
+    build_coding_packet,
     create_initial_ledger,
     decide_route,
     parse_agent_step,
@@ -37,7 +35,6 @@ from harness.core.orchestration import (
     resume_for_steering,
     task_id_for,
 )
-from harness.core.orchestration.core import work_packet_sections
 from harness.core.orchestration.runtime import can_answer_directly
 from harness.evidence.state import (
     CheckpointStore,
@@ -109,28 +106,11 @@ class SkeinWorkflowDependencies:
     steering_batch_limit: int
     steering_enabled: bool
     steering_at_work_batch_boundary: bool
-    thin_loop: bool = False
-    pi_evidence_review: bool = False
     delta_work_packets: bool = False
     plugin_owns_handoff: bool = False
     work_batch_handoff: Callable[[TaskLedger, str], str] | None = None
     approvals: ApprovalWaiter | None = None
     replies: PublicReplies | None = None
-
-
-def _needs_pi_evidence_review(events, final_text: str) -> bool:
-    mutation = max((event.sequence for event in events
-        if event.kind in {EventKind.CAPABILITY_COMPLETED, EventKind.CAPABILITY_FAILED}
-        and (event.payload.get("operation") == "shell.run"
-             or (event.payload.get("operation") in {"fs.write", "fs.edit"}
-                 and event.payload.get("effect") == "changed"))), default=0)
-    verified = max((event.sequence for event in events
-        if event.kind == "execution.ptc_verification"
-        and event.payload.get("status") == "ok"), default=0)
-    final_text = re.sub(r"\bno known gaps?\b", "", final_text, flags=re.I)
-    return mutation > verified or bool(re.search(
-        r"known gaps?|remaining (?:gap|issue)|unimplemented|failing probe", final_text, re.I
-    ))
 
 
 @dataclass(slots=True)
@@ -168,45 +148,6 @@ def _workspace_fingerprint(deps: SkeinWorkflowDependencies, task_id: str) -> str
     if manager is not None and manager.load(task_id) is not None:
         return manager.fingerprint(task_id)
     return deps.repository.fingerprint()
-
-
-def _work_batch_yield_update(
-    ledger: TaskLedger,
-    step: AgentStep,
-    batch_yield: dict[str, Any],
-) -> dict[str, Any]:
-    if batch_yield.get("reason") == "review_cell_limit":
-        return {
-            "phase": "review",
-            "status": "active",
-            "next_action": step.next_action or "Return the bounded review result for verification.",
-        }
-    if not batch_yield.get("workspace_changed") and not ledger.files_modified:
-        return {
-            "phase": "plan", "status": "active",
-            "next_action": "Exploration checkpoint: use the evidence already collected to choose "
-            "and implement the smallest change. Record findings and remaining work in a working "
-            "note when memory is enabled. Read further only to resolve a specific missing fact.",
-        }
-    if batch_yield.get("reason") == "max_cells" and batch_yield.get("workspace_changed") is True:
-        return {
-            "phase": "implement",
-            "status": "active",
-            "next_action": "Continue implementation from the durable notebook.",
-        }
-    first_review = not ledger.counterexample_review_completed
-    update: dict[str, Any] = {
-        "phase": "review",
-        "status": "active",
-        "next_action": (
-            _criterion_review_action(ledger, step)
-            if first_review
-            else "Re-audit remaining criterion gaps, then verify or take the smallest fix."
-        ),
-    }
-    if first_review:
-        update["counterexample_review_completed"] = True
-    return update
 
 
 def _recover_unsupported_blocked_step(step: AgentStep, *, workspace_changed: bool,
@@ -249,34 +190,6 @@ def _admit_completion_claims(
             continue
         evidence[criterion_id] = list(claim.get("evidence", []))
     return evidence, rejected
-
-
-def _bounded_review_step(
-    ledger: TaskLedger,
-    pending_claims: list[dict[str, Any]],
-) -> AgentStep:
-    """Advance one bounded review without weakening completion-claim identity."""
-
-    known_ids = {row.criterion_id for row in ledger.criterion_rows}
-    evidence, _ = _admit_completion_claims(pending_claims, known_ids)
-    scaffold = [
-        {
-            "criterion_id": row.criterion_id,
-            "evidence": evidence.get(row.criterion_id, ["<completed evidence>"]),
-        }
-        for row in ledger.criterion_rows
-    ]
-    return AgentStep(
-        status="continue",
-        next_action=(
-            "The bounded counterexample-review cell is complete. This next batch is a decision, "
-            "not another tool cell. If the completed review found a defect, return status continue "
-            "with the concrete defect and smallest targeted correction in next_action; the following "
-            "implement batch may execute it. Otherwise return status verify now and "
-            "copy every criterion_id exactly from this scaffold, replacing only the evidence text: "
-            + json.dumps(scaffold, separators=(",", ":"))
-        ),
-    )
 
 
 def _reject_late_criterion_proposals(ledger: TaskLedger, step: AgentStep) -> AgentStep:
@@ -391,38 +304,6 @@ def _ledger_patch(before: TaskLedger, after: TaskLedger) -> dict[str, Any]:
     return {
         "set_fields": {key: value for key, value in current.items() if previous.get(key) != value}
     }
-
-
-def _criterion_review_action(ledger: TaskLedger, step: AgentStep) -> str:
-    claimed = {claim.criterion_id: claim.evidence for claim in step.completion_claims}
-    rows = [
-        f"- {row.criterion_id}: {row.text}: " + (
-            "; ".join(claimed[row.criterion_id])
-            if claimed.get(row.criterion_id)
-            else "MISSING concrete implementation or test evidence"
-        )
-        for row in ledger.criterion_rows
-    ]
-    return (
-        "Perform the single criterion-gap review against the current requested outcome, including "
-        "the ordered USER STEERING. Preserve original requirements unless newer user instructions "
-        "explicitly supersede them. Audit completed prerequisite actions from their execution evidence; "
-        "do not re-execute a satisfied preparation or acknowledgement merely because it remains in "
-        "the original goal. Missing or unknown evidence is still a gap. "
-        "Use completed evidence already present in the task packet, findings, retained values, "
-        "receipts, and answer artifacts. Do not reread unchanged source or rerun a completed check "
-        "merely to challenge it. Acquire source only for a specifically identified missing, stale, "
-        "or contradictory fact, and keep that acquisition within the cited criterion scope. "
-        "Try to falsify weak or missing rows with omitted, default, boundary, and interacting "
-        "inputs. For stateful or transition requirements, test both the requested transition and "
-        "histories where its prerequisite was never reached. Fix confirmed defects and return "
-        "updated completion_claims keyed by criterion_id. If the goal needs decomposition, propose "
-        "bounded child rows under its parent ID; transition criteria require positive, negative, "
-        "and precondition_unmet rows. Do not repeat broad exploration. When every row has concrete "
-        "implementation and test evidence and the targeted checks pass, request verification "
-        "immediately.\n"
-        + "\n".join(rows)
-    )
 
 
 def _with_workspace_observations(
@@ -597,19 +478,6 @@ def _record_outcome(
             tests_failed=tests_failed,
             wall_time_ms=int((time.monotonic() - started) * 1000),
         )
-    )
-
-
-def _malformed_step(error: ValueError) -> AgentStep:
-    return AgentStep(
-        status="blocked",
-        progress=[],
-        next_action="Retry with a model that supports the required AgentStep schema",
-        decisions=[],
-        questions=["The coding run ended without a valid AgentStep result."],
-        discovered_constraints=[str(error)[:1_000]],
-        files_in_focus=[],
-        completion_claims=[],
     )
 
 
@@ -802,7 +670,7 @@ async def _verify_task(
         criterion_validations={
             row.criterion_id: (
                 list(range(len(command_results)))
-                if getattr(deps, "thin_loop", False) or row.probe == "general"
+                if row.probe == "general"
                 else [
                     index
                     for index, result in enumerate(command_results)
@@ -931,7 +799,6 @@ def _initialize_run(
                 "tool_action_fingerprints": [],
                 "workflow_tool_action_sequence": 0,
                 "verification_required_task": None,
-                "pi_evidence_review_queued": False,
                 "skill_selection_initialized": False,
                 "skill_context_text": "",
                 "selected_skill_names": [],
@@ -1140,7 +1007,7 @@ def _answer_result(
         content=step.message,
         idempotency_key=f"message:assistant:answer:{ledger.iteration}",
     )
-    return ledger, json.dumps({"status": "answered", "message": step.message})
+    return ledger, HarnessOutcome(status="answered", message=step.message).model_dump_json()
 
 
 def _blocked_result(
@@ -1164,16 +1031,14 @@ def _blocked_result(
         passed=False,
         started=started,
     )
-    return json.dumps(
-        {
-            "status": "blocked",
-            "task_id": ledger.task_id,
-            "questions": ledger.open_questions,
-            "blockers": ledger.blockers,
-            "metrics": deps.metrics_store.task_summary(ledger.task_id),
-        },
-        sort_keys=True,
-    )
+    return HarnessOutcome(
+        status="blocked",
+        task_id=ledger.task_id,
+        questions=tuple(ledger.open_questions),
+        blockers=tuple(ledger.blockers),
+        reason=reason,
+        metrics=deps.metrics_store.task_summary(ledger.task_id),
+    ).model_dump_json()
 
 
 async def _verification_transition(
@@ -1195,6 +1060,12 @@ async def _verification_transition(
             "ledger": ledger.model_dump(mode="json"),
             "claims": [claim.model_dump(mode="json") for claim in step.completion_claims],
         },
+    )
+    deps.event_store.append(
+        ledger.task_id,
+        EventKind.RECOVERY_BOUNDARY,
+        {"phase": "after_verification", "iteration": ledger.iteration},
+        idempotency_key=f"recovery:after-verification:{ledger.iteration}",
     )
     report = verification["report"]
     deps.event_store.append(
@@ -1221,10 +1092,7 @@ async def _verification_transition(
                 break
             consecutive += 1
         attempts = _verification_attempts(deps.event_store.read(ledger.task_id))
-        blocked_on_verification = (
-            not deps.thin_loop
-            and (consecutive >= 2 or attempts >= deps.max_verification_attempts)
-        )
+        blocked_on_verification = False
         previous = ledger
         blockers = list(ledger.blockers)
         if blocked_on_verification:
@@ -1323,17 +1191,14 @@ async def _verification_transition(
     )
     return _VerificationTransition(
         ledger=ledger,
-        result=json.dumps(
-            {
-                "status": "complete",
-                "message": step.message,
-                "task_id": ledger.task_id,
-                "changed_paths": verification["changed_paths"],
-                "verification": report,
-                "metrics": deps.metrics_store.task_summary(ledger.task_id),
-            },
-            sort_keys=True,
-        ),
+        result=HarnessOutcome(
+            status="complete",
+            message=step.message,
+            task_id=ledger.task_id,
+            changed_paths=tuple(verification["changed_paths"]),
+            verification=report,
+            metrics=deps.metrics_store.task_summary(ledger.task_id),
+        ).model_dump_json(),
     )
 
 
@@ -1393,97 +1258,31 @@ async def _orchestrate_owned(
                 idempotency_key=f"steering:{message.message_id}",
             )
 
-        manifest = deps.repository.manifest()
         steering_projection = [_render_received_steering(deps, task_id)]
-        full_packet = (
-            build_thin_packet(
-                ledger,
-                selected_skills=skill_runtime.text,
-                conversation=history,
-                compaction_summary=compaction_summary,
-                steering_messages=steering_projection,
-                max_tokens=deps.work_packet_tokens,
-            )
-            if deps.thin_loop
-            else build_work_packet(
-                ledger,
-                conversation=history,
-                selected_skills=skill_runtime.text,
-                repository_manifest=manifest.to_compact_text(),
-                compaction_summary="" if deps.plugin_owns_handoff else compaction_summary,
-                evidence_navigation=deps.work_batch_handoff(ledger, ctx.get_invocation_context().invocation_id)
-                if deps.work_batch_handoff is not None else "",
-                recent_events=_render_recent_events(deps, task_id),
-                steering_messages=steering_projection,
-                max_tokens=deps.work_packet_tokens,
-                section_token_limits=deps.work_packet_section_tokens,
-            )
+        packet = build_coding_packet(
+            ledger,
+            selected_skills=skill_runtime.text,
+            conversation=history,
+            compaction_summary=compaction_summary,
+            steering_messages=steering_projection,
+            max_tokens=deps.work_packet_tokens,
         )
         invocation_id = ctx.get_invocation_context().invocation_id
         packet_events = deps.event_store.read(task_id)
-        if deps.thin_loop:
-            source_watermark = packet_events[-1].sequence if packet_events else 0
-            projection_hash = hashlib.sha256(full_packet.encode()).hexdigest()
-            deps.event_store.append(
-                task_id,
-                "context.projection_created",
-                {
-                    "mode": "thin_markdown_v1",
-                    "source_watermark": source_watermark,
-                    "content": full_packet,
-                    "content_hash": projection_hash,
-                    "bytes": len(full_packet.encode()),
-                },
-                idempotency_key=f"thin-projection:{invocation_id}:{ledger.iteration + 1}:{projection_hash}",
-            )
-            packet_events = deps.event_store.read(task_id)
-        use_delta_packets = deps.delta_work_packets and not deps.thin_loop
-        previous_packet = (next((event for event in reversed(packet_events)
-                                 if event.kind == EventKind.WORK_PACKET_CREATED), None)
-                           if use_delta_packets else None)
-        same_batch = (previous_packet is not None and
-                      previous_packet.payload.get("invocation_id") == invocation_id and
-                      previous_packet.payload.get("work_batch_id") == str(ledger.iteration + 1))
-        if same_batch and previous_packet is not None:
-            recorded = previous_packet.payload
-            candidate_sections = work_packet_sections(full_packet)
-            if (any(recorded.get("full_sections", {}).get(key) != value
-                    for key, value in candidate_sections.items() if key != "RECENT EVENTS") or
-                    hashlib.sha256(recorded.get("content", "").encode()).hexdigest()
-                    != recorded.get("content_hash")):
-                raise ValueError("work packet replay identity mismatch")
-        reset_reason = None
-        if previous_packet is not None:
-            if previous_packet.payload.get("invocation_id") != invocation_id:
-                reset_reason = "new_invocation"
-            elif any(event.kind == EventKind.COMPACTION_CREATED and
-                     event.sequence > previous_packet.sequence for event in packet_events):
-                reset_reason = "context_cut"
-            else:
-                last_epoch = _latest_kernel_epoch(packet_events)
-                if (previous_packet.payload.get("kernel_epoch") and last_epoch and
-                        previous_packet.payload["kernel_epoch"] != last_epoch):
-                    reset_reason = "worker_epoch_changed"
-        prior_sections = (previous_packet.payload.get("full_sections")
-                          if previous_packet is not None and reset_reason is None else None)
-        if prior_sections is not None and previous_packet is not None and (
-                not isinstance(prior_sections, dict) or
-                hashlib.sha256(json.dumps(prior_sections, sort_keys=True,
-                                          separators=(",", ":")).encode()).hexdigest()
-                != previous_packet.payload.get("full_sections_hash")):
-            raise ValueError("work packet baseline identity mismatch")
-        if deps.thin_loop:
-            packet, full_sections, recent_sequence = full_packet, {}, 0
-        elif same_batch and previous_packet is not None:
-            packet, full_sections, recent_sequence = (
-                previous_packet.payload["content"], previous_packet.payload["full_sections"],
-                int(previous_packet.payload.get("recent_sequence", 0)))
-        else:
-            packet, full_sections, recent_sequence = build_work_packet_update(
-                full_packet, prior_sections,
-                previous_recent_sequence=int(previous_packet.payload.get("recent_sequence", 0))
-                if previous_packet is not None and reset_reason is None else 0,
-            )
+        source_watermark = packet_events[-1].sequence if packet_events else 0
+        projection_hash = hashlib.sha256(packet.encode()).hexdigest()
+        deps.event_store.append(
+            task_id,
+            "context.projection_created",
+            {
+                "mode": "coding_markdown_v1",
+                "source_watermark": source_watermark,
+                "content": packet,
+                "content_hash": projection_hash,
+                "bytes": len(packet.encode()),
+            },
+            idempotency_key=f"context-projection:{invocation_id}:{ledger.iteration + 1}:{projection_hash}",
+        )
         dynamic_tokens = estimate_tokens(packet)
         if deps.plugin_owns_handoff:
             # The plugin supplies current worker/evidence state once. Keep a
@@ -1521,36 +1320,14 @@ async def _orchestrate_owned(
                 passed=False,
                 started=started,
             )
-            yield json.dumps(
-                {
-                    "status": "blocked",
-                    "task_id": task_id,
-                    "blockers": [reason],
-                    "metrics": deps.metrics_store.task_summary(task_id),
-                },
-                sort_keys=True,
-            )
+            yield HarnessOutcome(
+                status="blocked",
+                task_id=task_id,
+                blockers=(reason,),
+                metrics=deps.metrics_store.task_summary(task_id),
+            ).model_dump_json()
             return
 
-        latest_epoch = _latest_kernel_epoch(deps.event_store.read(task_id))
-        if use_delta_packets and not same_batch:
-            deps.event_store.append(task_id, EventKind.WORK_PACKET_CREATED, {
-            "program": "work_packet_update@1", "invocation_id": invocation_id,
-            "work_batch_id": str(ledger.iteration + 1),
-            "kind": "full" if prior_sections is None else "patch",
-            "reset_reason": reset_reason, "base_event_id": previous_packet.event_id
-            if prior_sections is not None and previous_packet is not None else None,
-            "base_content_hash": previous_packet.payload.get("content_hash")
-            if prior_sections is not None and previous_packet is not None else None,
-            "source_watermark": deps.event_store.read(task_id)[-1].sequence,
-            "kernel_epoch": latest_epoch,
-            "recent_sequence": recent_sequence,
-            "full_sections": full_sections,
-            "full_sections_hash": hashlib.sha256(json.dumps(
-                full_sections, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-            "content": packet, "content_hash": hashlib.sha256(packet.encode()).hexdigest(),
-            "bytes": len(packet.encode()),
-            }, idempotency_key=f"work-packet:{invocation_id}:{ledger.iteration + 1}")
         deps.event_store.append(
             task_id, "execution.model_budget_reserved",
             {"invocation_id": ctx.get_invocation_context().invocation_id,
@@ -1569,11 +1346,17 @@ async def _orchestrate_owned(
             steering_packet_message_ids=tuple(message.message_id for message in leased),
         )
         ctx.state["task_phase"] = ledger.phase.value
-        if ledger.phase != TaskPhase.REVIEW:
-            ctx.state["review_decision_pending"] = False
-            ctx.state["review_decision_rejections"] = 0
-        work_batch_id = str(ledger.iteration + 1)
-        ctx.state["ptc_work_batch_id"] = work_batch_id
+        deps.event_store.append(
+            task_id,
+            EventKind.RECOVERY_BOUNDARY,
+            {
+                "phase": "before_model",
+                "invocation_id": invocation_id,
+                "iteration": ledger.iteration + 1,
+                "workspace_fingerprint": _workspace_fingerprint(deps, task_id),
+            },
+            idempotency_key=f"recovery:before-model:{invocation_id}:{ledger.iteration + 1}",
+        )
 
         async def allow_reply(step: AgentStep, active_request: TaskRequest = request) -> bool:
             eligible = can_answer_directly(
@@ -1595,14 +1378,16 @@ async def _orchestrate_owned(
             reply_stream.prepare(allow_reply)
         try:
             raw_step = await ctx.run_node(deps.coding_worker, node_input=packet)
-            if (deps.pi_evidence_review and not ctx.state.get("pi_evidence_review_queued")
-                    and _needs_pi_evidence_review(deps.event_store.read(task_id), str(raw_step))):
-                ctx.state["pi_evidence_review_queued"] = True
-                raw_step = await ctx.run_node(deps.coding_worker, node_input=(
-                    "Before finalizing, compare every requirement with concrete evidence. "
-                    "Run the required final check with verify(...). Do not finish while "
-                    "required behavior remains a known gap."
-                ))
+            deps.event_store.append(
+                task_id,
+                EventKind.RECOVERY_BOUNDARY,
+                {
+                    "phase": "after_model",
+                    "invocation_id": invocation_id,
+                    "iteration": ledger.iteration + 1,
+                },
+                idempotency_key=f"recovery:after-model:{invocation_id}:{ledger.iteration + 1}",
+            )
         except BaseException:
             owned = deps.steering_queue.leased_by(task_id, owner)
             deps.steering_queue.release(
@@ -1611,7 +1396,7 @@ async def _orchestrate_owned(
             )
             raise
         try:
-            step = parse_agent_step(raw_step, allow_freeform=deps.thin_loop)
+            step = parse_agent_step(raw_step, allow_freeform=True)
         except ValueError as error:
             deps.event_store.append(
                 task_id,
@@ -1619,54 +1404,12 @@ async def _orchestrate_owned(
                 {"kind": "malformed_agent_step", "error": str(error)[:2_000]},
                 idempotency_key=f"malformed-step:{ledger.iteration + 1}",
             )
-            step = (
-                AgentStep(status="verify", message="Verify the current workspace.")
-                if deps.thin_loop
-                else _malformed_step(error)
-            )
+            step = AgentStep(status="verify", message="Verify the current workspace.")
 
         if reply_stream is not None:
             step = reply_stream.finish(step)
 
-        batch_yield = next(
-            (
-                event.payload
-                for event in reversed(deps.event_store.read(task_id))
-                if event.kind == EventKind.WORK_BATCH_YIELDED
-                and str(event.payload.get("work_batch_id", "")) == work_batch_id
-            ),
-            None,
-        )
-        if (
-            isinstance(batch_yield, dict)
-            and batch_yield.get("reason") == "review_cell_limit"
-            and step.status == "blocked"
-        ):
-            ctx.state["review_decision_pending"] = deps.delta_work_packets
-            ctx.state["review_decision_rejections"] = 0
-            pending_claims = list(ctx.state.get("pending_review_claims", []))
-            ctx.state["pending_review_claims"] = []
-            step = _bounded_review_step(ledger, pending_claims)
-        elif ctx.state.get("review_decision_pending") and not isinstance(batch_yield, dict):
-            ctx.state["review_decision_pending"] = False
-            ctx.state["review_decision_rejections"] = 0
-        elif isinstance(batch_yield, dict) and step.status == "blocked":
-            step = step.model_copy(
-                update={
-                    "status": (
-                        "verify" if batch_yield.get("reason") == "max_cells"
-                        and batch_yield.get("workspace_changed") is True else "continue"
-                    ),
-                    "next_action": (
-                        "Run independent verification of the current workspace."
-                        if batch_yield.get("reason") == "max_cells"
-                        and batch_yield.get("workspace_changed") is True
-                        else "Audit criterion gaps, then continue from the durable notebook."
-                    ),
-                    "questions": [],
-                }
-            )
-        elif step.status == "blocked":
+        if step.status == "blocked":
             recovered = _recover_unsupported_blocked_step(
                 step,
                 workspace_changed=(bool(ledger.files_modified)
@@ -1785,18 +1528,6 @@ async def _orchestrate_owned(
             _ledger_patch(previous, ledger),
             idempotency_key=f"agent-step:{ledger.iteration}",
         )
-        if isinstance(batch_yield, dict):
-            previous = ledger
-            update = _work_batch_yield_update(ledger, step, batch_yield)
-            ledger = TaskLedger.model_validate(
-                {**ledger.model_dump(mode="python"), **update}
-            )
-            deps.event_store.append(
-                task_id,
-                EventKind.LEDGER_PATCHED,
-                _ledger_patch(previous, ledger),
-                idempotency_key=f"work-batch-review:{batch_yield.get('work_batch_id', ledger.iteration)}",
-            )
         delivered = deps.steering_queue.leased_by(task_id, owner)
         if delivered:
             deps.steering_queue.ack(
@@ -1818,44 +1549,12 @@ async def _orchestrate_owned(
                 _ledger_patch(previous, ledger),
                 idempotency_key=f"steering-safe-point:{ledger.iteration}",
             )
-        elif (
-            not deps.thin_loop
-            and
-            step.status in {"verify", "done"}
-            and (
-                ctx.state.get("verification_required_task") == task_id
-                or _workspace_fingerprint(deps, task_id) != current_fingerprint
-            )
-            and not ledger.counterexample_review_completed
-        ):
-            ctx.state["pending_review_claims"] = [
-                claim.model_dump(mode="json") for claim in step.completion_claims
-            ]
-            previous = ledger
-            ledger = TaskLedger.model_validate({
-                **ledger.model_dump(mode="python"),
-                "phase": "review",
-                "status": "active",
-                "counterexample_review_completed": True,
-                "next_action": _criterion_review_action(ledger, step),
-            })
-            deps.event_store.append(
-                task_id,
-                EventKind.LEDGER_PATCHED,
-                _ledger_patch(previous, ledger),
-                idempotency_key="counterexample-review",
-            )
-            step = step.model_copy(update={"message": ""})
-        route = (
-            HarnessRoute.CONTINUE
-            if ledger.phase == TaskPhase.REVIEW
-            else decide_route(
-                ledger,
-                step,
-                pending_steering=pending_steering,
-                replan_after_no_progress=deps.progress_replan_threshold,
-                block_after_no_progress=deps.progress_human_threshold,
-            )
+        route = decide_route(
+            ledger,
+            step,
+            pending_steering=pending_steering,
+            replan_after_no_progress=deps.progress_replan_threshold,
+            block_after_no_progress=deps.progress_human_threshold,
         )
         if step.message and route == HarnessRoute.CONTINUE:
             _record_message(
@@ -1943,15 +1642,12 @@ async def _orchestrate_owned(
         passed=False,
         started=started,
     )
-    yield json.dumps(
-        {
-            "status": "blocked",
-            "task_id": task_id,
-            "reason": f"Iteration limit {max_iterations} reached",
-            "metrics": deps.metrics_store.task_summary(task_id),
-        },
-        sort_keys=True,
-    )
+    yield HarnessOutcome(
+        status="blocked",
+        task_id=task_id,
+        reason=f"Iteration limit {max_iterations} reached",
+        metrics=deps.metrics_store.task_summary(task_id),
+    ).model_dump_json()
 
 
 def build_root_agent(deps: SkeinWorkflowDependencies) -> Workflow:

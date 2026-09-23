@@ -91,10 +91,10 @@ async def test_root_review_control_survives_small_section_target_in_provider_req
             code = ("import json, tomllib\nreads = agent.parallel([{'operation':'fs.read','arguments':{'path':'config/route_00.toml'}}])\n"
                     "source = tomllib.loads(reads[0]['data']['text'])['service']\n"
                     "agent.fs.write('answer.json', json.dumps({'port': source['active_port'], 'protocol': source['protocol']}))")
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
+            part = types.Part(function_call=types.FunctionCall(name="code", id="solve", args={"code": code}))
         elif calls == 3:
             assert retained_access is not None
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="review-reuse", args={
+            part = types.Part(function_call=types.FunctionCall(name="code", id="review-reuse", args={
                 "code": f"review_text = {retained_access}\n"
                         "review_source = tomllib.loads(review_text)['service']\n"
                         "assert review_source == source\n"
@@ -156,7 +156,7 @@ async def test_worker_loss_notice_supplies_direct_recovery_for_verified_answer(t
             )
         else:
             code = None
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{calls}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{calls}", args={"code": code}))
                 if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify the recovered source-backed answer."})))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
@@ -283,7 +283,7 @@ async def test_rejected_readonly_operation_can_recover_and_complete_from_support
                 "source = tomllib.loads(json.loads(loaded['data']['text'])['data']['text'])['service']\n"
                 "assert agent.fs.write('answer.json', json.dumps({'port': source['active_port'], 'protocol': source['protocol']}))['status'] == 'ok'\n"
             )
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
+            part = types.Part(function_call=types.FunctionCall(name="code", id="solve", args={"code": code}))
         else:
             part = types.Part(text=json.dumps({"status": "verify", "message": "Verify the recovered source-backed answer."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
@@ -324,7 +324,7 @@ async def test_correct_source_backed_answer_cannot_clear_unknown_shell_effect(tm
                 # Real completed Python cell with a failed nested shell result,
                 # matching the live printf failure after otherwise correct work.
                 code += "print(agent.shell.run(\"printf '--STATUS--\\\\n'\"))\n"
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
+            part = types.Part(function_call=types.FunctionCall(name="code", id="solve", args={"code": code}))
         else:
             part = types.Part(text=json.dumps({"status": "verify", "message": "Verify the source-backed answer."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
@@ -372,7 +372,7 @@ async def test_host_oracle_with_real_docker_command_isolation(tmp_path, monkeypa
                 "assert agent.fs.write('answer.json', json.dumps({'port': source['active_port'], 'protocol': source['protocol']}))['status'] == 'ok'\n"
                 f"assert agent.shell.run({ORACLE_COMMAND!r})['exit_code'] == 0\n"
             )
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
+            part = types.Part(function_call=types.FunctionCall(name="code", id="solve", args={"code": code}))
         else:
             part = types.Part(text=json.dumps({"status": "verify", "message": "Verify."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
@@ -405,7 +405,7 @@ async def test_seeded_memory_runs_through_real_verification_and_reentry(tmp_path
         else:
             code = None
         part = types.Part(function_call=types.FunctionCall(
-            name="execute_code", id=f"live-{index}", args={"code": code},
+            name="code", id=f"live-{index}", args={"code": code},
         )) if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify answer."}))
         yield LlmResponse(content=types.Content(role="model", parts=[
             types.Part(text="private_fixture_reasoning", thought=True), part]),
@@ -454,7 +454,7 @@ async def test_development_oracles_accept_only_current_source_derived_answers(tm
             else:
                 code += "import tomllib\ns = json.loads(src)\np = sources['config/' + s['policy']]\nanswer = {'wait_ms': s['attempts'] * tomllib.loads(p['data']['text'])['retry']['pause_ms']}\n"
             code += "print(agent.fs.write('answer.json', json.dumps(answer), expected_absent=True))"
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="solve", args={"code": code}))
+            part = types.Part(function_call=types.FunctionCall(name="code", id="solve", args={"code": code}))
         else:
             part = types.Part(text=json.dumps({"status": "verify", "message": "Verify the source-derived answer."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
@@ -485,7 +485,7 @@ async def test_correct_guess_requires_source_evidence_before_rewritten_answer(tm
         calls += 1
         if calls == 1:
             code = "print(agent.fs.write('answer.json', '{\"port\":8400,\"protocol\":\"https\"}'))"
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="guess", args={"code": code}))
+            part = types.Part(function_call=types.FunctionCall(name="code", id="guess", args={"code": code}))
         elif calls == 4 and repair:
             code = (
                 "r = agent.fs.read('config/route_00.toml', offset=12, limit=2)\n"
@@ -493,7 +493,7 @@ async def test_correct_guess_requires_source_evidence_before_rewritten_answer(tm
                 "import tomllib\ns = tomllib.loads(r['data']['text'])\n"
                 "print(agent.fs.write('answer.json', json.dumps({'port': s['active_port'], 'protocol': s['protocol']})))\n"
             )
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="repair", args={"code": code}))
+            part = types.Part(function_call=types.FunctionCall(name="code", id="repair", args={"code": code}))
         else:
             part = types.Part(text=json.dumps({"status": "verify", "message": "Verify."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
@@ -563,7 +563,7 @@ async def test_real_workflow_verifies_every_answer_and_reports_unsupported_earli
             code += "assert agent.fs.write('answer.json', answer)['status'] == 'ok'\n"
             if defect == "corrupt_first":
                 code += "assert agent.fs.write('answers/first.json', '{}')['status'] == 'ok'\n"
-            part = types.Part(function_call=types.FunctionCall(name="execute_code", id="answers", args={"code": code}))
+            part = types.Part(function_call=types.FunctionCall(name="code", id="answers", args={"code": code}))
         else:
             part = types.Part(text=json.dumps({"status": "verify", "message": "Verify requested artifacts."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
@@ -703,7 +703,7 @@ async def test_live_worker_control_reuses_retained_value_and_reads_only_missing_
             )
         else:
             code = None
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{calls}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{calls}", args={"code": code}))
                 if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify the source-backed answer."})))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),

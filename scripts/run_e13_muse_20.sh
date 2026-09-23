@@ -4,8 +4,8 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 export UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/skein-uv-cache}
 arm=${1:-}
-if [[ "$arm" != "pi" && "$arm" != "ptc" && "$arm" != "structured" && "$arm" != "thin" && "$arm" != "pi-compatible" && "$arm" != "pi-parity" ]]; then
-  echo "usage: $0 pi|ptc|structured|thin|pi-compatible|pi-parity [extra run_harbor_eval.py arguments]" >&2
+if [[ "$arm" != "pi" && "$arm" != "ptc" && "$arm" != "skein" && "$arm" != "pi-compatible" && "$arm" != "pi-parity" ]]; then
+  echo "usage: $0 pi|ptc|skein|pi-compatible|pi-parity [extra run_harbor_eval.py arguments]" >&2
   exit 2
 fi
 shift
@@ -63,17 +63,13 @@ elif [[ "$arm" == "pi-compatible" || "$arm" == "pi-parity" ]]; then
     --trackio-run-name "strict-$arm-v1-xhigh"
   )
 else
-  jobs_name="e13-muse-20-skein-$arm"
-  [[ "$arm" == "thin" ]] && jobs_name+="-fixed2"
-  workflow_mode=${arm//-/_}
   arm_args=(
     --reasoning xhigh
     --agent-import-path harness.adapters.pier:SkeinPierAgent
     --config harness/core/config/profiles/notebook-ptc-jsonl.yaml
-    --workflow-mode "$workflow_mode"
     --timeout-seconds 7200
-    --jobs-dir "$root/.artifacts/$jobs_name"
-    --trackio-run-name "skein-$arm-xhigh"
+    --jobs-dir "$root/.artifacts/e13-muse-20-skein"
+    --trackio-run-name "skein-xhigh"
   )
 fi
 

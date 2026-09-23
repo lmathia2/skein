@@ -204,14 +204,14 @@ def _tool_usage(
     metric_events = [event for event in events if event.kind == "metric.tool"]
     code_invocations = {
         str(event.payload.get("invocation_id", ""))
-        for event in metric_events if event.payload.get("tool_name") == "execute_code"
+        for event in metric_events if event.payload.get("tool_name") in {"code", "execute_code"}
     }
     rows: list[dict[str, Any]] = []
     for event in metric_events:
         name = str(event.payload.get("tool_name", "unknown"))
         invocation = str(event.payload.get("invocation_id", ""))
         rows.append({
-            "level": "top_level" if name == "execute_code" or invocation not in code_invocations else "nested",
+            "level": "top_level" if name in {"code", "execute_code"} or invocation not in code_invocations else "nested",
             "name": name,
             "status": str(event.payload.get("status", "error")),
             "model_visible_bytes": int(event.payload.get("model_visible_bytes", 0)),

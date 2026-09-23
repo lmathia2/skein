@@ -1,8 +1,14 @@
 # Programmatic tool calling implementation and core design
 
-> Status: accepted; Pi-hosted reference implementation is v4.1 and ADK compatibility mode is `pi_compatible`
+> Status: accepted; PTC v4.1 is the default ADK coding surface
 >
 > Updated: 2026-09-21
+
+> Direction update (2026-09-22): PTC v4.1 is now the selected default model-facing
+> coding surface for the simplified ADK-native core. Workflow mode selection has been
+> removed; strict parity adapters remain available for evaluation. See
+> [ADR: ADK-native PTC v4.1 core](adk-native-ptc-v4.1-core.md) and the
+> [implementation plan](../design/adk-ptc-v4.1-simplification-plan.md).
 
 ## Context
 
@@ -15,15 +21,16 @@ traces.
 Two integrations reuse the same
 [`PersistentPythonWorker`](../../harness/ptc/repl/worker.py), but they are distinct:
 
-- The ADK notebook profile exposes `execute_code`, records canonical lifecycle events,
-  and materializes a notebook or JSONL projection.
+- The default ADK profile exposes `code`, records canonical lifecycle events, and
+  materializes a notebook or JSONL projection. `execute_code` is only an internal
+  callable name.
 - The Pi evaluation adapter exposes `code`; Pi owns inference and conversation state,
   while Skein owns Python execution and the Pier workspace bridge.
 
-The legacy ADK integration can select `workflow.mode: pi_compatible`. This does not embed or
-fork Pi. It copies the model-visible v4.1 capability contract and continuation policy
-onto Skein's existing worker while retaining ADK inference and Skein's native trace.
-`thin` retains the lightweight loop without imposing the v4.1 runtime defaults.
+The default ADK integration copies the model-visible v4.1 capability contract onto
+Skein's existing worker while retaining ADK inference and Skein's native trace. It does
+not embed or fork Pi. The old `thin`, `pi_compatible`, and `structured` application
+modes have been removed.
 
 For strict evaluation parity, `SkeinParityPierAgent` now uses the same v4.1 PTC
 dispatch implementation as `PiParityPierAgent`. ADK owns the treatment's tool loop;
@@ -98,8 +105,8 @@ Each helper returns a readable string-like object with attributes and legacy map
 access. Shell text combines stdout, a labelled stderr section when present, and an
 `[exit N]` marker. A cell may make at most 64 helper calls.
 
-The ADK `pi_compatible` mode exposes the same five preloaded helpers through `code`.
-It also selects the v4.1 observation bound (50 KiB), helper-call bound (64), snapshot
+The ADK workflow exposes the same five preloaded helpers through `code` and uses the
+v4.1 observation bound (50 KiB), helper-call bound (64), snapshot
 recovery, and committed plain-value checkpoints. Its stable prompt names the exact signatures, the three preloaded
 modules, blocked direct-I/O imports, and failure behavior. Internal result envelopes
 remain available to trace capture, but the model sees direct text and compact mutation
@@ -198,7 +205,7 @@ reference implementation. See the
 [`v4.2 comparison`](../experiments/e13-pi-skein-v4.2-comparison.md).
 
 In ADK `structured` mode, repeated identical managed-verification failures may exhaust
-the configured retry policy. In `pi_compatible` mode those failures are observations:
+the configured retry policy. In the ADK workflow those failures are observations:
 the concise report is projected into the next model turn and repair continues until
 verification passes or the ordinary task/model/time budget ends. Confinement,
 unknown-effect reconciliation, approvals, and independent terminal verification are
@@ -235,9 +242,8 @@ in the trial directory.
 The design keeps calls cheap as conversations grow, avoids transcript replay, and
 lets the model compose mechanical work without granting ambient host authority. It
 also makes state loss explicit and bounded. Quality is competitive with Pi Code Tool
-on the completed v4.1 panel, but v4.1 still uses more interactions, tokens, and latency;
-it remains an evaluation reference rather than the general Skein default.
+on the completed v4.1 panel, while interaction, token, and latency qualification
+continues against the promoted ADK-native default.
 
 The native compatibility mode makes the Pi loop a controlled Skein treatment instead
-of requiring Pi as the host. `structured` remains the default until the pinned matched
-evaluation establishes whether the lighter contract preserves quality.
+of requiring Pi as the host. The retained `structured` profile remains the control arm.

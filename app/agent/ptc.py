@@ -342,6 +342,13 @@ def build_notebook_session(
 ) -> PtcSession:
     _runtime_identity = runtime_identity
     _require_verification = require_verification
+    reserved_capabilities = {
+        "code", "execute_code", "read", "write", "edit", "bash", "verify",
+        "agent", "fs", "shell", "state", "artifacts", "mcp", "parallel", "help",
+    }
+    collisions = sorted(set(capability_handlers).intersection(reserved_capabilities))
+    if collisions:
+        raise ValueError(f"registered capability collides with PTC surface: {collisions}")
     registered = {
         name: (
             value
@@ -420,7 +427,7 @@ def build_notebook_session(
         def _blocked(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
             raise PermissionError("capabilities are disabled while restoring replay-safe cells")
 
-        read = write = edit = bash = call = parallel = _blocked
+        read = write = edit = bash = verify = call = parallel = _blocked
         artifacts_load = artifacts_list = artifacts_publish = _blocked
 
     class _CellBroker:
@@ -1663,7 +1670,7 @@ def build_notebook_session(
                 uri = put_artifact(settings.state_root / "artifacts" / "sha256", visible.encode())
                 broker.model_artifact_refs.add(uri)
                 active_event_store.append(task_id, EventKind.TOOL_ARTIFACT_RECORDED, {
-                    "tool_name": "execute_code", "artifact_uri": uri, "content_hash": uri.rsplit("/", 1)[-1],
+                    "tool_name": "code", "artifact_uri": uri, "content_hash": uri.rsplit("/", 1)[-1],
                 }, idempotency_key=f"selected-output:{attempt_id}")
                 notice += f"\n[complete selected output: {uri}]"
                 available = max(0, active_ptc_config.max_output_bytes - len(notice.encode()))
@@ -1735,6 +1742,38 @@ def build_notebook_session(
                 continue  # Successful completion already establishes this; keep normal replies compact.
             if result.get(key) is not None:
                 compact[key] = result[key]
+        model_text = str(compact.get("model_text", ""))
+        task_id = str(
+            (tool_context.state.get("task_id") if tool_context is not None else None)
+            or settings.task_id_override
+            or "unscoped"
+        )
+        active_event_store.append(
+            task_id,
+            EventKind.RECOVERY_BOUNDARY,
+            {
+                "phase": "after_effect",
+                "source_attempt_id": compact.get("attempt_id"),
+                "status": compact.get("status"),
+                "observed_effect": compact.get("effect", "none"),
+                "kernel_epoch": compact.get("kernel", {}).get("epoch")
+                if isinstance(compact.get("kernel"), dict)
+                else None,
+            },
+        )
+        active_event_store.append(
+            task_id,
+            EventKind.TOOL_PROJECTION_CREATED,
+            {
+                "projection_version": "ptc-v4.1-output@1",
+                "source_attempt_id": compact.get("attempt_id"),
+                "result_hash": compact.get("result_hash"),
+                "model_visible_sha256": hashlib.sha256(model_text.encode()).hexdigest(),
+                "model_visible_bytes": len(model_text.encode()),
+                "omitted_bytes": int(compact.get("omitted_bytes", 0)),
+                "artifact_uris": compact.get("artifact_uris", []),
+            },
+        )
         return compact
 
     def close() -> None:

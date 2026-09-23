@@ -68,7 +68,7 @@ async def test_model_authored_checkpoint_cut_and_recovery_use_real_workflow(tmp_
                 code += "print(agent.fs.write('answer.json', json.dumps(answer)))"
         else:
             code = None
-        part = types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code})) if code else types.Part(text=json.dumps({
+        part = types.Part(function_call=types.FunctionCall(name="code", id=f"step-{index}", args={"code": code})) if code else types.Part(text=json.dumps({
             "status": "blocked" if case == "learned_unavailable" and not guess_missing else "verify",
             "message": "Policy unavailable." if case == "learned_unavailable" else "Verify."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),

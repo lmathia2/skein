@@ -68,11 +68,13 @@ def _openrouter_pricing(model_name: str) -> dict:
     request = Request(OPENROUTER_MODELS_URL, headers={'User-Agent': 'skein-eval/1'})
     with urlopen(request, timeout=15) as response:
         payload = json.load(response)
+    rates = _pricing_from_catalog(payload, model_name)  # Reject missing exact IDs.
     return {
         'model': model_name,
         'source': OPENROUTER_MODELS_URL,
         'fetched_at_unix': int(time.time()),
-        'usd_per_million_tokens': _pricing_from_catalog(payload, model_name),
+        'usd_per_million_tokens': rates,
+        'catalog_model': next(item for item in payload['data'] if item['id'] == model_name),
     }
 
 
@@ -89,10 +91,19 @@ def _provider_config(provider_name: str, model_name: str,
                      max_output_tokens: int | None) -> tuple[dict, dict]:
     if provider_name == 'openrouter':
         pricing = _openrouter_pricing(model_name)
-        override = {'cost': pricing['usd_per_million_tokens']}
-        if max_output_tokens is not None:
-            override['maxTokens'] = max_output_tokens
-        return {'providers': {'openrouter': {'modelOverrides': {model_name: override}}}}, pricing
+        catalog = pricing['catalog_model']
+        context_window = catalog.get('context_length')
+        output_limit = max_output_tokens or (catalog.get('top_provider') or {}).get('max_completion_tokens')
+        if not isinstance(context_window, int) or context_window <= 0 or not isinstance(output_limit, int) or output_limit <= 0:
+            raise ValueError(f'OpenRouter catalog has incomplete token limits for {model_name!r}')
+        # Overrides alone cannot register models absent from Pi's bundled catalog.
+        model = {'id': model_name, 'name': catalog.get('name') or model_name,
+                 'api': 'openai-completions', 'cost': pricing['usd_per_million_tokens'],
+                 'contextWindow': context_window, 'maxTokens': output_limit,
+                 'reasoning': bool({'reasoning', 'reasoning_effort'} & set(catalog.get('supported_parameters') or [])),
+                 'input': [kind for kind in catalog.get('architecture', {}).get('input_modalities', ['text'])
+                           if kind in {'text', 'image'}]}
+        return {'providers': {'openrouter': {'models': [model]}}}, pricing
     if provider_name != 'mlx-dspark':
         raise ValueError(f'Unsupported Pi provider: {provider_name}')
     rates = {'input': 0.0, 'output': 0.0, 'cacheRead': 0.0, 'cacheWrite': 0.0}

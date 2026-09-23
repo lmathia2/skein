@@ -25,7 +25,7 @@ from harness.core.config import (
     load_harness_composition,
     parse_harness_composition,
 )
-from harness.core.models import TaskRequest
+from harness.core.models import TaskRequest, parse_outcome_status
 from harness.core.models.verification import VerificationReport
 from harness.core.orchestration.runtime import parse_task_request
 from harness.evidence.state import EventKind, JsonlEventStore
@@ -58,7 +58,6 @@ class EvaluationRunRequest(BaseModel):
         pattern=r"^[A-Z][A-Z0-9_]{1,127}$",
     )
     config_template: Path = DEFAULT_COMPOSITION_PATH
-    workflow_mode: Literal["structured", "thin", "pi_compatible"] | None = None
     client_version: str | None = None
     max_iterations: int | None = Field(default=None, ge=1, le=1_000)
     max_task_input_tokens: int | None = Field(default=None, ge=8_000, le=1_000_000_000)
@@ -192,8 +191,6 @@ def prepare_evaluation_config(request: EvaluationRunRequest) -> tuple[Path, Harn
     models[coding_model_key] = selected
     if request.max_iterations is not None:
         config["workflow"]["max_iterations"] = request.max_iterations
-    if request.workflow_mode is not None:
-        config["workflow"]["mode"] = request.workflow_mode
     if request.max_task_input_tokens is not None:
         config["context"]["max_task_input_tokens"] = request.max_task_input_tokens
     if request.max_output_tokens is not None:
@@ -433,18 +430,20 @@ async def run_evaluation(
         elif public is None:
             status = "failed"
             error_code = "missing_result"
-            error_message = "run terminated without a structured workflow result"
+            error_message = "run terminated without a typed harness outcome"
         else:
-            raw_status = str(public.get("status", "failed"))
-            status = (
-                cast(EvaluationStatus, raw_status)
-                if raw_status in {"complete", "answered", "blocked"}
-                else "failed"
-            )
-        if public is not None and not changed_paths:
-            changed = public.get("changed_paths")
-            if isinstance(changed, list):
-                changed_paths = tuple(sorted(str(path) for path in changed))
+            try:
+                raw_status = parse_outcome_status(public.get("status"))
+            except ValueError as error:
+                status = "failed"
+                error_code = "invalid_outcome"
+                error_message = str(error)
+            else:
+                status = cast(EvaluationStatus, raw_status)
+                if not changed_paths:
+                    changed = public.get("changed_paths", ())
+                    if isinstance(changed, list):
+                        changed_paths = tuple(sorted(str(path) for path in changed))
         verified = verification.passed if verification is not None else False
         if status == "complete" and not verified:
             status = "failed"

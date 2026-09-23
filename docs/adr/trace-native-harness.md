@@ -5,6 +5,12 @@
 >
 > Updated: 2026-09-12
 
+> Direction update (2026-09-22): the four-tool default below is historical behavior.
+> PTC v4.1 is now the checked-in default model surface. ADK lifecycle spans dual-write
+> into the task event stream while specialized stores remain for differential validation;
+> ADK retains conversation authority. See
+> [ADR: ADK-native PTC v4.1 core](adk-native-ptc-v4.1-core.md).
+
 Code-level requirements and test mappings are in the
 [implementation specification](../specification.md).
 

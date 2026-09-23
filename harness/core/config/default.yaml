@@ -39,13 +39,7 @@ harness:
             `nb search` through bash; never parse notebook JSON directly. Keep output concise.
 
             Own the complete model/tool loop for this task; do not stop merely to report progress.
-            When finished, return the AgentStep schema. Use answer only for read-only conversation,
-            verify or done after code changes, and blocked only when human input is required. Return
-            every schema field, using empty arrays or null when a field is not useful. Each completion
-            claim contains criterion and an evidence array. The outer workflow decides whether
-            verification succeeds.
     workflow:
-      mode: structured  # Set pi_compatible for the lightweight continuous-loop treatment.
       max_iterations: 40
       progress:
         replan_after_no_progress: 2
@@ -64,10 +58,13 @@ harness:
         max_page_size: 50
 
     notebook_ptc:
-      enabled: false
+      enabled: true
+      state: snapshot
+      recover_committed_values: true
       default_timeout_seconds: 120
       max_timeout_seconds: 600
-      max_output_bytes: 16000
+      max_output_bytes: 51200
+      max_capability_calls_per_cell: 64
       no_progress_cells_per_batch: 24
       max_cells_per_batch: 48
 

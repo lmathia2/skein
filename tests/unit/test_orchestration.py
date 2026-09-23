@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,7 +7,6 @@ import pytest
 
 from app.agent.workflow import (
     _latest_kernel_epoch,
-    _needs_pi_evidence_review,
     _render_recent_events,
     _verification_transition,
 )
@@ -24,9 +22,7 @@ from harness.core.models.task import (
 )
 from harness.core.orchestration import (
     HarnessRoute,
-    build_thin_packet,
-    build_work_packet,
-    build_work_packet_update,
+    build_coding_packet,
     create_initial_ledger,
     decide_route,
     parse_agent_step,
@@ -35,25 +31,8 @@ from harness.core.orchestration import (
     replan_ledger,
     resume_for_steering,
 )
-from harness.core.orchestration.core import work_packet_sections
 from harness.evidence.state import EventKind, JsonlEventStore
 from harness.execution.tools.adk_adapter import create_adk_tools
-
-
-def test_pi_review_requires_fresh_verify_or_known_gap_resolution(tmp_path):
-    events = JsonlEventStore(tmp_path)
-    assert not _needs_pi_evidence_review([], "No known gaps remain.")
-    assert _needs_pi_evidence_review([], "One remaining issue.")
-    events.append("t", EventKind.CAPABILITY_COMPLETED,
-                  {"operation": "shell.run", "effect": "observed"})
-    assert _needs_pi_evidence_review(events.read("t"), "Done")
-    events.append("t", "execution.ptc_verification", {"status": "ok"})
-    assert not _needs_pi_evidence_review(events.read("t"), "Done")
-    events.append("t", EventKind.CAPABILITY_COMPLETED,
-                  {"operation": "fs.edit", "effect": "changed"})
-    assert _needs_pi_evidence_review(events.read("t"), "Done")
-    events.append("t", "execution.ptc_verification", {"status": "error"})
-    assert _needs_pi_evidence_review(events.read("t"), "Done")
 
 
 def _ledger():
@@ -75,25 +54,64 @@ def test_task_and_step_parsing() -> None:
     assert step.status == "verify"
 
 
-def test_thin_packet_is_markdown_without_trace_envelopes() -> None:
+def test_coding_packet_is_markdown_without_trace_envelopes() -> None:
     ledger = _ledger().model_copy(update={
         "validations": [ValidationResult(
             command="pytest -q", passed=False, exit_code=1,
             summary="one targeted test failed",
         )]
     })
-    packet = build_thin_packet(
+    packet = build_coding_packet(
         ledger, selected_skills="Use the repository skill.",
         conversation="User clarified the login must preserve sessions.",
         compaction_summary="The service boundary was identified.",
     )
 
-    assert "## Goal\n\nFix login" in packet
-    assert "## Acceptance criteria\n\n- Login works" in packet
-    assert "## Selected skills\n\nUse the repository skill." in packet
+    assert "## TASK\n\nGoal: Fix login" in packet
+    assert "Acceptance criteria:\n- Login works" in packet
+    assert "## SELECTED SKILLS\n\nUse the repository skill." in packet
     assert '"packet_version"' not in packet
     assert '"command"' not in packet
     assert "**FAILED** — `pytest -q`" in packet
+
+
+def test_coding_packet_keeps_required_context_whole_and_in_fixed_order() -> None:
+    ledger = _ledger().model_copy(update={
+        "next_action": "Fix the failing login check.",
+        "validations": [ValidationResult(
+            command="pytest -q", passed=False, exit_code=1, summary="login failed",
+        )],
+    })
+    packet = build_coding_packet(
+        ledger,
+        selected_skills="Follow the repository skill.",
+        conversation="old turn " * 2_000,
+        compaction_summary="Evidence is in artifact://trace/1.",
+        steering_messages=["Do not change the public API."],
+        max_tokens=1_000,
+    )
+
+    headings = [
+        "## TASK", "## SELECTED SKILLS", "## LATEST USER STEERING",
+        "## CONTINUATION", "## RECENT COMPLETE TURNS", "## LATEST VERIFICATION",
+        "## EVIDENCE NAVIGATION",
+    ]
+    assert [packet.index(heading) for heading in headings] == sorted(
+        packet.index(heading) for heading in headings
+    )
+    assert "Follow the repository skill." in packet
+    assert "Do not change the public API." in packet
+    assert "Fix the failing login check." in packet
+    assert "login failed" in packet
+    assert "artifact://trace/1" in packet
+    assert estimate_tokens(packet) <= 1_000
+
+    with pytest.raises(ContextBudgetExceeded):
+        build_coding_packet(
+            ledger,
+            steering_messages=["required steering " * 2_000],
+            max_tokens=100,
+        )
 
 
 def test_reducer_and_routes() -> None:
@@ -123,7 +141,7 @@ def test_reducer_and_routes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_thin_verification_failure_reenters_repair_then_completes(
+async def test_verification_failure_reenters_repair_then_completes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events = JsonlEventStore(tmp_path / "events")
@@ -152,7 +170,6 @@ async def test_thin_verification_failure_reenters_repair_then_completes(
         max_verification_attempts=6,
         steering_enabled=False,
         steering_at_work_batch_boundary=False,
-        thin_loop=True,
         metrics_store=SimpleNamespace(task_summary=lambda _task_id: {}),
     )
     monkeypatch.setattr("app.agent.workflow._save_checkpoint", lambda *_args, **_kwargs: None)
@@ -280,47 +297,6 @@ def test_progress_route_uses_configured_thresholds() -> None:
     )
 
 
-def test_work_packet_is_deterministic_and_steering_is_last() -> None:
-    ledger = _ledger()
-    packet = build_work_packet(
-        ledger,
-        selected_skills="Be careful",
-        repository_manifest="Python project",
-        recent_events=["read auth.py"],
-        steering_messages=["Do not change the API"],
-    )
-    assert packet.rfind("## USER STEERING") > packet.index("## RECENT EVENTS")
-
-
-def test_work_packet_updates_append_only_changed_control_and_new_events() -> None:
-    ledger = _ledger()
-    first = build_work_packet(ledger, selected_skills="Stable skill", repository_manifest="Stable manifest",
-                              recent_events=["10. read: source", "11. check: passed"])
-    initial, snapshot, watermark = build_work_packet_update(first, None)
-    assert initial == first and watermark == 11
-    ledger.next_action = "Verify the completed evidence"
-    ledger.phase = TaskPhase.REVIEW
-    second = build_work_packet(ledger, selected_skills="Stable skill", repository_manifest="Stable manifest",
-                               recent_events=["11. check: passed", "12. edit: changed"])
-    delta, current, watermark = build_work_packet_update(
-        second, snapshot, previous_recent_sequence=watermark)
-    assert "## TASK UPDATE\n" in delta and "Verify the completed evidence" in delta
-    assert "Stable skill" not in delta and "Stable manifest" not in delta
-    assert "12. edit: changed" in delta and "11. check: passed" not in delta
-    assert watermark == 12
-    unchanged, _, _ = build_work_packet_update(second, current, previous_recent_sequence=watermark)
-    assert "No change to previously supplied work packet" in unchanged
-    reset, _, _ = build_work_packet_update(second, None)
-    assert "## TASK\n" in reset and "Stable skill" in reset
-
-
-def test_work_packet_sections_keep_skill_subheadings_in_skill_body() -> None:
-    packet = "## TASK\n{}\n\n## SELECTED SKILLS\nSkill text\n\n## Local guidance\nDetails"
-    assert work_packet_sections(packet)["SELECTED SKILLS"] == (
-        "Skill text\n\n## Local guidance\nDetails"
-    )
-
-
 def test_delta_recent_events_keep_receipt_but_not_duplicate_cell_payload(tmp_path: Path) -> None:
     events = JsonlEventStore(tmp_path / "events")
     events.append("task", EventKind.NOTEBOOK_CELL_ADDED, {"source": "large source" * 200})
@@ -352,61 +328,6 @@ def test_work_packet_epoch_tracks_restoration_after_failed_cell(tmp_path: Path) 
     assert _latest_kernel_epoch(events.read("task")) == "restored"
 
 
-def test_work_packet_enforces_section_and_total_token_budgets() -> None:
-    packet = build_work_packet(
-        _ledger(),
-        selected_skills="Required skill instruction stays whole.",
-        repository_manifest="manifest " * 10_000,
-        compaction_summary="Required continuation stays whole.",
-        evidence_navigation="Completed evidence navigation stays whole.",
-        recent_events=["event " * 10_000],
-        steering_messages=["Do not change the API."],
-        max_tokens=1_000,
-        section_token_limits={
-            "TASK": 100,
-            "SELECTED SKILLS": 100,
-            "REPOSITORY MANIFEST": 100,
-            "COMPACTED HISTORY": 100,
-            "RECENT EVENTS": 100,
-            "USER STEERING": 100,
-        },
-    )
-
-    assert estimate_tokens(packet) <= 1_000
-    assert "truncated to configured budget" in packet
-    assert "Required skill instruction stays whole." in packet
-    assert "Required continuation stays whole." in packet
-    assert "Completed evidence navigation stays whole." in packet
-    assert packet.endswith("Do not change the API.")
-
-
-def test_task_control_is_whole_when_optional_progress_and_section_target_do_not_fit():
-    from app.agent.workflow import _criterion_review_action
-    ledger = create_initial_ledger(TaskRequest(
-        goal="Keep this complete requirement. " * 25,
-        constraints=["No network"], permitted_paths=["answer.json"], forbidden_paths=["oracle/**"],
-        verification_requirements=["independent-check"], verification_level="behavioral"),
-        task_id="task", base_revision="abc", workspace_id="workspace", branch_id="main")
-    ledger.phase = TaskPhase.REVIEW
-    ledger.next_action = _criterion_review_action(ledger, AgentStep(status="verify"))
-    assert "Do not reread unchanged source" in ledger.next_action
-    assert "specifically identified missing, stale, or contradictory fact" in ledger.next_action
-    ledger.progress = ["large old progress " * 10_000]
-    original = ledger.model_dump_json()
-    packet = build_work_packet(ledger, max_tokens=2000, section_token_limits={"TASK": 600})
-    task = json.loads(packet.removeprefix("## TASK\n"))
-    assert task["packet_version"] == "work_packet@3"
-    assert task["next_action"] == ledger.next_action
-    assert task["goal"] == ledger.goal and task["acceptance_criteria"] == ledger.acceptance_criteria
-    assert task["criterion_rows"] == [r.model_dump(mode="json") for r in ledger.criterion_rows]
-    for field in ("constraints", "permitted_paths", "forbidden_paths", "verification_requirements", "verification_level"):
-        assert task[field] == getattr(ledger, field)
-    assert "recent_progress" in task["omitted_fields"] and "recent_progress" not in task
-    assert "section truncated" not in packet and estimate_tokens(packet) <= 2000
-    assert build_work_packet(ledger, max_tokens=2000, section_token_limits={"TASK": 600}) == packet
-    assert ledger.model_dump_json() == original
-
-
 @pytest.mark.parametrize("oversized", ("task", "selected_skills", "compaction_summary", "evidence_navigation", "steering_messages"))
 def test_required_packet_overflow_never_returns_partial_instructions(oversized):
     ledger = _ledger()
@@ -414,9 +335,10 @@ def test_required_packet_overflow_never_returns_partial_instructions(oversized):
     if oversized == "task":
         ledger.next_action = "required instruction " * 1000
     else:
-        kwargs[oversized] = ["required steering " * 1000] if oversized == "steering_messages" else "required context " * 1000
+        key = "compaction_summary" if oversized == "evidence_navigation" else oversized
+        kwargs[key] = ["required steering " * 1000] if oversized == "steering_messages" else "required context " * 1000
     with pytest.raises(ContextBudgetExceeded) as caught:
-        build_work_packet(ledger, max_tokens=1000, **kwargs)
+        build_coding_packet(ledger, max_tokens=1000, **kwargs)
     assert caught.value.required_tokens > caught.value.budget_tokens == 1000
 
 

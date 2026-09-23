@@ -118,7 +118,7 @@ async def test_fresh_breadth_and_missing_ranges_use_real_checkpoint_workflow(tmp
                 code += f"print('USE_{stage + 1}_COMPLETE')"
         else:
             code = None
-        part = types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code})) if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify."}))
+        part = types.Part(function_call=types.FunctionCall(name="code", id=f"step-{index}", args={"code": code})) if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
                           custom_metadata={"provider_cost_usd": .001})
@@ -250,7 +250,7 @@ async def test_fresh_revisions_and_conflicts_recover_from_completed_evidence(tmp
                 else:
                     code += f"stored['shipment.toml'] = {trial.fixture['files']['shipment.toml']!r}\n" + derive()
             code += "assert agent.fs.write('answer.json', json.dumps(answer))['status'] == 'ok'\n"
-        part = (types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code}))
+        part = (types.Part(function_call=types.FunctionCall(name="code", id=f"step-{index}", args={"code": code}))
                 if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify."})))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),

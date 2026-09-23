@@ -155,12 +155,12 @@ def test_capability_help_degrades_to_signatures_then_targeted_pointer() -> None:
 
 
 def test_kernel_help_and_static_prompt_share_the_actual_execution_boundary():
-    from app.agent.config import NOTEBOOK_PTC_INSTRUCTION
+    from app.agent.config import PI_COMPATIBLE_PTC_INSTRUCTION
     from harness.ptc.repl.worker import WORKSPACE_EXECUTION_GUIDANCE, default_help_catalog
 
     catalog = default_help_catalog()
     assert catalog["kernel"]["workspace_execution"] == WORKSPACE_EXECUTION_GUIDANCE
-    assert NOTEBOOK_PTC_INSTRUCTION.endswith(WORKSPACE_EXECUTION_GUIDANCE)
+    assert PI_COMPATIBLE_PTC_INSTRUCTION.endswith(WORKSPACE_EXECUTION_GUIDANCE)
     with PersistentPythonWorker() as worker:
         result = worker.execute("agent.help('kernel', details=True)", _Broker(), 5)
         assert result.status == "ok"
@@ -175,8 +175,6 @@ def test_kernel_help_and_static_prompt_share_the_actual_execution_boundary():
 
 def test_prompt_source_mapping_survives_separate_answer_reads_without_refetching():
     import hashlib
-
-    from app.agent.config import NOTEBOOK_PTC_INSTRUCTION
 
     class ReadBroker(_Broker):
         def read(self, path, offset=1, limit=400):
@@ -193,9 +191,11 @@ def test_prompt_source_mapping_survives_separate_answer_reads_without_refetching
 
     broker = ReadBroker()
     broker.files.update({"config.json": '{"price": 7}', "answer.json": '{"cost": 21}'})
-    # Execute the actual shipped prompt example, not a separately scripted analogue.
-    recipe = "source_pages = agent.parallel" + NOTEBOOK_PTC_INSTRUCTION.split(
-        "source_pages = agent.parallel", 1)[1].split("\nchanged =", 1)[0]
+    recipe = """source_pages = agent.parallel([
+    {"operation": "fs.read", "arguments": {"path": path}} for path in known_paths
+])
+source_reads = {p["data"]["path"]: p for p in source_pages if p["status"] == "ok"}
+del source_pages"""
     with PersistentPythonWorker() as worker:
         captured = worker.execute("known_paths = ['config.json']\n" + recipe, broker, 5)
         assert captured.status == "ok"

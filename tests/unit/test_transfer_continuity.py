@@ -154,7 +154,7 @@ async def test_transfer_root_workflow_uses_recovered_sources_and_rejects_bad_evi
                 code += f"print('USE_{question + 1}_COMPLETE')"
             if bad == 'scope_change' and question == 2:
                 code += "agent.fs.write('contract.md', stored['contract.md'] + 'unauthorized change\\n')\n"
-        part = (types.Part(function_call=types.FunctionCall(name='execute_code', id=f'step-{index}', args={'code': code}))
+        part = (types.Part(function_call=types.FunctionCall(name='code', id=f'step-{index}', args={'code': code}))
                 if code else types.Part(text=json.dumps({'status': 'verify', 'message': 'Verify.'})))
         yield LlmResponse(content=types.Content(role='model', parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),

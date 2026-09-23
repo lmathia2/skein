@@ -1,5 +1,11 @@
 # Skein architecture
 
+> Current implementation: ADK is the sole model/tool runtime, PTC v4.1 `code` is the
+> default model-facing coding tool, and the outer workflow is coding plus host
+> verification. Material lifecycle records converge on one canonical trace. See
+> [ADR: ADK-native PTC v4.1 core](adr/adk-native-ptc-v4.1-core.md) and the
+> [implementation plan](design/adk-ptc-v4.1-simplification-plan.md).
+
 Skein explores a simple idea: give a capable model one programmable way to act,
 retain the evidence of its work, and compute the context it needs from that evidence.
 Google ADK supplies model execution and session machinery; Skein supplies the coding
@@ -31,7 +37,7 @@ flowchart LR
         direction TB
         MODEL["Model provider<br/><small>Gemini · Codex · OpenRouter</small>"]
         WORKER["ADK coding worker<br/><small>one model/tool loop</small>"]
-        MODE["Programmable action surface<br/><small>four tools · Skein notebook PTC</small>"]
+        MODE["PTC v4.1<br/><small>one code tool</small>"]
         MODEL --> WORKER
         WORKER --> MODE
     end
@@ -104,17 +110,16 @@ authority model.
 
 ## Context compiler
 
-`harness/core/context` turns the task, repository map, selected skills, recent evidence,
-and any compaction handoff into a bounded work packet. Stable instructions and tool
+`harness/core/context` turns the task, selected skills, recent conversation, verification,
+steering, and any compaction handoff into one bounded coding packet. Stable instructions and tool
 declarations remain byte-stable for provider caching; volatile task state stays in
 the dynamic suffix. Context is compiled deterministically so the same inputs and
 watermark produce the same bytes.
 
-Work packets reserve complete active control before optional history. Required task
-instructions, selected skills, continuation metadata and steering may use available
-space beyond their preferred section allocation, but never exceed the total packet
-ceiling. Optional task fields remain whole JSON values with named omissions; other
-optional evidence can be excerpted. An impossible required-context allocation stops
+Coding packets reserve complete active control before optional history. Required task
+instructions, selected skills, continuation metadata, verification, and steering remain
+whole and never exceed the total packet ceiling. Optional recent conversation can be
+excerpted. An impossible required-context allocation stops
 dispatch with a distinct context-budget outcome rather than partial instructions.
 
 This is the central economy of the design. The trace may grow for the life of a task;
@@ -141,17 +146,17 @@ provider swap does not change harness authority.
 
 ## Execution modes
 
-The target surface is one programmable `execute_code` tool. Code gives the model a
+The target surface is one programmable `code` tool. Code gives the model a
 language for mechanical work: a filter, join, loop, or exact condition can be stated
 once, executed by the computer, and reduced to the observation that needs judgment.
 Intermediate data can remain outside the prompt. This can replace many conversational
 tool round trips without asking the model to guess several dependent decisions at
 once.
 
-The compatibility mode retains `read`, `bash`, `edit`, and `write` as the measured
-baseline. Skein notebook PTC exposes `execute_code`. These modes change
-how the model composes work, not what it is allowed to do; all routes meet again at
-the same effect boundary.
+The default PTC path exposes `code`; `execute_code` is only an internal callable name.
+The four-tool compatibility profile exposes `read`, `bash`, `edit`, and `write` for a
+controlled surface ablation. Both meet at the same effect boundary and use the same
+ADK-owned continuation loop; there is no second structured workflow.
 
 Skein notebook PTC uses a persistent CPython worker and routes nested capabilities
 through the same broker as direct tools. The notebook places exact submitted code,
@@ -205,7 +210,7 @@ blocked.
 
 ## Configuration boundary
 
-Profiles may select a provider, execution mode, ledger implementation, and bounded
+Profiles may select a provider, tool surface, ledger implementation, and bounded
 context or generation settings. They may not expand the model-visible tool surface,
 bypass the effect broker, replace trace authority, weaken independent verification,
 or move volatile state into the stable prompt prefix without an explicit measured
@@ -217,6 +222,7 @@ The companion ADRs turn the thesis into enforceable contracts:
 | --- | --- |
 | [Trace-native harness and composable PTC](adr/trace-native-harness.md) | How execution, the notebook document, and runtime-state recovery remain distinct. |
 | [Programmatic tool calling implementation](adr/programmatic-tool-calling.md) | How the Pi-hosted v4.1 adapter implements its prompt, helper contract, batching, projections, variable reuse, recovery, and verification. |
+| [ADK-native PTC v4.1 core](adr/adk-native-ptc-v4.1-core.md) | Accepted simplification direction: ADK-owned loop, default PTC v4.1, one trace, broker, and verifier. |
 | [Context and memory](adr/context-and-memory.md) | How evidence becomes bounded, versioned, reproducible context. |
 | [Execution and recovery](adr/execution-and-recovery.md) | How effects are authorized, interruptions reconciled, and completion verified. |
 | [Harness comparison](adr/harness-comparison.md) | How Skein differs from Codex, OpenCode, and Pi, including its novel combination of contracts. |

@@ -18,7 +18,8 @@ class EventStore(Protocol):
 
     def append(
         self, task_id: str, kind: str, payload: dict[str, Any] | None = None,
-        *, idempotency_key: str | None = None,
+        *, correlation_id: str | None = None, parent_event_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> HarnessEvent: ...
 
 
@@ -60,6 +61,8 @@ class JsonlEventStore:
         kind: str,
         payload: dict[str, Any] | None = None,
         *,
+        correlation_id: str | None = None,
+        parent_event_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> HarnessEvent:
         with self._lock:
@@ -67,7 +70,9 @@ class JsonlEventStore:
             if idempotency_key is not None:
                 for event in existing:
                     if event.idempotency_key == idempotency_key:
-                        if event.kind != kind or event.payload != (payload or {}):
+                        if (event.kind != kind or event.payload != (payload or {})
+                                or event.correlation_id != correlation_id
+                                or event.parent_event_id != parent_event_id):
                             raise ValueError(
                                 "idempotency key already used for different event content"
                             )
@@ -77,6 +82,8 @@ class JsonlEventStore:
                 sequence=(existing[-1].sequence + 1 if existing else 1),
                 kind=kind,
                 payload=payload or {},
+                correlation_id=correlation_id,
+                parent_event_id=parent_event_id,
                 idempotency_key=idempotency_key,
             )
             path = self._path(task_id)

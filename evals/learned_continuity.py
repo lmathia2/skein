@@ -255,7 +255,7 @@ class _LearningCheckpoint(BasePlugin):
                 self.followup_message = None
             self.ack_message = self._steering.queue.enqueue(trial.task_id,
                 f"NEW checkpoint {self.stage + 1} of {len(stages)} recorded. This request supersedes earlier phase instructions. "
-                f"Submit a new execute_code cell printing {self.ack_token} on its own line now. "
+                f"Submit a new code cell printing {self.ack_token} on its own line now. "
                 "An earlier acknowledgement does not satisfy this request. Do not propose done or verify yet; "
                 "the coordinator must deliver the next stage/final question first. Do not write answer.json in this acknowledgement.",
                 idempotency_key=f"evaluation-checkpoint-ack-{self.stage}-{note.event_id}")
@@ -328,7 +328,7 @@ class _LearningCheckpoint(BasePlugin):
                     and (marker := stages[self.stage].get("checkpoint_marker"))):
                 self._checkpoint_reminder = self._steering.queue.enqueue(trial.task_id,
                     "Checkpoint not recorded. Finish the required acquisition, answer/update and checkpoint, "
-                    f"then submit an execute_code cell printing {marker} on its own line. "
+                    f"then submit an code cell printing {marker} on its own line. "
                     "A prose claim that it was printed is not an execution receipt. Await the new acknowledgement "
                     "and next question before proposing final completion.",
                     idempotency_key=f"evaluation-checkpoint-reminder-{self.stage}")

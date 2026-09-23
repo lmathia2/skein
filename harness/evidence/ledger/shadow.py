@@ -44,6 +44,8 @@ class LedgerBackedEventStore:
                 kind=event.kind,
                 payload=event.payload,
                 timestamp=event.observed_at,
+                correlation_id=event.correlation_id,
+                parent_event_id=event.parent_event_id,
                 idempotency_key=(
                     None
                     if event.idempotency_key == f"harness:{event.source_id}"
@@ -60,11 +62,14 @@ class LedgerBackedEventStore:
         kind: str,
         payload: dict[str, Any] | None = None,
         *,
+        correlation_id: str | None = None,
+        parent_event_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> HarnessEvent:
         with self._lock:
             event = self.operational.append(
-                task_id, kind, payload, idempotency_key=idempotency_key
+                task_id, kind, payload, correlation_id=correlation_id,
+                parent_event_id=parent_event_id, idempotency_key=idempotency_key
             )
             import_harness_event(self.ledger, event)
             return event

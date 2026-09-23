@@ -21,6 +21,7 @@ class EventKind(StrEnum):
     MESSAGE_RECORDED = "message.recorded"
     TOOL_ARTIFACT_RECORDED = "tool.artifact_recorded"
     TOOL_CALL_REJECTED = "tool.call_rejected"
+    TOOL_PROJECTION_CREATED = "context.tool_projection_created"
     ARTIFACT_PUBLISHED = "artifact.published"
     STEERING_RECEIVED = "steering.received"
     STEERING_EXPOSED = "context.steering_exposed"
@@ -30,6 +31,8 @@ class EventKind(StrEnum):
     WORK_PACKET_CREATED = "context.work_packet_created"
     PRIOR_APPLICABILITY_CREATED = "context.prior_applicability_created"
     CHECKPOINT_CREATED = "checkpoint.created"
+    RECOVERY_BOUNDARY = "recovery.boundary"
+    TRACE_SPAN_RECORDED = "trace.span_recorded"
     VERIFICATION_COMPLETED = "verification.completed"
     REVIEW_COMPLETED = "review.completed"
     TASK_BLOCKED = "task.blocked"
@@ -77,6 +80,8 @@ class HarnessEvent(BaseModel):
     kind: str
     payload: dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    correlation_id: str | None = None
+    parent_event_id: str | None = None
     idempotency_key: str | None = None
 
 

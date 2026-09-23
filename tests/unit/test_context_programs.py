@@ -228,7 +228,7 @@ def test_tool_usage_view_separates_top_level_nested_and_native(tmp_path: Path, b
         )
 
     append("execute", "metric.tool", {
-        "invocation_id": "ptc", "tool_name": "execute_code", "status": "ok",
+        "invocation_id": "ptc", "tool_name": "code", "status": "ok",
         "model_visible_bytes": 100, "omitted_bytes": 10,
     })
     append("nested-read", "metric.tool", {
@@ -248,7 +248,7 @@ def test_tool_usage_view_separates_top_level_nested_and_native(tmp_path: Path, b
 
     assert result.data["count"] == 4
     assert result.data["top_level"] == {
-        "count": 2, "by_name": {"bash": 1, "execute_code": 1},
+        "count": 2, "by_name": {"bash": 1, "code": 1},
         "by_status": {"error": 1, "ok": 1},
     }
     assert result.data["nested"] == {

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,7 +20,6 @@ from google.adk.tools import ToolContext
 from google.genai import types
 
 from harness.core.config import GenerationConfig, NotebookPtcConfig, ToolSurfaceConfig
-from harness.core.models.agent_step import StructuredAgentStep
 from harness.evidence.memory.models import ReadEvidence
 from harness.evidence.state import EventKind, EventStore, JsonlEventStore
 from harness.evidence.state.events import HarnessEvent
@@ -72,7 +73,6 @@ def build_coding_worker(
     workspace_fingerprint: Callable[[], str] | None = None,
     redactor: SecretRedactor | None = None,
     bounded_work_batches: bool = True,
-    thin_loop: bool = False,
 ) -> CodingWorkerBundle:
     active_tools = tools or create_adk_tools(
         settings.workspace,
@@ -292,14 +292,46 @@ def build_coding_worker(
     )
 
     model_tools: list[Any] = [ptc_session.tool] if ptc_session else [read, bash, edit, write]
-    if ptc_session is not None and thin_loop:
+    if ptc_session is not None:
+        retained_results: OrderedDict[str, bytes] = OrderedDict()
+
         async def code(
-            code: str,
+            code: str | None = None,
+            more: str | None = None,
+            offset: int = 0,
+            limit: int = 50 * 1_024,
             tool_context: ToolContext | None = None,
         ) -> dict[str, Any]:
-            """Run one persistent Python cell with Pi-compatible workspace helpers."""
+            """Run one persistent Python cell, or page a retained result with ``more``."""
 
-            return await ptc_session.tool(code=code, tool_context=tool_context)
+            if (code is None) == (more is None):
+                return {"status": "error", "model_text": "Provide exactly one of code or more."}
+            if more is not None:
+                if more not in retained_results:
+                    return {"status": "error", "model_text": f"Unknown or expired result ID: {more}"}
+                if offset < 0 or not 1 <= limit <= 50 * 1_024:
+                    return {"status": "error", "model_text": "Paging requires offset >= 0 and limit 1..51200."}
+                retained = retained_results[more]
+                end = min(offset + limit, len(retained))
+                return {
+                    "status": "ok",
+                    "model_text": retained[offset:end].decode("utf-8", errors="replace"),
+                    "result_id": more,
+                    "offset": offset,
+                    "next_offset": None if end >= len(retained) else end,
+                    "complete": end >= len(retained),
+                }
+
+            result = await ptc_session.tool(code=code, tool_context=tool_context)
+            retained = json.dumps(
+                result, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+            ).encode()[: 256 * 1_024]
+            result_id = "r_" + hashlib.sha256(retained).hexdigest()[:12]
+            retained_results[result_id] = retained
+            retained_results.move_to_end(result_id)
+            while len(retained_results) > 32:
+                retained_results.popitem(last=False)
+            return {**result, "result_id": result_id}
 
         model_tools = [code]
     generation = active_generation_config.model_dump(exclude_none=True)
@@ -345,11 +377,7 @@ def build_coding_worker(
         instruction="",
         tools=model_tools,
         include_contents="default" if ptc_session is not None else "none",
-        output_schema=(
-            None if thin_loop else StructuredAgentStep
-            if getattr(getattr(model, "capabilities", None), "output_schema_and_tools", False)
-            else None
-        ),
+        output_schema=None,
         generate_content_config=(
             types.GenerateContentConfig(**generation) if generation else None
         ),

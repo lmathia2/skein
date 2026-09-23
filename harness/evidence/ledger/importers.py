@@ -50,6 +50,8 @@ def import_harness_event(store: LedgerStore, event: HarnessEvent) -> LedgerEvent
         status=status,
         effect=effect,
         payload=event.payload,
+        correlation_id=event.correlation_id,
+        parent_event_id=event.parent_event_id,
         observed_at=event.timestamp,
         idempotency_key=(
             f"harness:{event.idempotency_key}"

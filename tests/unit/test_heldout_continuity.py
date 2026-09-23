@@ -102,7 +102,7 @@ async def test_real_worker_loss_keeps_authorized_recovery_and_completed_evidence
             code += "written = agent.fs.write('answer.json', json.dumps(answer))\nassert written['status'] == 'ok'"
         else:
             code = None
-        part = types.Part(function_call=types.FunctionCall(name="execute_code", id=f"step-{index}", args={"code": code})) if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify."}))
+        part = types.Part(function_call=types.FunctionCall(name="code", id=f"step-{index}", args={"code": code})) if code else types.Part(text=json.dumps({"status": "verify", "message": "Verify."}))
         yield LlmResponse(content=types.Content(role="model", parts=[part]),
                           usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=100, candidates_token_count=10),
                           custom_metadata={"provider_cost_usd": .001})

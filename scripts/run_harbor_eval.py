@@ -47,7 +47,6 @@ CONTRACT_FIELDS = (
     "agent_import_path",
     "reasoning",
     "config",
-    "workflow_mode",
     "max_output_tokens",
     "max_task_input_tokens",
     "max_iterations",
@@ -313,14 +312,14 @@ def write_or_validate_metadata(path: Path, value: dict[str, Any]) -> None:
 def harbor_binary() -> str:
     path = shutil.which("harbor") or str(ROOT / ".venv/bin/harbor")
     if not Path(path).is_file():
-        raise SystemExit("Harbor is not installed; run ./install.sh --minimal --dev --eval")
+        raise SystemExit("Harbor is not installed; run ./install.sh")
     return path
 
 
 def pier_binary() -> str:
     path = shutil.which("pier") or str(Path.home() / ".local/bin/pier")
     if not Path(path).is_file():
-        raise SystemExit("Pier is not installed; run uv tool install git+https://github.com/datacurve-ai/pier")
+        raise SystemExit("Pier is not installed; run ./install.sh")
     return path
 
 
@@ -528,19 +527,16 @@ def run_command(
             "--agent-kwarg", f"max_task_input_tokens={args.max_task_input_tokens}",
             "--agent-kwarg", f"wall_time_seconds={task['expected_runtime_seconds']}",
         ]
-        if workflow_mode := getattr(args, "workflow_mode", None):
-            command += ["--agent-kwarg", f"workflow_mode={workflow_mode}"]
     if getattr(args, "per_trial_timeout_seconds", None) is not None:
         command += ["--agent-kwarg", f"execution_timeout_seconds={args.per_trial_timeout_seconds}"]
     if args.reasoning is not None:
         command += ["--agent-kwarg", f"reasoning={args.reasoning}"]
     if args.agent_import_path.startswith("scripts.pi_code_tool_harbor:"):
         command += ["--agent-kwarg", f"provider_name={args.provider}"]
-    if args.max_output_tokens is not None and args.agent_import_path in {
-        "harness.adapters.pier:SkeinPierAgent",
-        "scripts.pi_code_tool_harbor:PiCodeToolPierAgent",
-        "scripts.pi_code_tool_harbor:PiSkeinPtcPierAgent",
-    }:
+    if args.max_output_tokens is not None and (
+        args.agent_import_path == "harness.adapters.pier:SkeinPierAgent"
+        or args.agent_import_path.startswith("scripts.pi_code_tool_harbor:")
+    ):
         command += ["--agent-kwarg", f"max_output_tokens={args.max_output_tokens}"]
     if args.provider == "openrouter" and args.agent_import_path == "harness.adapters.pier:SkeinPierAgent":
         command += ["--agent-kwarg", f"api_key_env={args.api_key_env}"]
@@ -550,12 +546,12 @@ def run_command(
 
 
 def completed_task(
-    output: Path, prefix: str
+    output: Path, prefix: str, attempts: int = 1
 ) -> tuple[Path, list[str], list[int], list[dict[str, Any]]] | None:
     for task_dir in sorted(p for p in output.iterdir() if p.is_dir() and p.name.startswith(prefix)):
         if any(task_dir.glob("*/result.json")):
             paths, rewards, errors, trial_metrics = result_summary(task_dir)
-            if rewards and not errors:
+            if len(rewards) == attempts and not errors:
                 return task_dir, paths, rewards, trial_metrics
     return None
 
@@ -605,7 +601,7 @@ def run_task(
         print(f"[{index}/{total}] skip {task['task_id']} (complete)")
         return True
     prefix = f"{index:03d}-{safe_name(task['task_id'])}"
-    recovered = completed_task(output, prefix)
+    recovered = completed_task(output, prefix, attempts)
     if recovered is not None:
         task_dir, result_paths, rewards, trial_metrics = recovered
         record = {
@@ -632,6 +628,9 @@ def run_task(
             on_record(record)
         print(f"[{index}/{total}] recover {task['task_id']} (complete)")
         return True
+    if getattr(args, "recover_only", False):
+        print(f"[{index}/{total}] leave {task['task_id']} (not fully scored)")
+        return False
     source_task = cached_task(task)
     prepared_root = output / "prepared-tasks"
     prepared_root.mkdir(exist_ok=True)
@@ -705,6 +704,24 @@ def run_task(
     return False
 
 
+def recover_campaign(output: Path) -> int:
+    """Rebuild missing ledger rows using the original contract; never launch work."""
+    metadata = json.loads((output / "run-metadata.json").read_text())
+    args = argparse.Namespace(**metadata, recover_only=True)
+    tasks = {}
+    for path in sorted(output.glob("*-attempt-*/task.json")):
+        index = int(path.parent.name.split("-", 1)[0])
+        task = json.loads(path.read_text())
+        tasks[index] = task
+    ledger = output / "runs.jsonl"
+    complete = frozenset(row.get("key") for row in ledger_rows(ledger)
+                         if row.get("status") == "complete")
+    results = [run_task(index, len(tasks), task, args=args, attempts=args.attempts,
+                        output=output, ledger=ledger, complete=complete, env={})
+               for index, task in sorted(tasks.items())]
+    return 0 if results and all(results) else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", choices=tuple(MANIFESTS), default="smoke")
@@ -716,8 +733,7 @@ def main() -> int:
         default="xhigh",
         help="reasoning effort, or provider-default to leave it unset",
     )
-    parser.add_argument("--config", default="harness/core/config/profiles/four-tool.yaml")
-    parser.add_argument("--workflow-mode", choices=("structured", "thin", "pi_compatible"))
+    parser.add_argument("--config", default="harness/core/config/default.yaml")
     parser.add_argument("--attempts", type=int)
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--retries", type=int, default=0)
@@ -752,7 +768,15 @@ def main() -> int:
     parser.add_argument("--trackio-group", help="optional Trackio group, such as an experiment ID")
     parser.add_argument("--trackio-space-id", help="optional Hugging Face Space ID for remote sync")
     parser.add_argument("--plan", action="store_true")
+    parser.add_argument("--recover-only", action="store_true",
+                        help="rebuild ledger from existing results and recorded metadata; never run trials")
+    parser.add_argument("--detach", action="store_true",
+                        help="launch an independent runner with persistent runner.log and runner.pid")
     args = parser.parse_args()
+    if args.recover_only:
+        if args.jobs_dir is None or args.detach or args.plan:
+            parser.error("--recover-only requires --jobs-dir and cannot combine with --detach or --plan")
+        return recover_campaign(args.jobs_dir.expanduser().resolve())
     if args.per_trial_timeout_seconds is not None:
         if args.per_trial_timeout_seconds < 1 or not args.agent_import_path.startswith("scripts.pi_code_tool_harbor:"):
             parser.error("--per-trial-timeout-seconds requires a positive budget and a Pi adapter")
@@ -826,7 +850,6 @@ def main() -> int:
                     "provider": args.provider,
                     "agent_import_path": args.agent_import_path,
                     "config": args.config,
-                    "workflow_mode": args.workflow_mode,
                     "jobs_dir": str(args.jobs_dir),
                     "attempts": attempts,
                     "concurrency": args.concurrency,
@@ -847,6 +870,18 @@ def main() -> int:
         (args.jobs_dir or Path.home() / "skein-eval-results" / args.suite).expanduser().resolve()
     )
     validate_jobs_dir(output)
+    if args.detach:
+        output.mkdir(parents=True, exist_ok=True)
+        with (output / "runner.log").open("a") as log:
+            process = subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()),
+                 *(arg for arg in sys.argv[1:] if arg != "--detach")],
+                cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            )
+        (output / "runner.pid").write_text(f"{process.pid}\n")
+        print(f"Started runner {process.pid}; log: {output / 'runner.log'}")
+        return 0
     docker_ready()
     env = pier_environment(os.environ.copy())
     if args.provider == "openrouter" and not env.get(args.api_key_env):
@@ -879,7 +914,6 @@ def main() -> int:
         "agent_import_path": args.agent_import_path,
         "reasoning": args.reasoning,
         "config": args.config,
-        "workflow_mode": args.workflow_mode,
         "max_output_tokens": args.max_output_tokens,
         "max_task_input_tokens": args.max_task_input_tokens,
         "max_iterations": args.max_iterations,
