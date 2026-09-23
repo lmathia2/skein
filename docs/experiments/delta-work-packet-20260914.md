@@ -1,6 +1,7 @@
 # Delta work-packet and review-control live experiment ledger
 
-Date: 2026-09-14/15 UTC. Defaults remain unchanged. See [frozen implementation and live plan](../design/delta-work-packet-live-plan.md).
+Date: 2026-09-14/15 UTC. This is retained experimental evidence; the active context
+contract is documented in [Context and memory](../adr/context-and-memory.md).
 
 ## Diagnostic continuation canary: complete
 

@@ -1,222 +1,83 @@
-# Skein compared with Codex, OpenCode, and Pi
+# Pi and Skein: core harness primitives
 
-Status: architectural comparison, updated September 21, 2026
+Status: implementation comparison, September 22, 2026
 
-This note positions the current simplified Skein implementation against three
-influential coding harnesses. It is not a feature checklist or a claim that Skein is
-a better end-user product. Codex, OpenCode, and Pi are mature interactive systems;
-Skein is a research harness for testing a narrower architectural thesis:
+This comparison is grounded in Skein `main` and the local Pi checkout at commit
+`3c75b2747`. Pi is a complete, extensible coding agent. Skein is a narrower research
+harness for ADK-native PTC, effect evidence, and host-verified coding tasks. The goal is
+to identify transferable simplicity, not declare a winner.
 
-> One programmable action surface plus one trace-native evidence log can support a
-> long-running coding agent when memory is computed as versioned views and completion
-> remains under deterministic host control.
+## Primitive-by-primitive comparison
 
-The comparison uses Skein's [design analyses](../design/), the
-[current architecture](../architecture.md), and public primary documentation for
-[Codex](https://learn.chatgpt.com/docs/codex/cli),
-[OpenCode](https://opencode.ai/docs/), and
-[Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent).
+| Primitive | Pi | Skein | Design consequence |
+| --- | --- | --- | --- |
+| Loop owner | `packages/agent/src/agent-loop.ts` directly streams the assistant, executes native calls, appends results, handles steering/follow-ups, and stops | ADK `LlmAgent` owns that native loop; Skein's `Workflow` only brackets bounded work batches with task state and verification | Skein must not grow a second tool-call loop |
+| Default tool surface | Four direct tools: `read`, `bash`, `edit`, `write` | One public `code` tool; the Pi-shaped four helpers plus `verify` are nested inside PTC | Pi is immediately legible; Skein spends one extra conceptual hop to reduce model round trips |
+| Prompt assembly | `buildSystemPromptSections` renders tool-aware sections, project context, skills, docs, and cwd; extensions can patch sections | `settings_from_composition` builds a stable instruction; `build_coding_packet` supplies bounded task state per work batch | Skein has a stricter stable/dynamic split; Pi is more extension-friendly |
+| Project instructions | Loaded into a tagged system-prompt section | Loaded only for trusted projects, byte-bounded, then placed in the stable instruction | Both support repository guidance; Skein makes trust and byte limits explicit |
+| Tool declarations | The transcript records tool loadout changes and replay derives the current executable set | ADK owns native function declarations; default composition declares only `code` | Pi makes dynamic loadouts first-class; Skein fixes topology for comparable runs |
+| Message model | `AgentMessage[]` is transformed to provider messages at the LLM boundary; native tool results are appended to the same context | ADK session and provider adapters own native content/function calls; Skein records separate task evidence | Both preserve native tool semantics; Skein deliberately avoids a custom structured-response transcript |
+| Context management | A context transform can run before each request; automatic compaction summarizes older work, keeps a recent tail, and retains the full session | Required task control is rebuilt from `TaskLedger`; optional conversation is truncated; optional trace-native memory supplies addressed views | Pi optimizes an interactive conversation; Skein optimizes reproducible task projections |
+| Session history | Durable session entries support replay, branching, prompt/tool-state changes, and compaction | ADK session is conversation authority; JSONL events rebuild task state; notebook and heap are separate | Skein has more stores, so their authority must stay explicit |
+| Tool-call scheduling | The loop validates and executes native calls, including batches, errors, steering, hooks, and stop policy | ADK schedules the public `code` call; Python code may call nested helpers sequentially or programmatically | Pi exposes scheduling in the loop; Skein delegates outer scheduling to ADK and inner composition to Python |
+| Tool errors | Invalid, missing, blocked, aborted, and thrown calls become tool-result messages; truncated calls are not executed | Builder adapters convert exceptions to bounded recoverable results; PTC cell failure discards dirty state | Same feedback principle, with Skein adding worker-epoch semantics |
+| Output bounds | Coding tools truncate output and session/UI code controls presentation | Results are bounded, pageable, redacted, and may retain full artifacts plus model-facing projections | Skein pays extra bookkeeping for trace analysis and recovery |
+| Effects and safety | Core tools operate in the selected environment; project trust, hooks, extensions, and surrounding sandbox shape policy | One broker enforces confinement, approvals, redaction, optimistic writes, receipts, and fingerprints for all paths | Skein intentionally owns more host policy |
+| Verification | The agent or user decides when the requested work is done; projects can add checks through prompts/extensions | Mutation requires verification; only the host can emit a complete outcome | Skein is less conversational but produces benchmark-grade terminal evidence |
+| Recovery | Durable sessions, branches, replayable prompt/tool state, retries, and compaction support continuation | ADK resumability plus event reduction, recovery boundaries, receipts, workspace fingerprints, and safe PTC checkpoints | Skein refuses automatic replay when effect outcome is unknown |
+| Tracing | Agent events and durable session entries make the loop inspectable; telemetry and extensions can add observation | ADK trace/metrics plugins plus task events, context hashes, receipts, PTC events, artifacts, and verification | Skein's trace is heavier because it is an experimental data product |
+| Extensibility | Extensions can add tools, hooks, commands, UI, providers, prompt sections, and session behavior | Code-owned composition and validated YAML select known providers and policies | Pi favors a product ecosystem; Skein favors controlled ablations |
+| Learning | Readable loop, extensions, skills, and ordinary CLI composition make behavior easy to teach and modify | Skills are bounded; verified traces can become offline learning episodes; runtime self-modification is disabled | Skein borrows progressive disclosure but keeps learned changes out of live authority |
+| Terminal result | An assistant response and session events | Ordinary assistant prose is parsed as a work-batch signal; host returns typed `HarnessOutcome` | Model-facing simplicity and host-facing rigor are separate contracts |
 
-## Executive comparison
+## What Skein learns from Pi
 
-| | Codex | OpenCode | Pi | Skein |
-| --- | --- | --- | --- | --- |
-| Primary goal | Complete coding product across local, IDE, app, and cloud workflows | Provider-neutral coding platform with rich tools, agents, permissions, and integrations | Minimal terminal harness that delegates workflow choices to extensions and ordinary CLIs | Controlled experiment in programmable tool use, trace-native memory, and verified completion |
-| Default interaction | Product-managed coding agent with shell, patching, skills, MCP, sandboxing, approvals, and task coordination | TUI/CLI/server with many built-in tools, primary agents, subagents, MCP, LSP, skills, and permission rules | Small interactive loop with `read`, `write`, `edit`, and `bash`; extensions supply optional workflow | One ADK worker; four-tool baseline or one `execute_code` tool |
-| Extensibility | Configuration, `AGENTS.md`, skills, MCP, hooks, SDK, app server | Custom agents, tools, plugins, MCP, LSP, SDK, server | Extensions, skills, prompts, themes, packages, SDK, RPC | Closed code-owned registries and validated experiment profiles |
-| Durable session model | Product task/thread history with record-and-replay support | Persisted sessions and messages across clients | Append-only JSONL session tree with branching and compaction markers | Canonical task/effect trace; ADK session, notebook, heap, indexes, and caches have separate authority |
-| Long-context strategy | Product-managed context and compaction | Provider/session context management and configurable agents | Lossy structured compaction with retained recent tail; full JSONL remains on disk | Versioned programs compute bounded prompt views from evidence at an explicit watermark |
-| Safety model | OS sandbox modes, approvals, project trust, and network policy | Per-tool `allow`/`ask`/`deny` rules, including granular command/path patterns | Intentionally leaves permission UI and isolation to extensions or the surrounding environment | One broker contract for confinement, authorization, redaction, bounded output, receipts, and reconciliation |
-| Completion authority | Agent/product workflow | Agent/application workflow | Agent/user workflow | Model completion is only a proposal; deterministic verification owns terminal status |
-| Optimization stance | Optimize a production agent experience | Maximize capability and configurability | Keep the core small and let users compose the rest | Keep topology fixed, expose controlled treatment axes, and require matched ablations before promotion |
+1. Keep one obvious model/tool loop. In Skein that loop is ADK's; the workflow must
+   remain a thin host boundary.
+2. Keep the prompt inspectable. Stable instructions, tools, project guidance, and
+   dynamic work state should have named source functions rather than a middleware maze.
+3. Make tool failure ordinary feedback. A bad call should stay inside the loop unless
+   the host can no longer establish safety.
+4. Prefer a small general surface. Skein uses one programmable tool by default and
+   retains Pi's four-tool shape inside it.
+5. Keep progressive disclosure. Skills, large outputs, and old evidence should be
+   loaded only when the next decision needs them.
+6. Make the common path readable before adding extension points. Skein's fixed topology
+   is a feature of an evaluation harness, not missing scaffolding.
 
-## Codex: the integrated product baseline
+## Where Skein intentionally differs
 
-Codex is the strongest comparison for a production coding environment. Its public
-surface spans terminal, IDE, desktop, cloud, SDK, app-server, non-interactive, and
-multi-agent workflows. It supports project instructions through `AGENTS.md`, skills
-and MCP integration, configurable sandbox and approval modes, worktrees, and explicit
-record-and-replay tooling. Project-local configuration is loaded only after trust is
-established. See the official [Codex CLI](https://learn.chatgpt.com/docs/codex/cli),
-[configuration](https://learn.chatgpt.com/docs/config-file/config-basic),
-[sandbox](https://learn.chatgpt.com/docs/sandboxing), and
-[record-and-replay](https://learn.chatgpt.com/docs/extend/record-and-replay)
-documentation.
+Skein keeps ADK because its event loop, session lifecycle, provider integrations,
+streaming, cancellation, resume behavior, and native tracing are requirements. It keeps
+the PTC worker because programmable composition is the primary experiment. It keeps the
+broker, evidence stream, and verifier because effect provenance and independently proven
+completion are the useful Skein concepts.
 
-Skein should not claim novelty for sandboxing, approvals, project instructions,
-skills, resumable work, tool-call recording, or programmatic tool use. Codex already
-offers polished forms of those capabilities and a much broader operating envelope.
-
-The difference is research focus. Codex exposes an integrated product contract;
-Skein exposes the internal experimental variables. Skein can hold the task, model,
-budgets, verifier, and effect policy fixed while changing only the model-facing
-execution mode or memory strategy. Its trace and view receipts are designed to answer
-which exact evidence, program version, watermark, and prompt shape affected a run—not
-merely to reproduce or inspect the interaction.
-
-## OpenCode: the configurable platform baseline
-
-OpenCode emphasizes breadth and user configuration. Its documented tool set includes
-file operations, shell, search, patching, skills, todos, questions, web access, and an
-experimental LSP tool; custom tools and MCP servers extend it further. Primary agents
-and subagents may have separate prompts, models, and permissions. Permission rules can
-allow, ask, or deny actions globally or by command/path pattern. See OpenCode's
-[tools](https://opencode.ai/docs/tools/),
-[agents](https://opencode.ai/docs/agents/), and
-[permissions](https://opencode.ai/docs/permissions/) documentation.
-
-Skein should not claim novelty for multi-provider support, configurable tools,
-subagents, MCP, LSP-backed navigation, granular permissions, or an embeddable server.
-OpenCode is broader on all of those axes.
-
-Skein intentionally moves in the opposite direction. Its model-visible topology is
-small and closed, because every additional tool changes prompt cost, tool selection,
-policy surface, and the meaning of an evaluation. Configuration may select a reviewed
-provider, PTC implementation, ledger, or context policy; it may not construct an
-arbitrary agent topology. This makes Skein less flexible as a product but more useful
-as a controlled harness.
-
-## Pi: the closest philosophical ancestor
-
-Pi most directly influenced Skein's minimal model interface. Pi defaults to four
-general coding tools, keeps its system prompt small, loads skills progressively, uses
-ordinary shell programs for composition, and stores sessions as append-only JSONL.
-Its session tree supports branching. Compaction keeps a recent tail and replaces older
-active context with a structured summary while preserving the full session file. Pi's
-stated philosophy is to omit built-in subagents, permissions, MCP, planning, and todos
-when extensions or existing tools can supply them. See Pi's
-[coding-agent documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md),
-[SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md),
-and [compaction design](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md).
-
-Skein copies the useful discipline: a small stable prompt, shell-first composition,
-progressive disclosure, bounded outputs, an append-oriented history, and one main
-agent loop. The four-tool profile remains the compatibility baseline precisely because
-Skein's own matched evaluations have not justified replacing it by default.
-
-Skein diverges where a managed, replayable experiment needs stronger authority. Pi's
-session log is primarily conversation and interaction history; Skein's canonical trace
-records task state, cell attempts, authorization, receipts, failures, timeouts,
-verification, and unresolved effects. Pi compaction is a practical lossy context
-handoff; Skein treats each memory result as a versioned program over addressed evidence
-at a watermark. Pi deliberately leaves permissions and verification outside its core;
-Skein makes both non-optional host responsibilities.
-
-Skein also carries a narrow Pi-hosted evaluation adapter. Pi retains its ordinary
-model loop, while a single extension tool routes persistent Python cells through
-Skein's worker and Pier workspace broker. This adapter is deliberately not a second
-product architecture: it isolates the PTC interface from Skein's ADK orchestration.
-Its current v4.1 contract uses synchronous direct helpers, conservative stdlib AST
-preflight, compact text observations, bounded result paging, live variable reuse, and
-JSON-only checkpoint recovery without transcript replay. The project retains v4.1 as
-the Pi PTC reference after a v4.2 experiment reduced verification calls but failed to
-reduce total interactions, cost, or latency.
-The exact implementation contract is recorded in the
-[programmatic tool calling ADR](programmatic-tool-calling.md).
-
-The removed application compatibility arm was only approximate: provider API,
-observation rendering, and managed verification differed. The strict evaluation
-pair is now `PiParityPierAgent` versus `SkeinParityPierAgent`. Both share the v4.1
-tool adapter and Chat Completions serializer; Pi and ADK respectively own the loop.
-Neither adds compaction or independent host verification to the conversation.
-Offline differential tests compare complete model contexts and serialized provider
-requests. The strict pair needs fresh results, separately from historical v4.1 CLI
-and approximate native results. General application workflow defaults remain intact.
-
-## What is genuinely novel in Skein
-
-None of Skein's ingredients is novel in isolation. Code execution, notebooks,
-event-sourced logs, compaction, retrieval, capability brokers, and deterministic tests
-all predate it. The interesting contribution is the combination and the unusually
-strict boundaries between them.
-
-### 1. The ledger, notebook, and live heap are three different kinds of state
-
-Many code-mode systems blur transcript, notebook, and runtime state. Skein assigns
-each one a single job:
-
-- The append-only ledger answers what happened.
-- The notebook is a readable, reconstructable working document.
-- The Python heap holds disposable live values for one kernel epoch.
-
-Cell and attempt identities connect the three, but none substitutes for another. A
-notebook cell is not proof that an effect completed; a live value is not durable; a
-ledger event is not automatically useful model context. This separation is implemented
-in `harness/evidence/ledger`, `harness/ptc/notebook`, and `harness/ptc/repl`.
-
-### 2. Memory is a versioned program with an evidence receipt
-
-Skein does not define memory as a mutable prose field or a vector-store lookup. A
-memory view identifies the program name and version, parameters, authorized evidence,
-historical watermark, budgets, evidence addresses, and result hash:
+Those choices mean Skein cannot be as small as Pi internally. The simplicity target is
+instead:
 
 ```text
-view = program@version(evidence at watermark, parameters, budgets)
+one ADK loop + one public tool + one effect boundary + one completion authority
 ```
 
-That turns progress reports, history pages, summaries, counts, retrieval, and prompt
-selection into inspectable computations. Deterministic views are disposable and
-rebuildable. Candidate programs can run in shadow against the same frozen history
-before they influence context. This contract lives in `harness/evidence/memory` and
-`harness/evidence/ledger`.
+Everything else must justify itself as evidence, recovery, or evaluation support.
 
-### 3. One programmable tool does not receive ambient authority
+## Source anchors
 
-The notebook profile gives the model one `execute_code` surface, but nested file,
-shell, and registered capabilities still cross the same host broker as direct tools.
-Code mode changes the syntax and composition power available to the model; it does not
-change authorization, confinement, deadlines, redaction, output limits, receipts, or
-reconciliation. Every nested operation remains separately attributable in the trace.
+Pi:
 
-This is a stronger claim than “the model can run Python.” It asks whether programmatic
-tool composition can reduce turns and prompt bytes without creating an opaque,
-all-powerful interpreter.
+- `/Users/mathiasl/src/pi/packages/agent/src/agent-loop.ts`
+- `/Users/mathiasl/src/pi/packages/coding-agent/src/core/system-prompt.ts`
+- `/Users/mathiasl/src/pi/packages/coding-agent/src/core/tools/index.ts`
+- `/Users/mathiasl/src/pi/packages/coding-agent/src/core/compaction/compaction.ts`
+- `/Users/mathiasl/src/pi/packages/coding-agent/src/core/session-manager.ts`
 
-### 4. Failed cells are treated as transactional evidence boundaries
+Skein:
 
-Skein records cell intent before execution and records success, failure, timeout, or
-unknown effect afterward. A failed brokered cell discards its dirty kernel epoch before
-more work is accepted; restoration is limited to explicitly classified replay-safe
-cells. Mutation-capable uncertainty blocks continuation until reconciled. The design
-therefore preserves both the failed attempt as evidence and a clean boundary for later
-reasoning.
-
-### 5. Completion is derived from environmental evidence
-
-The model may claim it is done, but Skein's control plane checks acceptance criteria,
-workspace scope, required commands, baseline-relative regressions, and open effects.
-The terminal state is computed from that evidence. Verification results return to the
-trace and may drive another bounded model turn, but prose cannot mark itself verified.
-
-### 6. The harness is designed as an ablation instrument
-
-Skein makes model surface, PTC implementation, memory strategy, context policy, and
-ledger implementation explicit treatment axes while keeping authority and verification
-fixed. Configurations fail closed on unsupported combinations. Promotions require
-matched evidence across quality, token use, cache behavior, latency, retries, effects,
-and verification—not a compelling demo or one cheaper run.
-
-Together these properties make Skein less an alternative terminal agent than an
-instrument for asking a precise question: can a model do better long-horizon work when
-it computes through one narrow interface and receives reproducible views over its own
-evidence?
-
-## Claims the current implementation does not make
-
-The simplified implementation matters more than the aspirational design:
-
-- PTC v4.1 `code` is the default model-facing surface; four direct tools remain only
-  as a controlled surface ablation.
-- Skein ships one ADK notebook PTC implementation. The separate Pi-hosted v4.1 adapter
-  is retained only as evaluation infrastructure, not as product surface.
-- The application has one ADK-owned workflow. Strict Pi/Skein parity adapters remain
-  evaluation-only and do not claim parity before matched results.
-- JSONL is sufficient for the default path. DuckDB is optional, and semantic retrieval
-  is not active without an explicit embedding provider.
-- The local environment adapter is not a production security sandbox.
-- Deterministic contract tests establish behavior, not superiority over Codex,
-  OpenCode, or Pi. Product-quality and live-task claims require matched evaluations.
-
-These limits are features of the comparison, not footnotes. Skein's credible novelty
-is a falsifiable architecture with explicit authority and evidence—not the assertion
-that every proposed mechanism is already better.
+- `app/agent/config.py`
+- `app/agent/builders.py`
+- `app/agent/workflow.py`
+- `harness/core/orchestration/core.py`
+- `harness/evidence/state/`
+- `harness/execution/`
+- `harness/core/models/outcome.py`

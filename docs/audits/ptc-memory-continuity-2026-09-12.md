@@ -2,8 +2,9 @@
 
 ## Scope and implementation
 
-The grouped [continuity plan](../design/ptc-memory-continuity-plan.md) stages S0–S5
-are implemented. The live evaluation is S6, not evidence of default-promotion approval.
+The current [context and memory ADR](../adr/context-and-memory.md) records the resulting
+continuity contract. This audit originally staged S0–S5, which were implemented. The
+live evaluation is S6, not evidence of default-promotion approval.
 
 | Component | Delivered contract |
 | --- | --- |

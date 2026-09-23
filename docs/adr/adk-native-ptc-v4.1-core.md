@@ -1,95 +1,57 @@
-# ADK-native PTC v4.1 core
+# ADR: ADK-native PTC v4.1 core
 
-> Status: accepted and implemented; live qualification pending
->
-> Updated: 2026-09-22
-
-## Context
-
-Skein currently combines ADK's native model/tool continuation with a larger host
-workflow containing model-authored task phases, structured routing, several durable
-state representations, and multiple model-facing execution modes. That breadth makes
-the main coding path harder to reason about and obscures the boundaries that matter:
-effect authority, exact model-visible context, recovery, and independent verification.
-
-Pi demonstrates that a coding loop can remain legible when one runtime owns
-continuation. Strands contributes useful lifecycle primitives—typed stop reasons,
-safe-boundary checkpoints, capability narrowing, construction-time collision checks,
-and bounded cancellation-aware execution—without requiring its broader tool or plugin
-topology.
-
-PTC v4.1 is Skein's selected model-facing interface. Google ADK remains the required
-runtime and must continue to own model execution, tool continuation, streaming,
-sessions, cancellation, and resumability.
+Status: accepted and implemented
 
 ## Decision
 
-Implement the direction specified by the
-[ADK-native Skein simplification plan](../design/adk-ptc-v4.1-simplification-plan.md):
+Skein uses Google ADK as its only model/tool runtime and PTC v4.1 as its default coding
+surface.
 
-1. Use one ADK coding agent with exactly one model-facing tool: PTC v4.1 `code`.
-   `execute_code` remains an internal Python callable name, not a wire-level tool name.
-2. Keep `read`, `write`, `edit`, `bash`, and `verify` as synchronous PTC guest helpers
-   behind the existing Skein effect broker.
-3. Reduce the outer ADK workflow to coding, deterministic host verification, and a
-   bounded retry-or-finish transition.
-4. Remove model-authored task phases and routing from the model-facing path.
-5. Retain one byte-stable prompt/tool prefix and one deterministic bounded dynamic
-   context path.
-6. Preserve native ADK/provider tool-call and tool-result message semantics.
-7. Treat every model-visible tool result as a versioned bounded projection linked to
-   complete typed evidence and retained artifacts.
-8. Converge model, PTC, broker, context, and verifier events on one append-only
-   canonical Skein trace while keeping the ADK session authoritative for conversation
-   continuation.
-9. Record recovery boundaries before model dispatch, after model output, after effects,
-   and after verification; reconcile uncertain effects before resuming.
-10. Keep host verification as the sole completion authority. PTC `verify()` remains
-    model-invoked evidence acquisition.
-11. Derive learning episodes only from independently verified traces. Learned memory,
-    skills, prompt changes, and context policies remain shadowed or opt-in until
-    held-out quality and efficiency gates pass.
+- ADK owns model calls, native function-call continuation, sessions, streaming,
+  cancellation, and resume behavior.
+- The model sees one `code` tool in the default profile.
+- The PTC worker exposes brokered `read`, `bash`, `edit`, `write`, and `verify` helpers.
+- The Skein workflow owns bounded work packets, budgets, steering boundaries, recovery
+  markers, and independent verification around the ADK worker.
+- Ordinary assistant prose ends a work batch. Structured model output is not required.
+- The four direct coding tools remain an evaluation ablation, not a second production
+  architecture.
+
+## Why
+
+The previous design accumulated two partial runtimes: ADK for provider integration and
+a structured host loop for tool orchestration. That duplicated loop authority, message
+semantics, recovery rules, and terminal parsing.
+
+ADK already solves the native event loop. Skein's useful differentiation is elsewhere:
+programmable tool use, effect mediation, evidence projections, recovery receipts, and
+verified completion. Keeping those boundaries while deleting the second model/tool loop
+makes the implementation closer to Pi's legibility without giving up ADK.
 
 ## Consequences
 
-### Positive
+Positive:
 
-- ADK has one unambiguous role as the agent runtime rather than one loop inside another.
-- PTC v4.1 becomes the stable default instead of a coequal experimental tool surface.
-- Effects and completion retain Skein's stronger authority model.
-- Exact prompts, provider requests, tool messages, model projections, and causal traces
-  remain comparable in strict evaluation arms.
-- Structured workflow selection, duplicate packet builders, and provider output schemas
-  are removed from the application path.
-- Learning becomes reproducible and independently gated instead of mutating runtime
-  behavior opportunistically.
+- native ADK tool messages and tracing remain intact;
+- one public tool keeps the model surface small;
+- nested capabilities retain Skein's safety and evidence contracts;
+- provider adapters do not need a custom structured-output protocol;
+- a single verifier owns completion.
 
-### Negative
+Tradeoffs:
 
-- Some current ledger fields and progress views become derived rather than directly
-  authored.
-- Recovery tests must cover the boundary between ADK session state and Skein effect
-  evidence explicitly.
-- Making PTC v4.1 the default requires new qualification; historical comparison runs do
-  not prove the simplified ADK workflow is equivalent.
+- the outer workflow still has more machinery than Pi because it supports benchmark
+  task state, steering, receipts, and verification;
+- PTC introduces a persistent worker and checkpoint policy;
+- direct four-tool parity must be measured through an explicit ablation.
 
-## Rejected alternatives
+## Implementation
 
-- **Replace ADK with a custom Python loop.** Rejected because ADK ownership is
-  non-negotiable and already provides the required event-loop machinery.
-- **Use four direct coding tools as the default.** Rejected; PTC v4.1 is the selected
-  default model surface.
-- **Adopt Strands' Monty caller.** Rejected because it is stateless and does not provide
-  PTC v4.1 continuity or recovery.
-- **Adopt a general middleware framework.** Rejected because ADK callbacks/plugins and
-  the Skein broker already provide the necessary boundaries.
-- **Make the ADK session the effect ledger.** Rejected because conversation replay does
-  not establish effect certainty, projection provenance, or verification authority.
-- **Promote learned memory immediately.** Rejected because existing qualification
-  reduced some rereads but did not pass call, token, or cost gates.
+- `app/agent/factory.py` composes the ADK app and plugins.
+- `app/agent/config.py` selects `code` and builds the v4.1 instruction.
+- `app/agent/builders.py` constructs the `LlmAgent` and model-facing tools.
+- `app/agent/workflow.py` owns work-batch and verification transitions.
+- `harness/core/models/outcome.py` enforces terminal host outcomes.
 
-## Implementation tracking
-
-The linked plan is the single source for phases, tests, rollout gates, and definition
-of done. Phases 1–8 are implemented. The strict Pi/Skein adapters remain outside the
-application workflow for live qualification; they do not reintroduce a mode switch.
+The completed migration phases are tracked in the
+[implementation plan](../design/adk-ptc-v4.1-simplification-plan.md).
