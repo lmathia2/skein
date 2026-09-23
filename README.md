@@ -123,9 +123,8 @@ only for controlled tool-surface comparisons:
 ## Develop
 
 ```sh
-.venv/bin/python -m pytest -q tests/unit
-.venv/bin/python -m ruff check app harness evals tests
-.venv/bin/python -m pyright app harness
+make test
+make lint
 ```
 
 The code is organized by authority:
